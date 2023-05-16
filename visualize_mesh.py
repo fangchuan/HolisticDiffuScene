@@ -11,20 +11,20 @@ from misc.panorama import xyz_2_coorxy
 from visualize_3d import convert_lines_to_vertices
 
 
-def E2P(image, corner_i, corner_j, wall_height, camera, resolution=512, is_wall=True):
+def E2P(image, corner_i, corner_j, wall_height, camera_center, resolution=512, is_wall=True):
     """convert panorama to persepctive image
     """
-    corner_i = corner_i - camera
-    corner_j = corner_j - camera
+    corner_i = corner_i - camera_center
+    corner_j = corner_j - camera_center
 
     if is_wall:
         xs = np.linspace(corner_i[0], corner_j[0], resolution)[None].repeat(resolution, 0)
         ys = np.linspace(corner_i[1], corner_j[1], resolution)[None].repeat(resolution, 0)
-        zs = np.linspace(-camera[-1], wall_height - camera[-1], resolution)[:, None].repeat(resolution, 1)
+        zs = np.linspace(-camera_center[-1], wall_height - camera_center[-1], resolution)[:, None].repeat(resolution, 1)
     else:
         xs = np.linspace(corner_i[0], corner_j[0], resolution)[None].repeat(resolution, 0)
         ys = np.linspace(corner_i[1], corner_j[1], resolution)[:, None].repeat(resolution, 1)
-        zs = np.zeros_like(xs) + wall_height - camera[-1]
+        zs = np.zeros_like(xs) + wall_height - camera_center[-1]
 
     coorx, coory = xyz_2_coorxy(xs, ys, zs)
 
@@ -115,13 +115,13 @@ def create_plane_mesh(vertices, vertices_floor, textures, texture_floor, texture
     triangle_uvs = np.concatenate(triangle_uvs, axis=0)
 
     mesh = open3d.geometry.TriangleMesh(
-        vertices=open3d.utility.Vector3dVector(vertices),
+        # convert vertices from mm to m
+        vertices=open3d.utility.Vector3dVector(vertices * 0.001),
         triangles=open3d.utility.Vector3iVector(triangles)
     )
     mesh.compute_vertex_normals()
-
-    mesh.texture = open3d.geometry.Image(textures)
-    mesh.triangle_uvs = np.array(triangle_uvs[triangles.reshape(-1), :], dtype=np.float64)
+    # mesh.textures = [open3d.geometry.Image(textures)] 
+    # mesh.triangle_uvs = np.array(triangle_uvs[triangles.reshape(-1), :], dtype=np.float64)
     return mesh
 
 
@@ -234,7 +234,7 @@ def visualize_mesh(args):
     # create mesh
     mesh = create_plane_mesh(corners, corner_floor, textures, texture_floor, texture_ceiling,
         delta_height, ignore_ceiling=args.ignore_ceiling)
-
+    open3d.io.write_triangle_mesh("/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00000_485142_st3d.ply", mesh)
     # visualize mesh
     open3d.visualization.draw_geometries([mesh])
 
