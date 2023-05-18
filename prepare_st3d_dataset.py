@@ -4,6 +4,8 @@ import argparse
 import json
 import numpy as np
 from tqdm import tqdm
+import imghdr
+
 '''
 Assume datas is extracted by `misc/structured3d_extract_zip.py`.
 That is to said, assuming following structure:
@@ -43,7 +45,7 @@ INVALID_ROOMS_LST = [
     'scene_02608_345', 'scene_00014_1083', 'scene_00014_947',
     'scene_00212_377', 'scene_01209_5767', 'scene_01210_277',
     'scene_01608_270286', 'scene_01608_270288', 'scene_02411_706561',
-    'scene_02609_1419'
+    'scene_02609_1419', 'scene_00609_159'
 ]
 
 
@@ -97,7 +99,7 @@ def prepare_dataset(raw_dataset_dir, scene_ids, out_dir):
             # assert os.path.isfile(source_img_path)
             # assert os.path.isfile(source_cor_path)
             if not os.path.isfile(source_img_path) or not os.path.isfile(source_cor_path) \
-            or not os.path.isfile(source_cam_pos_path):
+            or not os.path.isfile(source_cam_pos_path) or imghdr.what(source_img_path) is None:
                 INVALID_ROOMS_LST.append(room_str)
                 print(f'bad scene {room_str}')
                 continue

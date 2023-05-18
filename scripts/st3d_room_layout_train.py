@@ -1,10 +1,12 @@
 """
 Train a diffusion model on images.
 """
+import os
 import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 sys.path.append("..") # Adds higher directory to python modules path.
 import argparse
+import datetime
 
 from mpi4py import MPI
 from torch.utils.data import DataLoader
@@ -21,13 +23,18 @@ from improved_diffusion.script_util import (
 from improved_diffusion.train_util import TrainLoop
 from dataset.st3d_dataset import PanoCorBoundDataset
 
+def make_dataloader_cycle(iterable):
+    while True:
+        for x in iterable:
+            yield x
 
 def main():
     args = create_argparser().parse_args()
 
     # set up distributed training and logging
     dist_util.setup_dist()
-    logger.configure(dir=args.log_dir, format_strs=['tensorboard','stdout','log','csv'])
+    log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    logger.configure(dir=log_dir, format_strs=['tensorboard','stdout','log','csv'])
     logger.set_level(logger.INFO)
 
     logger.log("creating UNet model and diffusion model...")
@@ -41,13 +48,14 @@ def main():
                                         return_path=False,
                                         shard=MPI.COMM_WORLD.Get_rank(),
                                         num_shards=MPI.COMM_WORLD.Get_size())
+    logger.info(f"train_dataset length: {len(train_dataset)}")
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1, drop_last=True)
 
     logger.log("training...")
     TrainLoop(
         model=unet_model,
         diffusion=diffusion_model,
-        data=iter(train_loader),
+        data=iter(make_dataloader_cycle(train_loader)),
         batch_size=args.batch_size,
         microbatch=args.microbatch,
         lr=args.lr,

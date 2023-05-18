@@ -108,11 +108,8 @@ if __name__ == "__main__":
     print('ceiling-wall and floor-wall boundary veto: ', boundary_lst.size())
     print('wall-wall probability vector: ', wall_y_prob_lst.size())
 
-    # if args.ith >= 0:
-    #     to_visualize = [dataset[args.ith]]
-    # else:
-    #     to_visualize = dataset
-
+    b_vis_mesh_from_corners = False
+    b_vis_mesh_from_boundary_lst = True
     for idx, data_items in enumerate(tqdm(dataset)):
         if idx != args.ith:
             continue
@@ -124,7 +121,13 @@ if __name__ == "__main__":
             Image.fromarray(out_img).save(save_img_filepath)
 
             # save results ply
-            layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_layout_mesh(idx)
+            boundary_lst = boundary_lst.numpy()
+            wall_prob_lst = wall_prob_lst.numpy()[0]
+            if b_vis_mesh_from_corners:
+                layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_layout_mesh(idx)
+            elif b_vis_mesh_from_boundary_lst:
+                layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_layout_mesh_from_prediction(bound_ceil_floor_lst=boundary_lst, 
+                                                                                                                              wall_prob_lst=wall_prob_lst)
             print('layout_ply_points: ', layout_ply_points.shape)
             print('layout_ply_faces: ', layout_ply_faces.shape)
             print('layout_corner_lst: ', layout_corner_lst.shape)

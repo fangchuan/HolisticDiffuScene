@@ -162,12 +162,11 @@ class TrainLoop:
     def run_loop(self):
         while (
             not self.lr_anneal_steps
-            or self.step + self.resume_step < self.lr_anneal_steps
-        ):
+            or self.step + self.resume_step < self.lr_anneal_steps):
             # get next batch
             batch_data, cond_data = next(self.data)
-            logger.debug(f"batch_data:  {batch_data.shape}")
-            logger.debug(f"cond_data:  {cond_data}")
+            logger.debug(f"batch_data:  {batch_data.shape}")  # BxCxL_in
+            logger.debug(f"cond_data:  {cond_data}")  # 'y': 1xB
 
             self.run_step(batch_data, cond_data)
             if self.step % self.log_interval == 0:
@@ -206,10 +205,10 @@ class TrainLoop:
 
             compute_losses = functools.partial(
                 self.diffusion.training_losses,
-                self.ddp_model,
-                micro_batch_data,
-                tms_indices,
-                model_kwargs=micro_cond_data,
+                self.ddp_model,  # model
+                micro_batch_data, # x_start
+                tms_indices,   # timesteps
+                model_kwargs=micro_cond_data,  # y
             )
 
             if last_batch or not self.use_ddp:
@@ -225,7 +224,7 @@ class TrainLoop:
 
             loss = (losses["loss"] * weights).mean()
             log_loss_dict(
-                self.diffusion, tms_indices, {k: v * weights for k, v in losses.items()}
+                diffusion_model=self.diffusion, ts=tms_indices, losses={k: v * weights for k, v in losses.items()}
             )
             if self.use_fp16:
                 loss_scale = 2 ** self.lg_loss_scale
@@ -355,10 +354,10 @@ def find_ema_checkpoint(main_checkpoint, step, rate):
     return None
 
 
-def log_loss_dict(diffusion, ts, losses):
+def log_loss_dict(diffusion_model, ts, losses):
     for key, values in losses.items():
         logger.logkv_mean(key, values.mean().item())
         # Log the quantiles (four quartiles, in particular).
         for sub_t, sub_loss in zip(ts.cpu().numpy(), values.detach().cpu().numpy()):
-            quartile = int(4 * sub_t / diffusion.num_timesteps)
+            quartile = int(4 * sub_t / diffusion_model.num_timesteps)
             logger.logkv_mean(f"{key}_q{quartile}", sub_loss)
