@@ -581,14 +581,17 @@ class PanoCorBoundDataset(data.Dataset):
         # if self.return_path:
         #     out_lst = np.append(out_lst, img_path)
         # return out_lst
+        # normalize to [-1, 1]
         boundary_lst = boundary_lst.copy().astype(np.float32)
+        boundary_lst = boundary_lst /(0.5*np.pi)
+        # normalize to [-1, 1]
         corner_y_prob_lst = corner_y_prob_lst.copy().astype(np.float32)
+        corner_y_prob_lst = corner_y_prob_lst * 2 -1
         out_lst = np.append(boundary_lst, corner_y_prob_lst, axis=0)
 
         class_dict = {}
         if room_type is not None:
             class_dict["y"] = np.array(room_type, dtype=np.int64)
-
         return out_lst, class_dict
 
     def get_mesh_from_corners(self, corners_lst: np.ndarray, H: int, W: int, camera_position: np.array,
@@ -624,9 +627,9 @@ class PanoCorBoundDataset(data.Dataset):
         # convert points from camera frame to world frame
         xyzrgb[:, :, :3] = xyzrgb[:, :, :3] + camera_position
         xyzrgb = np.concatenate([xyzrgb, xyzrgb[:, [0]]], 1)
-        print(f' mask: {mask.shape}')
+        # print(f' mask: {mask.shape}')
         mask = np.concatenate([mask, mask[:, [0]]], 1)
-        print(f'concatenated mask: {mask.shape}')
+        # print(f'concatenated mask: {mask.shape}')
         lo_tri_template = np.array([[0, 0, 0], [0, 1, 0], [0, 1, 1]])
         up_tri_template = np.array([[0, 0, 0], [0, 1, 1], [0, 0, 1]])
         ma_tri_template = np.array([[0, 0, 0], [0, 1, 1], [0, 1, 0]])
