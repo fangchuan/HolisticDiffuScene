@@ -9,6 +9,7 @@ sys.path.append(".") # Adds higher directory to python modules path.
 sys.path.append("..") # Adds higher directory to python modules path.
 import argparse
 import datetime
+import time
 
 import numpy as np
 import torch as th
@@ -47,9 +48,12 @@ def main():
     all_layout_lst = []
     all_layout_type_lst = []
     while len(all_layout_lst) * args.batch_size < args.num_samples:
+        begin_tms = time.time()
         model_kwargs = {}
-        if args.class_cond:
-            layout_type_lst = th.randint(low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist_util.dev())
+        if args.b_class_cond:
+            # ignore 'undefined' class
+            max_layout_types = (NUM_CLASSES-1)
+            layout_type_lst = th.randint(low=0, high=max_layout_types, size=(args.batch_size,), device=dist_util.dev())
             model_kwargs["y"] = layout_type_lst
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
@@ -63,7 +67,9 @@ def main():
         # sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         # sample = sample.permute(0, 2, 3, 1)
         # sample = sample.contiguous()
-        print(f'sample shape: {sample.shape}')
+        elaps_time = time.time() - begin_tms
+        logger.log(f'sample shape: {sample.shape}')
+        logger.log(f'sample time: {elaps_time}')
 
         gathered_samples = [th.zeros_like(sample) for _ in range(dist.get_world_size())]
         dist.all_gather(gathered_samples, sample)  # gather not supported with NCCL
