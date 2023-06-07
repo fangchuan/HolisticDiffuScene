@@ -136,3 +136,31 @@ def project_struct_bdb_to_2d(basis, coeffs, center, R_ex, K):
     # if not check_bdb(bdb2d, 2*K[0, 2], 2*K[1, 2]):
     #     bdb2d = None
     return bdb2d
+
+def matrix_to_euler_angles(R_w_i:np.array):
+    """
+    Convert rotation matrix to euler angles in Z-X-Y order
+    """
+    roll = np.arcsin(R_w_i[2, 1])
+    pitch = np.arctan2(-R_w_i[2, 0] / np.cos(roll), R_w_i[2, 2] / np.cos(roll))
+    yaw = np.arctan2(-R_w_i[0, 1] / np.cos(roll), R_w_i[1, 1] / np.cos(roll))
+
+    return np.array([roll, pitch, yaw])
+
+def euler_angle_to_matrix(angles_lst):
+    """ rotation matrix in Z(yaw)-X(roll)-Y(pitch) order R_w_i
+
+    Args:
+        angles_lst (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    roll = angles_lst[0] 
+    pitch = angles_lst[1] 
+    yaw = angles_lst[2] 
+    R = np.zeros((3, 3))
+    R = np.array([[np.cos(yaw) * np.cos(pitch) - np.sin(roll) * np.sin(yaw) * np.sin(pitch), -np.cos(roll) * np.sin(yaw), np.cos(yaw) * np.sin(pitch) + np.cos(pitch) * np.sin(roll) * np.sin(yaw)],
+                  [np.cos(pitch) * np.sin(yaw) + np.cos(yaw) * np.sin(roll) * np.sin(pitch), np.cos(roll) * np.cos(yaw), np.sin(yaw) * np.sin(pitch) - np.cos(yaw) * np.sin(roll) * np.cos(pitch)],
+                  [-np.cos(roll) * np.sin(pitch), np.sin(roll), np.cos(roll) * np.cos(pitch)]])
+    return R

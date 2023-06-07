@@ -64,9 +64,7 @@ def main():
             clip_denoised=args.clip_denoised,
             model_kwargs=model_kwargs,
         )
-        # sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
-        # sample = sample.permute(0, 2, 3, 1)
-        # sample = sample.contiguous()
+        # calc sampling time
         elaps_time = time.time() - begin_tms
         logger.log(f'sample shape: {sample.shape}')
         logger.log(f'sample time: {elaps_time}')

@@ -5,82 +5,132 @@ import argparse
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.spatial.transform import Rotation as R
 
-from misc.utils import get_corners_of_bb3d_no_index, project_3d_points_to_2d, parse_camera_info
+from misc.utils import get_corners_of_bb3d_no_index, project_3d_points_to_2d, parse_camera_info, matrix_to_euler_angles
+from misc.equirect_projection import vis_objs3d
+from dataset.metadata import INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS
 
 
-def visualize_bbox(args):
-    with open(os.path.join(args.path, f"scene_{args.scene:05d}", "bbox_3d.json")) as file:
-        annos = json.load(file)
+TARGET_ROOM_TYPE_LST = ['living room', 'bedroom', 'dining room', 'kitchen', 'bathroom', 'study']
 
-    id2index = dict()
-    for index, object in enumerate(annos):
-        id2index[object.get('ID')] = index
+def visualize_bbox(dataset_folderpath, output_folderpath):
+    
+    SCENE_LST = ['scene_%05d' % i for i in range(0, 3500) if ('scene_%05d' % i) not in INVALID_SCENES_LST]
 
-    scene_path = os.path.join(args.path, f"scene_{args.scene:05d}", "2D_rendering")
+    for scene_id in SCENE_LST:
+        scene_img_path = os.path.join(dataset_folderpath, scene_id, "2D_rendering")
 
-    for room_id in np.sort(os.listdir(scene_path)):
-        room_path = os.path.join(scene_path, room_id, "perspective", "full")
-
-        if not os.path.exists(room_path):
+        room_type_lst = None
+        scene_anno_3d_filepath = os.path.join(dataset_folderpath, scene_id, "annotation_3d.json")
+        if not os.path.isfile(scene_anno_3d_filepath):
+            INVALID_SCENES_LST.append(scene_id)
             continue
+        else:
+            scene_anno_3d_dict = json.load(open(scene_anno_3d_filepath, 'r'))
+            room_type_lst = scene_anno_3d_dict['semantics']
 
-        for position_id in np.sort(os.listdir(room_path)):
-            position_path = os.path.join(room_path, position_id)
+        for room_id in np.sort(os.listdir(scene_img_path)):
+            room_id_str = scene_id + '_' + room_id
+            if room_id_str in INVALID_ROOMS_LST:
+                continue
 
-            image = cv2.imread(os.path.join(position_path, 'rgb_rawlight.png'))
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            height, width, _ = image.shape
+            room_path = os.path.join(scene_img_path, room_id, "panorama")
+            if not os.path.exists(room_path):
+                continue
+            room_bbox_3d_path = os.path.join(room_path, 'full', 'bbox_3d.json')
+            with open(room_bbox_3d_path, 'r') as file:
+                annos = json.load(file)
 
-            instance = cv2.imread(os.path.join(position_path, 'instance.png'), cv2.IMREAD_UNCHANGED)
+            id2index = dict()
+            for index, object in enumerate(annos):
+                id2index[object.get('ID')] = index
+                
+            room_type_str = 'undefined'
+            if room_type_lst is not None:
+                for rt in room_type_lst:
+                    if rt['ID'] == int(room_id):
+                        room_type_str = rt['type']
+                        break
+            if room_type_str != 'undefined':
+                os.makedirs(os.path.join(output_folderpath, room_type_str), exist_ok=True)
 
-            camera_info = np.loadtxt(os.path.join(position_path, 'camera_pose.txt'))
+            rgb_img = cv2.imread(os.path.join(room_path, 'full', 'rgb_rawlight.png'))
+            rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
+            height, width, _ = rgb_img.shape
 
-            rot, trans, K = parse_camera_info(camera_info, height, width)
+            instance_img = cv2.imread(os.path.join(room_path, 'full', 'instance.png'), cv2.IMREAD_UNCHANGED)
 
-            plt.figure()
-            plt.imshow(image)
+            cam_position = np.loadtxt(os.path.join(room_path, 'camera_xyz.txt'))
+            cam_position = cam_position
+            # print(f'cam_position: {cam_position}')
 
-            for index in np.unique(instance)[:-1]:
+            obj_bbox_lst = []
+            # skip background
+            for index in np.unique(instance_img)[:-1]:
                 # for each instance in current image
                 bbox = annos[id2index[index]]
+                
+                if bbox['label'] not in OBJECT_LABEL_IDS.values():
+                    continue
 
                 basis = np.array(bbox['basis'])
                 coeffs = np.array(bbox['coeffs'])
                 centroid = np.array(bbox['centroid'])
 
-                corners = get_corners_of_bb3d_no_index(basis, coeffs, centroid)
-                corners = corners - trans
+                obj_bbox_dict = {}
+                obj_bbox_dict['rotations'] = basis.tolist()
+                obj_bbox_dict['centroid'] = list(centroid)
+                obj_bbox_dict['dimensions'] = list(coeffs)
+                obj_bbox_dict['name'] = bbox['label']
 
-                gt2dcorners = project_3d_points_to_2d(corners, rot, K)
+                # obj_bbox_dict['angles'] = R.from_matrix(basis).as_euler('xyz', degrees=False).tolist()
+                obj_bbox_dict['angles'] = matrix_to_euler_angles(basis).tolist()
+                if  bbox['label'] == 'door':
+                    print(f'basis of door: {basis}')
+                    print(f'angles of door: {obj_bbox_dict["angles"]}')
+                obj_bbox_dict['center'] = list((centroid - cam_position) * 0.001)
+                obj_bbox_dict['size'] = list(coeffs * 0.001 * 2)
+                obj_bbox_lst.append(obj_bbox_dict)
 
-                num_corner = gt2dcorners.shape[1] // 2
-                plt.plot(np.hstack((gt2dcorners[0, :num_corner], gt2dcorners[0, 0])),
-                         np.hstack((gt2dcorners[1, :num_corner], gt2dcorners[1, 0])), 'r')
-                plt.plot(np.hstack((gt2dcorners[0, num_corner:], gt2dcorners[0, num_corner])),
-                         np.hstack((gt2dcorners[1, num_corner:], gt2dcorners[1, num_corner])), 'b')
-                for i in range(num_corner):
-                    plt.plot(gt2dcorners[0, [i, i + num_corner]], gt2dcorners[1, [i, i + num_corner]], 'y')
-
-            plt.axis('off')
-            plt.axis([0, width, height, 0])
-            plt.show()
+            if room_type_str != 'undefined':
+                anno_img = vis_objs3d(image=rgb_img, v_bbox3d=obj_bbox_lst, camera_position=cam_position, b_show_axes=False, b_show_centroid=False, b_show_bbox3d=True, b_show_info=True, thickness=2)
+                output_img_filepath = os.path.join(output_folderpath, room_type_str, room_id_str + '_bbox.png')
+                print(f'save visualization for object bbox annotation of {room_id_str}')
+                cv2.imwrite(output_img_filepath, anno_img)
+                save_obj_bbox_filepath = os.path.join(output_folderpath, room_type_str, room_id_str + '_bbox.json')
+                obj_bbox_dicts = {}
+                obj_bbox_dicts['objects'] = obj_bbox_lst
+                json.dump(obj_bbox_dicts, open(save_obj_bbox_filepath, 'w'), indent=4)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Structured3D 3D Bounding Box Visualization")
-    parser.add_argument("--path", required=True,
-                        help="dataset path", metavar="DIR")
-    parser.add_argument("--scene", required=True,
-                        help="scene id", type=int)
+    parser.add_argument("--dataset_path",
+                        default="/data/dataset/Structured3D/Structured3D/",
+                        help="raw dataset path",
+                        metavar="DIR")
+    parser.add_argument("--debug_path",
+                        default="/data/dataset/Structured3D/preprocessed/debug_annotations",
+                        help="debug folder path for object bbox annotations",
+                        metavar="DIR")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    dataset_folderpath = args.dataset_path
+    debug_folderpath = args.debug_path
 
-    visualize_bbox(args)
+    if not os.path.exists(dataset_folderpath):
+        raise ValueError("Dataset folder does not exist!")
+        exit(-1)
+
+    if not os.path.exists(debug_folderpath):
+        os.makedirs(debug_folderpath)
+
+    visualize_bbox(dataset_folderpath, debug_folderpath)
 
 
 if __name__ == "__main__":

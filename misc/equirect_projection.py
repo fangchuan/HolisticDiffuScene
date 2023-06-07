@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from sklearn.preprocessing import normalize
 from scipy.spatial.transform import Rotation
+from .utils import euler_angle_to_matrix
 
 def interpolate_line(p1, p2, num=30):
     t = np.expand_dims(np.linspace(0, 1, num=num, dtype=np.float32), 1)
@@ -31,7 +32,7 @@ def cam3d2rad(cam3d):
     return backend.stack([lon, lat], -1)
 
 
-def camrad2pix(camrad):
+def camrad2pix(camrad, img_height=512, img_width=1024):
     """
     Transform longitude and latitude of a point to panorama pixel coordinate.
 
@@ -51,16 +52,15 @@ def camrad2pix(camrad):
     #     campix = torch.empty_like(camrad, dtype=torch.float32)
     # else:
     campix = np.empty_like(camrad, dtype=np.float32)
-    width, height = IMG_WIDTH, IMG_HEIGHT
     # if isinstance(camrad, torch.Tensor):
     #     width, height = [x.view([-1] + [1] * (camrad.dim() - 2))
     #                      for x in (width, height)]
-    campix[..., 0] = camrad[..., 0] * width / (2. * np.pi) + width / 2. + 0.5
-    campix[..., 1] = camrad[..., 1] * height / np.pi + height / 2. + 0.5
+    campix[..., 0] = camrad[..., 0] * img_width / (2. * np.pi) + img_width / 2. + 0.5
+    campix[..., 1] = camrad[..., 1] * img_height / np.pi + img_height / 2. + 0.5
     return campix
 
 
-def cam3d2pix(cam3d):
+def cam3d2pix(cam3d, image):
     """
     Transform 3D points from camera coordinate to pixel coordinate.
 
@@ -80,9 +80,9 @@ def cam3d2pix(cam3d):
     #     if 'K' in self.camera:
     #         campix = self.transform(self.camera['K'], cam3d)
     #     else:
-    campix = camrad2pix(cam3d2rad(cam3d))
+    img_height, img_width = image.shape[:2]
+    campix = camrad2pix(cam3d2rad(cam3d), img_height=img_height, img_width=img_width)
     return campix
-
 
 def obj2frame(point, bdb3d):
     """
@@ -99,23 +99,10 @@ def obj2frame(point, bdb3d):
     -------
     n x 3 numpy array or Trimesh
     """
-    # if isinstance(obj, trimesh.Trimesh):
-    #     obj = obj.copy()
-    #     normalized_vertices = normalize_to_unit_square(obj.vertices, keep_ratio=False)[0]
-    #     obj_vertices = normalized_vertices / 2
-    #     obj.vertices = IGTransform.obj2frame(obj_vertices, bdb3d)
-    #     return obj
-    # if isinstance(obj, torch.Tensor):
-    #     size = bdb3d['size'].unsqueeze(-2)
-    #     centroid = bdb3d['centroid'].unsqueeze(-2)
-    #     return (bdb3d['basis'] @ (obj * size).transpose(-1, -2)).transpose(-1, -2) + centroid
-    # else:
-    rotation = Rotation.from_euler(
-        'zyx', [bdb3d['rotations']['z'], bdb3d['rotations']['y'], bdb3d['rotations']['x']], degrees=True).as_matrix()
-    centroid = np.array(
-        [-bdb3d['centroid']['x'], bdb3d['centroid']['y'], bdb3d['centroid']['z']])
-    sizes = np.array([bdb3d['dimensions']['length'],
-                      bdb3d['dimensions']['width'], bdb3d['dimensions']['height']])
+    # rotation = Rotation.from_euler('zyx', bdb3d['angles'], degrees=False).as_matrix()
+    rotation = euler_angle_to_matrix(bdb3d['angles'])
+    centroid = np.array(bdb3d['center'])
+    sizes = np.array(bdb3d['size'])
     return (rotation @ (point * sizes).T).T + centroid
 
 
@@ -152,14 +139,56 @@ def bdb3d_corners(bdb3d: (dict, np.ndarray)):
             surfaces.append(surface[orders][(0, 1, 3, 2), :])
         corners = np.concatenate(surfaces)
     else:
-        corners = np.unpackbits(np.arange(8, dtype=np.uint8)[..., np.newaxis],
-                                axis=1, bitorder='little', count=-5).astype(np.float32)
+        # corners = np.unpackbits(np.arange(8, dtype=np.uint8)[..., np.newaxis],
+        #                         axis=1, bitorder='little', count=-5).astype(np.float32)
+        corners = np.zeros((8, 3), dtype=np.float32)
+        corners[0, :] = np.array([1., 1., 0.])
+        corners[1, :] = np.array([0., 1., 0.])
+        corners[2, :] = np.array([1., 0., 0.])
+        corners[3, :] = np.array([0., 0., 0.])
+        corners[4, :] = np.array([1., 1., 1.])
+        corners[5, :] = np.array([0., 1., 1.])
+        corners[6, :] = np.array([1., 0., 1.])
+        corners[7, :] = np.array([0., 0., 1.])
         corners = corners - 0.5
-        # if isinstance(bdb3d['size'], torch.Tensor):
-        #     corners = torch.from_numpy(corners).to(bdb3d['size'].device)
         corners = obj2frame(corners, bdb3d)
     return corners
 
+def bdb3d_corners_no_order(basis:np.array, centroid:np.array, half_sizes:np.array)-> np.array:
+    """_summary_
+
+    Args:
+        basis (np.array): bounding box orientation
+        centroid (np.array): bounding box center coordinate(mm)
+        half_sizes (np.array): bounding box radii(mm)
+
+    Returns:
+    -------
+    8 x 3 numpy array of bounding box corner points in the following order:
+    right-forward-down
+    left-forward-down
+    right-back-down
+    left-back-down
+    right-forward-up
+    left-forward-up
+    right-back-up
+    left-back-up
+    """
+    corners = np.zeros((8, 3))
+    coeffs = np.abs(half_sizes)
+
+    corners[1, :] = -basis[0, :] * coeffs[0] + basis[1, :] * coeffs[1] + -basis[2, :] * coeffs[2]
+    corners[0, :] = basis[0, :] * coeffs[0] + basis[1, :] * coeffs[1] + -basis[2, :] * coeffs[2]
+    corners[2, :] = basis[0, :] * coeffs[0] + -basis[1, :] * coeffs[1] + -basis[2, :] * coeffs[2]
+    corners[3, :] = -basis[0, :] * coeffs[0] + -basis[1, :] * coeffs[1] + -basis[2, :] * coeffs[2]
+
+    corners[5, :] = -basis[0, :] * coeffs[0] + basis[1, :] * coeffs[1] + basis[2, :] * coeffs[2]
+    corners[4, :] = basis[0, :] * coeffs[0] + basis[1, :] * coeffs[1] + basis[2, :] * coeffs[2]
+    corners[6, :] = basis[0, :] * coeffs[0] + -basis[1, :] * coeffs[1] + basis[2, :] * coeffs[2]
+    corners[7, :] = -basis[0, :] * coeffs[0] + -basis[1, :] * coeffs[1] + basis[2, :] * coeffs[2]
+
+    corners = corners + np.tile(centroid, (8, 1))
+    return corners
 
 
 def wrapped_line(image, p1, p2, colour, thickness, lineType=cv2.LINE_AA):
@@ -185,17 +214,16 @@ def wrapped_line(image, p1, p2, colour, thickness, lineType=cv2.LINE_AA):
 
 
 # visualize 3dbbox on panorama
-def vis_objs3d(image, v_bbox3d, b_show_axes=False, b_show_centroid=False, b_show_bbox3d=True, b_show_info=False, thickness=2):
+def vis_objs3d(image, v_bbox3d, camera_position, b_show_axes=False, b_show_centroid=False, b_show_bbox3d=True, b_show_info=False, thickness=2):
 
     def draw_line3d(image, p1, p2, color, thickness, quality=30, frame='world'):
         color = (np.ones(3, dtype=np.uint8) * color).tolist()
-        if frame == 'world':
+        if frame != 'cam3d':
             print('input points must be in camera frame')
-        elif frame != 'cam3d':
             raise NotImplementedError
         points = interpolate_line(p1, p2, quality)
         normal_points = normalize(points)
-        pix = np.round(cam3d2pix(normal_points)).astype(np.int32)
+        pix = np.round(cam3d2pix(cam3d=normal_points, image=image)).astype(np.int32)
         for t in range(quality - 1):
             p1, p2 = pix[t], pix[t + 1]
             wrapped_line(image, tuple(p1), tuple(p2), color,
@@ -217,50 +245,61 @@ def vis_objs3d(image, v_bbox3d, b_show_axes=False, b_show_centroid=False, b_show
                    5, color, thickness=thickness, lineType=cv2.LINE_AA)
 
     def draw_bdb3d(image, bdb3d, color, thickness=2):
-        corners = bdb3d_corners(bdb3d)
+        bbox_frame = 'camera'
+        if bbox_frame == 'world':
+            centroid = np.array(bdb3d['centroid'])
+            sizes = np.array(bdb3d['dimensions'])
+            rotation = np.array(bdb3d['rotations'])
+            corners = bdb3d_corners_no_order(basis=rotation, centroid=centroid, half_sizes=sizes)
+            # print(f'corners in world frame: {corners}')
+            corners = (corners - camera_position) * 0.001
+        elif bbox_frame == 'camera':
+            corners = bdb3d_corners(bdb3d)
+        # print(f'corners in camera frame: {corners}')
         corners_box = corners.reshape(2, 2, 2, 3)
+
         for k in [0, 1]:
             for l in [0, 1]:
                 for idx1, idx2 in [((0, k, l), (1, k, l)), ((k, 0, l), (k, 1, l)), ((k, l, 0), (k, l, 1))]:
-                    draw_line3d(
-                        image, corners_box[idx1], corners_box[idx2], color, thickness=thickness, frame='cam3d')
-        for idx1, idx2 in [(0, 5), (1, 4)]:
-            draw_line3d(image, corners[idx1], corners[idx2],
-                        color, thickness=thickness, frame='cam3d')
+                    draw_line3d(image, corners_box[idx1], corners_box[idx2], color, thickness=thickness, frame='cam3d')
+        # for idx1, idx2 in [(0, 5), (1, 4)]:
+        #     draw_line3d(image, corners[idx1], corners[idx2], color, thickness=thickness, frame='cam3d')
 
-    def draw_objinfo(image, bdb3d_centeroid, obj_cls_name, color):
-        color = [255 - c for c in color]
-        normal_centroid = bdb3d_centeroid/np.linalg.norm(bdb3d_centeroid)
-        bdb3d_pix = cam3d2pix(normal_centroid)
+    def draw_objinfo(image, bdb3d_centeroid_w, obj_cls_name, color):
+        """ draw object name on the top of the object bbox
+
+        Args:
+            image (np.array): _description_
+            bdb3d_centeroid_w (_type_): object bounding box centroid in world frame
+            obj_cls_name (_type_): _description_
+            color (_type_): _description_
+        """
+        # color = [255 - c for c in color]
+        # bdb3d centroid in camera frame
+        bdb3d_centeroid_c = (bdb3d_centeroid_w - camera_position) * 0.001
+        normal_centroid = bdb3d_centeroid_c/np.linalg.norm(bdb3d_centeroid_c)
+        bdb3d_pix = cam3d2pix(normal_centroid, image=image)
         bottom_left = bdb3d_pix.astype(np.int32)
-        bottom_left[1] -= 16
+        bottom_left[1] -= 6
         cv2.putText(image, obj_cls_name, tuple(bottom_left.tolist()),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness=1, lineType=cv2.LINE_AA)
 
     image = image.copy()
-    dis = [np.linalg.norm([-o['centroid']['x'], o['centroid']
-                           ['y'], o['centroid']['z']]) for o in v_bbox3d]
+    dis = [np.linalg.norm([o['centroid']]) for o in v_bbox3d]
     i_objs = sorted(range(len(dis)), key=lambda k: dis[k])
     for i_obj in reversed(i_objs):
         bdb3d = v_bbox3d[i_obj]
-        obj_label = bdb3d['name'][0:bdb3d['name'].rfind('_')]
+        obj_label = bdb3d['name']
 
-        obj_cls_id = ReplicaXRDatasetConfig().type2class[obj_label]
-        color = (replicapano_colorbox[obj_cls_id]
-                 * 255).astype(np.uint8).tolist()
-        centroid = np.array(
-            [-bdb3d['centroid']['x'], bdb3d['centroid']['y'], bdb3d['centroid']['z']])
-        sizes = np.array([bdb3d['dimensions']['length'],
-                          bdb3d['dimensions']['width'], bdb3d['dimensions']['height']])
-        bdb3d['rotations']['z'] *= -1
-        rotation = Rotation.from_euler(
-            'zyx', [bdb3d['rotations']['z'], bdb3d['rotations']['y'], bdb3d['rotations']['x']], degrees=True).as_matrix()
+        color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+        centroid = np.array(bdb3d['centroid'])
+        sizes = np.array(bdb3d['dimensions'])
+        rotation = np.array(bdb3d['rotations'])
 
         if b_show_axes:
             draw_objaxes(image, centroid, sizes, rotation, thickness=thickness)
         if b_show_centroid:
-            draw_centroid(image, centroid,
-                          color, thickness=thickness)
+            draw_centroid(image, centroid, color, thickness=thickness)
         if b_show_bbox3d:
             draw_bdb3d(image, bdb3d, color, thickness=thickness)
         if b_show_info:
