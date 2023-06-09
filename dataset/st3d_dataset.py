@@ -11,6 +11,7 @@ from shapely.geometry import Polygon
 
 from typing import Any, List, Dict, Tuple
 # import imghdr
+import json
 
 import torch
 import torch.utils.data as data
@@ -438,6 +439,141 @@ def refine_boundary_by_fix_floor(coor_y_ceil, coor_y_floor, z_floor=50, coorH=51
     # coor_y_ceil_refined = (-v_ceil_refine / np.pi + 0.5) * coorH - 0.5
     # return coor_y_ceil_refined, z_ceil_mean
 
+def get_mesh_from_corners(corners_lst: np.ndarray, H: int, W: int, camera_position: np.array,
+                            rgb_img: np.array, b_ignore_floor: bool=False, b_ignore_ceiling: bool=True,
+                            b_ignore_wall: bool=False,
+                            b_in_world_frame: bool=True) -> Tuple:
+    """ generate layout mesh from equirectangular image and corners
+
+    Args:
+        corners_lst (np.ndarray): 2d corners in equirectangular image
+        H (int): _description_
+        W (int): _description_
+        camera_position (np.array): _description_
+        rgb_img (np.array): _description_
+        b_ignore_floor (bool, optional): _description_. Defaults to False.
+        b_ignore_ceiling (bool, optional): _description_. Defaults to True.
+        b_ignore_wall (bool, optional): _description_. Defaults to False.
+        b_in_world_frame (bool, optional): generate mesh in world frame or camera frame. Defaults to False.
+
+    Returns:
+        Tuple: _description_
+    """
+
+    # Convert corners to layout
+    depth_img, floor_mask, ceil_mask, wall_mask = layout_2_depth(corners_lst,
+                                                                    H,
+                                                                    W,
+                                                                    floor_height=camera_position[2],
+                                                                    return_mask=True)
+    coorx, coory = np.meshgrid(np.arange(W), np.arange(H))
+    us = np_coorx2u(coorx, W)
+    vs = np_coory2v(coory, H)
+    zs = depth_img * np.sin(vs)
+    cs = depth_img * np.cos(vs)
+    xs = cs * np.sin(us)
+    # we align y axis to the panorama image,
+    # if we need to flip the y axis, the ys need to be flipped
+    ys = cs * np.cos(us)
+
+    # Aggregate mask
+    mask = np.ones_like(floor_mask)
+    if b_ignore_floor:
+        mask &= ~floor_mask
+    if b_ignore_ceiling:
+        mask &= ~ceil_mask
+    if b_ignore_wall:
+        mask &= ~wall_mask
+
+    # Prepare ply's points and faces
+    xyzrgb = np.concatenate([xs[..., None], ys[..., None], zs[..., None], rgb_img], -1)
+    # convert points from camera frame to world frame
+    if b_in_world_frame:
+        xyzrgb[:, :, :3] = xyzrgb[:, :, :3] + camera_position
+
+    xyzrgb = np.concatenate([xyzrgb, xyzrgb[:, [0]]], 1)
+    # print(f' mask: {mask.shape}')
+    mask = np.concatenate([mask, mask[:, [0]]], 1)
+    # print(f'concatenated mask: {mask.shape}')
+    lo_tri_template = np.array([[0, 0, 0], [0, 1, 0], [0, 1, 1]])
+    up_tri_template = np.array([[0, 0, 0], [0, 1, 1], [0, 0, 1]])
+    ma_tri_template = np.array([[0, 0, 0], [0, 1, 1], [0, 1, 0]])
+    lo_mask = (correlate2d(mask, lo_tri_template, mode='same') == 3)
+    up_mask = (correlate2d(mask, up_tri_template, mode='same') == 3)
+    ma_mask = (correlate2d(mask, ma_tri_template, mode='same') == 3) & (~lo_mask) & (~up_mask)
+    ref_mask = (
+        lo_mask | (correlate2d(lo_mask, np.flip(lo_tri_template, (0,1)), mode='same') > 0) |\
+        up_mask | (correlate2d(up_mask, np.flip(up_tri_template, (0,1)), mode='same') > 0) |\
+        ma_mask | (correlate2d(ma_mask, np.flip(ma_tri_template, (0,1)), mode='same') > 0)
+    )
+    points = xyzrgb[ref_mask]
+
+    ref_id = np.full(ref_mask.shape, -1, np.int32)
+    ref_id[ref_mask] = np.arange(ref_mask.sum())
+    faces_lo_tri = np.stack([
+        ref_id[lo_mask],
+        ref_id[shift(lo_mask, [1, 0], cval=False, order=0)],
+        ref_id[shift(lo_mask, [1, 1], cval=False, order=0)],
+    ], 1)
+    faces_up_tri = np.stack([
+        ref_id[up_mask],
+        ref_id[shift(up_mask, [1, 1], cval=False, order=0)],
+        ref_id[shift(up_mask, [0, 1], cval=False, order=0)],
+    ], 1)
+    faces_ma_tri = np.stack([
+        ref_id[ma_mask],
+        ref_id[shift(ma_mask, [1, 0], cval=False, order=0)],
+        ref_id[shift(ma_mask, [0, 1], cval=False, order=0)],
+    ], 1)
+    faces = np.concatenate([faces_lo_tri, faces_up_tri, faces_ma_tri])
+
+    return (points, faces)
+
+def get_simple_mesh_from_corners(corners_lst: np.ndarray, H: int, W: int, camera_position: np.array,
+                            rgb_img: np.array, b_ignore_floor: bool=False, b_ignore_ceiling: bool=True,
+                            b_ignore_wall: bool=False,
+                            b_in_world_frame: bool=True) -> Tuple:
+    """ generate layout mesh from equirectangular image and corners
+
+    Args:
+        corners_lst (np.ndarray): 2d corners in equirectangular image
+        H (int): _description_
+        W (int): _description_
+        camera_position (np.array): _description_
+        rgb_img (np.array): _description_
+        b_ignore_floor (bool, optional): _description_. Defaults to False.
+        b_ignore_ceiling (bool, optional): _description_. Defaults to True.
+        b_ignore_wall (bool, optional): _description_. Defaults to False.
+        b_in_world_frame (bool, optional): generate mesh in world frame or camera frame. Defaults to False.
+
+    Returns:
+        Tuple: _description_
+    """
+
+    # Convert corners to layout
+    depth_img, floor_mask, ceil_mask, wall_mask = layout_2_depth(corners_lst,
+                                                                    H,
+                                                                    W,
+                                                                    floor_height=camera_position[2],
+                                                                    return_mask=True)
+    coorx, coory = np.meshgrid(np.arange(W), np.arange(H))
+    us = np_coorx2u(coorx, W)
+    vs = np_coory2v(coory, H)
+    zs = depth_img * np.sin(vs)
+    cs = depth_img * np.cos(vs)
+    xs = cs * np.sin(us)
+    # we align y axis to the panorama image,
+    # if we need to flip the y axis, the ys need to be flipped
+    ys = cs * np.cos(us)
+
+    print(f'xs: {xs.shape}, ys: {ys.shape}, zs: {zs.shape}')
+    corners_lst = corners_lst.astype(np.int32).reshape(-1, 2)
+    print(f'corners_lst: {corners_lst.shape}')
+    corners_xyz = np.concatenate([xs[corners_lst[:, 1], corners_lst[:, 0], None], ys[corners_lst[:, 1], corners_lst[:, 0], None], 
+                                  zs[corners_lst[:, 1], corners_lst[:, 0], None]], -1)
+    return corners_xyz
+
+
 class PanoCorBoundDataset(data.Dataset):
     '''
     dataset for layout: PanoCoordinatesBoundary
@@ -461,14 +597,18 @@ class PanoCorBoundDataset(data.Dataset):
         self.cor_dir = os.path.join(root_dir, 'label_cor')
         self.cam_pos_dir = os.path.join(root_dir, 'cam_pos')
         self.room_type_dir = os.path.join(root_dir, 'room_type')
+        # object bbox folder
+        self.bbox_3d_dir = os.path.join(root_dir, 'bbox_3d')
 
         # total image file names and text file names
         self.img_fnames = sorted(
             [fname for fname in os.listdir(self.img_dir) if fname.endswith('.jpg') or fname.endswith('.png')])
         self.txt_fnames = ['%s.txt' % fname[:-4] for fname in self.img_fnames]
+        self.json_fnames = ['%s.json' % fname[:-4] for fname in self.img_fnames]
         #  image file names and text file names on local_rank machine
         self.local_img_fnames = self.img_fnames[shard::num_shards]
         self.local_txt_fnames = self.txt_fnames[shard::num_shards]
+        self.local_json_fnames = self.json_fnames[shard::num_shards]
 
         self.flip = flip
         self.rotate = rotate
@@ -522,6 +662,20 @@ class PanoCorBoundDataset(data.Dataset):
             room_type = f.readline().strip()
             assert room_type in ROOM_TYPE_DICT.keys(), room_type_filepath
             room_type = ROOM_TYPE_DICT[room_type]
+
+        # read object bbox file
+        object_bbox_filepath = os.path.join(self.bbox_3d_dir, self.local_json_fnames[idx])
+        object_bbox_lst = []
+        with open(object_bbox_filepath) as f:
+            object_bbox_dicts = json.load(f)
+            object_bbox_dicts = object_bbox_dicts['objects']
+        for obj_bbox in object_bbox_dicts:
+            bbox_class_label = obj_bbox['name'].lower()
+            bbox_centroid = np.array(obj_bbox['centroid'], np.float32)
+            bbox_size = np.array(obj_bbox['size'], np.float32)
+            # only use Z angle
+            bbox_angle = np.array(obj_bbox['angles'], np.float32)[-1]
+            object_bbox_lst.append([bbox_class_label, bbox_centroid, bbox_size, bbox_angle])
 
         # Read ground truth corners
         with open(os.path.join(self.cor_dir, self.local_txt_fnames[idx])) as f:
@@ -593,76 +747,6 @@ class PanoCorBoundDataset(data.Dataset):
         if room_type is not None:
             class_dict["y"] = np.array(room_type, dtype=np.int64)
         return out_lst, class_dict
-
-    def get_mesh_from_corners(self, corners_lst: np.ndarray, H: int, W: int, camera_position: np.array,
-                              rgb_img: np.array, b_ignore_floor: bool=False, b_ignore_ceiling: bool=True,
-                              b_ignore_wall: bool=False) -> Tuple:
-        # Convert corners to layout
-        depth_img, floor_mask, ceil_mask, wall_mask = layout_2_depth(corners_lst,
-                                                                     H,
-                                                                     W,
-                                                                     floor_height=camera_position[2],
-                                                                     return_mask=True)
-        coorx, coory = np.meshgrid(np.arange(W), np.arange(H))
-        us = np_coorx2u(coorx, W)
-        vs = np_coory2v(coory, H)
-        zs = depth_img * np.sin(vs)
-        cs = depth_img * np.cos(vs)
-        xs = cs * np.sin(us)
-        # we align y axis to the panorama image,
-        # if we need to flip the y axis, the ys need to be flipped
-        ys = cs * np.cos(us)
-
-        # Aggregate mask
-        mask = np.ones_like(floor_mask)
-        if b_ignore_floor:
-            mask &= ~floor_mask
-        if b_ignore_ceiling:
-            mask &= ~ceil_mask
-        if b_ignore_wall:
-            mask &= ~wall_mask
-
-        # Prepare ply's points and faces
-        xyzrgb = np.concatenate([xs[..., None], ys[..., None], zs[..., None], rgb_img], -1)
-        # convert points from camera frame to world frame
-        xyzrgb[:, :, :3] = xyzrgb[:, :, :3] + camera_position
-        xyzrgb = np.concatenate([xyzrgb, xyzrgb[:, [0]]], 1)
-        # print(f' mask: {mask.shape}')
-        mask = np.concatenate([mask, mask[:, [0]]], 1)
-        # print(f'concatenated mask: {mask.shape}')
-        lo_tri_template = np.array([[0, 0, 0], [0, 1, 0], [0, 1, 1]])
-        up_tri_template = np.array([[0, 0, 0], [0, 1, 1], [0, 0, 1]])
-        ma_tri_template = np.array([[0, 0, 0], [0, 1, 1], [0, 1, 0]])
-        lo_mask = (correlate2d(mask, lo_tri_template, mode='same') == 3)
-        up_mask = (correlate2d(mask, up_tri_template, mode='same') == 3)
-        ma_mask = (correlate2d(mask, ma_tri_template, mode='same') == 3) & (~lo_mask) & (~up_mask)
-        ref_mask = (
-            lo_mask | (correlate2d(lo_mask, np.flip(lo_tri_template, (0,1)), mode='same') > 0) |\
-            up_mask | (correlate2d(up_mask, np.flip(up_tri_template, (0,1)), mode='same') > 0) |\
-            ma_mask | (correlate2d(ma_mask, np.flip(ma_tri_template, (0,1)), mode='same') > 0)
-        )
-        points = xyzrgb[ref_mask]
-
-        ref_id = np.full(ref_mask.shape, -1, np.int32)
-        ref_id[ref_mask] = np.arange(ref_mask.sum())
-        faces_lo_tri = np.stack([
-            ref_id[lo_mask],
-            ref_id[shift(lo_mask, [1, 0], cval=False, order=0)],
-            ref_id[shift(lo_mask, [1, 1], cval=False, order=0)],
-        ], 1)
-        faces_up_tri = np.stack([
-            ref_id[up_mask],
-            ref_id[shift(up_mask, [1, 1], cval=False, order=0)],
-            ref_id[shift(up_mask, [0, 1], cval=False, order=0)],
-        ], 1)
-        faces_ma_tri = np.stack([
-            ref_id[ma_mask],
-            ref_id[shift(ma_mask, [1, 0], cval=False, order=0)],
-            ref_id[shift(ma_mask, [0, 1], cval=False, order=0)],
-        ], 1)
-        faces = np.concatenate([faces_lo_tri, faces_up_tri, faces_ma_tri])
-
-        return (points, faces)
      
     def get_gt_layout_mesh(self,
                         idx: int,
@@ -705,7 +789,7 @@ class PanoCorBoundDataset(data.Dataset):
         # nearest_dist = dist.min(0)
         # corner_y_prob_lst = (self.p_base**nearest_dist).reshape(1, -1)
 
-        points, faces= self.get_mesh_from_corners(corners_lst, H, W, camera_position=cam_pos_lst, rgb_img=equirect_img,
+        points, faces= get_mesh_from_corners(corners_lst, H, W, camera_position=cam_pos_lst, rgb_img=equirect_img,
                                     b_ignore_floor=b_ignore_floor, b_ignore_ceiling=b_ignore_ceiling, b_ignore_wall=b_ignore_wall)
 
         return (points, faces, corners_lst, cam_pos_lst)
@@ -788,7 +872,7 @@ class PanoCorBoundDataset(data.Dataset):
             corners_lst[j*2 + 1] = cor[j, 0], cor[j, 2]
         print(f'corners_lst: {corners_lst.shape}')
         # equirect_img = np.random.randint(0, 255, size=(H, W, 3), dtype=np.uint8)
-        points, faces= self.get_mesh_from_corners(corners_lst, H, W, camera_position=cam_pos_lst, rgb_img=equirect_img,
+        points, faces= get_mesh_from_corners(corners_lst, H, W, camera_position=cam_pos_lst, rgb_img=equirect_img,
                                     b_ignore_floor=False, b_ignore_ceiling=True, b_ignore_wall=False)
         return (points, faces, corners_lst, cam_pos_lst)
         
