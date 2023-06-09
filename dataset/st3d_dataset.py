@@ -529,51 +529,6 @@ def get_mesh_from_corners(corners_lst: np.ndarray, H: int, W: int, camera_positi
 
     return (points, faces)
 
-def get_simple_mesh_from_corners(corners_lst: np.ndarray, H: int, W: int, camera_position: np.array,
-                            rgb_img: np.array, b_ignore_floor: bool=False, b_ignore_ceiling: bool=True,
-                            b_ignore_wall: bool=False,
-                            b_in_world_frame: bool=True) -> Tuple:
-    """ generate layout mesh from equirectangular image and corners
-
-    Args:
-        corners_lst (np.ndarray): 2d corners in equirectangular image
-        H (int): _description_
-        W (int): _description_
-        camera_position (np.array): _description_
-        rgb_img (np.array): _description_
-        b_ignore_floor (bool, optional): _description_. Defaults to False.
-        b_ignore_ceiling (bool, optional): _description_. Defaults to True.
-        b_ignore_wall (bool, optional): _description_. Defaults to False.
-        b_in_world_frame (bool, optional): generate mesh in world frame or camera frame. Defaults to False.
-
-    Returns:
-        Tuple: _description_
-    """
-
-    # Convert corners to layout
-    depth_img, floor_mask, ceil_mask, wall_mask = layout_2_depth(corners_lst,
-                                                                    H,
-                                                                    W,
-                                                                    floor_height=camera_position[2],
-                                                                    return_mask=True)
-    coorx, coory = np.meshgrid(np.arange(W), np.arange(H))
-    us = np_coorx2u(coorx, W)
-    vs = np_coory2v(coory, H)
-    zs = depth_img * np.sin(vs)
-    cs = depth_img * np.cos(vs)
-    xs = cs * np.sin(us)
-    # we align y axis to the panorama image,
-    # if we need to flip the y axis, the ys need to be flipped
-    ys = cs * np.cos(us)
-
-    print(f'xs: {xs.shape}, ys: {ys.shape}, zs: {zs.shape}')
-    corners_lst = corners_lst.astype(np.int32).reshape(-1, 2)
-    print(f'corners_lst: {corners_lst.shape}')
-    corners_xyz = np.concatenate([xs[corners_lst[:, 1], corners_lst[:, 0], None], ys[corners_lst[:, 1], corners_lst[:, 0], None], 
-                                  zs[corners_lst[:, 1], corners_lst[:, 0], None]], -1)
-    return corners_xyz
-
-
 class PanoCorBoundDataset(data.Dataset):
     '''
     dataset for layout: PanoCoordinatesBoundary

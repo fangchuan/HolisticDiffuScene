@@ -8,17 +8,13 @@ import imghdr
 import shutil
 import cv2
 import trimesh
-import pymeshfix
-import open3d as o3d
-from panda3d.core import Triangulator
 
 from typing import List, Tuple, Dict, Any, Union
 
 from misc.utils import matrix_to_euler_angles
 from misc.equirect_projection import vis_objs3d
 from dataset.metadata import INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS
-from dataset.st3d_dataset import get_mesh_from_corners, get_simple_mesh_from_corners
-from visualize_mesh import convert_lines_to_vertices, verify_normal
+from dataset.st3d_dataset import get_mesh_from_corners
 '''
 Assume datas is extracted by `misc/structured3d_extract_zip.py`.
 That is to said, assuming following structure:
@@ -50,150 +46,6 @@ TRAIN_SCENE = ['scene_%05d' % i for i in range(0, 3000)]
 VALID_SCENE = ['scene_%05d' % i for i in range(3000, 3250)]
 TEST_SCENE = ['scene_%05d' % i for i in range(3250, 3500)]
 
-def create_plane_mesh(vertices, vertices_floor, delta_height, camera_position, ignore_ceiling=False):
-    # create mesh for 3D floorplan visualization
-    triangles = []
-
-    # the number of vertical walls
-    num_walls = len(vertices)
-
-    # 1. vertical wall (always rectangle)
-    num_vertices = 0
-    for i in range(len(vertices)):
-        # hardcode triangles for each vertical wall
-        triangle = np.array([[0, 2, 1], [2, 0, 3]])
-        triangles.append(triangle + num_vertices)
-        num_vertices += 4
-
-    # 2. floor and ceiling
-    # Since the floor and ceiling may not be a rectangle, triangulate the polygon first.
-    tri = Triangulator()
-    for i in range(len(vertices_floor)):
-        tri.add_vertex(vertices_floor[i, 0], vertices_floor[i, 1])
-
-    for i in range(len(vertices_floor)):
-        tri.add_polygon_vertex(i)
-
-    tri.triangulate()
-
-    # polygon triangulation
-    triangle = []
-    for i in range(tri.getNumTriangles()):
-        triangle.append([tri.get_triangle_v0(i), tri.get_triangle_v1(i), tri.get_triangle_v2(i)])
-    triangle = np.array(triangle)
-
-    # add triangles for floor and ceiling
-    triangles.append(triangle + num_vertices)
-    num_vertices += len(np.unique(triangle))
-    if not ignore_ceiling:
-        triangles.append(triangle + num_vertices)
-
-    # texture for floor and ceiling
-    vertices_floor_min = np.min(vertices_floor[:, :2], axis=0)
-    vertices_floor_max = np.max(vertices_floor[:, :2], axis=0)
-
-    # 3. Merge wall, floor, and ceiling
-    vertices.append(vertices_floor)
-    vertices.append(vertices_floor + delta_height)
-    vertices = np.concatenate(vertices, axis=0)
-
-    triangles = np.concatenate(triangles, axis=0)
-
-    vertices_in_cam_frame = vertices * 0.001 - camera_position
-    mesh = trimesh.Trimesh(vertices=vertices_in_cam_frame, faces=triangles)
-    if not mesh.is_watertight:
-        print('Warning: mesh is not watertight, correcting...')
-        vertices_in_cam_clean, triangles_clean = pymeshfix.clean_from_arrays(vertices_in_cam_frame, triangles)
-        mesh = trimesh.Trimesh(vertices=vertices_in_cam_clean, faces=triangles_clean)
-    # mesh = o3d.geometry.TriangleMesh(
-    #     vertices=o3d.utility.Vector3dVector(vertices_in_cam_frame),
-    #     triangles=o3d.utility.Vector3iVector(triangles)
-    # )
-    # mesh.compute_vertex_normals()
-    # if not mesh.is_watertight():
-    #     print('Warning: mesh is not watertight, correcting...')
-    #     vertices_in_cam_clean, triangles_clean = pymeshfix.clean_from_arrays(vertices_in_cam_frame, triangles)
-    #     mesh = o3d.geometry.TriangleMesh(
-    #         vertices=o3d.utility.Vector3dVector(vertices_in_cam_clean),
-    #         triangles=o3d.utility.Vector3iVector(triangles_clean)
-    #     )
-    #     mesh.compute_vertex_normals()
-
-    return mesh
-
-def get_simple_room_layout_mesh_from_junctions(scene_3d_annos:Dict, room_idx:str, cam_position: np.ndarray):
-
-    # parse corners
-    junctions = np.array([item['coordinate'] for item in scene_3d_annos['junctions']])
-    lines_holes = []
-    for semantic in scene_3d_annos['semantics']:
-        if semantic['type'] in ['window', 'door']:
-            for planeID in semantic['planeID']:
-                lines_holes.extend(np.where(np.array(scene_3d_annos['planeLineMatrix'][planeID]))[0].tolist())
-
-    lines_holes = np.unique(lines_holes)
-    _, vertices_holes = np.where(np.array(scene_3d_annos['lineJunctionMatrix'])[lines_holes])
-    vertices_holes = np.unique(vertices_holes)
-
-    # parse annotations
-    walls = dict()
-    walls_normal = dict()
-    for semantic in scene_3d_annos['semantics']:
-        if semantic['ID'] != int(room_idx):
-            continue
-
-        # find junctions of ceiling and floor 
-        for planeID in semantic['planeID']:
-            plane_anno = scene_3d_annos['planes'][planeID]
-
-            if plane_anno['type'] != 'wall':
-                lineIDs = np.where(np.array(scene_3d_annos['planeLineMatrix'][planeID]))[0]
-                lineIDs = np.setdiff1d(lineIDs, lines_holes)
-                junction_pairs = [np.where(np.array(scene_3d_annos['lineJunctionMatrix'][lineID]))[0].tolist() for lineID in lineIDs]
-                wall = convert_lines_to_vertices(junction_pairs)
-                walls[plane_anno['type']] = wall[0]
-        
-        # save normal of the vertical walls
-        for planeID in semantic['planeID']:
-            plane_anno = scene_3d_annos['planes'][planeID]
-
-            if plane_anno['type'] == 'wall':
-                lineIDs = np.where(np.array(scene_3d_annos['planeLineMatrix'][planeID]))[0]
-                lineIDs = np.setdiff1d(lineIDs, lines_holes)
-                junction_pairs = [np.where(np.array(scene_3d_annos['lineJunctionMatrix'][lineID]))[0].tolist() for lineID in lineIDs]
-                wall = convert_lines_to_vertices(junction_pairs)
-                walls_normal[tuple(np.intersect1d(wall, walls['floor']))] = plane_anno['normal']
-
-    # we assume that zs of floor equals 0, then the wall height is from the ceiling
-    wall_height = np.mean(junctions[walls['ceiling']], axis=0)[-1]
-    delta_height = np.array([0, 0, wall_height])
-
-    # list of corner index
-    wall_floor = walls['floor']
-
-    corners = []    # 3D coordinate for each wall
-
-    # wall
-    for i, j in zip(wall_floor, np.roll(wall_floor, shift=-1)):
-        corner_i, corner_j = junctions[i], junctions[j]
-
-        flip = verify_normal(corner_i, corner_j, delta_height, walls_normal[tuple(sorted([i, j]))])
-        
-        if flip:
-            corner_j, corner_i = corner_i, corner_j
-
-        corner = np.array([corner_i, corner_i + delta_height, corner_j + delta_height, corner_j])
-
-        corners.append(corner)
-
-    # floor and ceiling
-    # the floor/ceiling texture is cropped by the maximum bounding box
-    corner_floor = junctions[wall_floor]
-
-    # create mesh
-    room_layout_mesh = create_plane_mesh(corners, corner_floor, delta_height, cam_position, ignore_ceiling=False)
-    return room_layout_mesh
-    
 def vis_scene_mesh(room_layout_mesh:trimesh.Trimesh, obj_bbox_lst:List[Dict], room_layout_bbox=None) -> trimesh.Trimesh:
     def create_oriented_bbox(scene_bbox: List[Dict]) -> trimesh.Trimesh:
         """Export oriented (around Z axis) scene bbox to meshes
@@ -341,17 +193,6 @@ def parse_room_layout(img_filepath:str, cam_pos_filepath:str, layout_coor_filepa
                                 b_ignore_floor=False, b_ignore_ceiling=False, b_ignore_wall=False, b_in_world_frame=False)
     # print(f'points.shape: {points.shape}, faces.shape: {faces.shape}')
     room_layout_mesh = trimesh.Trimesh(vertices=points[:, :3], faces=faces, process=True)
-    # if not room_layout_mesh.is_watertight:
-    #     print(f'room_id_str: {room_id_str}, room_layout_mesh is not watertight')
-    #     room_layout_mesh = trimesh.convex.convex_hull(room_layout_mesh) # make sure the mesh is convex
-    # vertices_clean, faces_clean = pymeshfix.clean_from_arrays(points[:, :3], faces)
-    # room_layout_mesh = trimesh.Trimesh(vertices=vertices_clean, faces=faces_clean, process=True)
-    # points = get_simple_mesh_from_corners(corners_lst, H, W, camera_position=cam_pos_lst, rgb_img=equirect_img,
-    #                         b_ignore_floor=False, b_ignore_ceiling=False, b_ignore_wall=False, b_in_world_frame=False)
-    # print(f'points.shape: {points.shape}')
-    # pcl = trimesh.PointCloud(points[:, :3])
-    # room_layout_mesh = pcl.convex_hull
-    # room_layout_mesh = get_simple_room_layout_mesh_from_junctions(scene_3d_annos=scene_anno_3d_dict, room_idx=room_id_str, cam_position=cam_pos_lst)
     return room_layout_mesh
         
 def prepare_dataset(raw_dataset_dir, scene_ids, out_dir):
@@ -392,10 +233,6 @@ def prepare_dataset(raw_dataset_dir, scene_ids, out_dir):
 
             # parse room layout
             room_layout_mesh = parse_room_layout(source_img_path, source_cam_pos_path, source_cor_path, room_id, scene_anno_3d_dict)
-            # if not room_layout_mesh.is_watertight:
-            #     print(f'room_layout_mesh is not watertight: {room_str}')
-            #     INVALID_ROOMS_LST.append(room_str)
-            #     continue
             # parse 3d bbox of objects in the room
             obj_bbox_3d_dict, debug_bbox_img, debug_bbox_trimesh = parse_bbox_in_room(room_path, room_layout_mesh)
             
