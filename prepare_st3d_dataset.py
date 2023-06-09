@@ -9,13 +9,14 @@ import shutil
 import cv2
 import trimesh
 import open3d as o3d
+from PIL import Image, ImageOps
 
 from typing import List, Tuple, Dict, Any, Union
 
 from misc.utils import matrix_to_euler_angles
 from misc.equirect_projection import vis_objs3d
 from dataset.metadata import INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS
-from dataset.st3d_dataset import get_mesh_from_corners
+from dataset.st3d_dataset import get_mesh_from_corners, np_coorx2u, np_coory2v
 '''
 Assume datas is extracted by `misc/structured3d_extract_zip.py`.
 That is to said, assuming following structure:
@@ -89,6 +90,63 @@ def vis_scene_mesh(room_layout_mesh:trimesh.Trimesh, obj_bbox_lst:List[Dict], ro
         scene_mesh = trimesh.util.concatenate([room_layout_mesh, v_object_meshes])
     return scene_mesh
 
+def vis_color_pointcloud(rgb_img_filepath, depth_img_filepath, saved_color_pcl_filepath):
+    def get_unit_spherical_map():
+        h = 512
+        w = 1024
+
+        coorx, coory = np.meshgrid(np.arange(w), np.arange(h))
+        us = np_coorx2u(coorx, w)
+        vs = np_coory2v(coory, h)
+
+        X = np.expand_dims(np.cos(vs) * np.sin(us), 2)
+        Y = np.expand_dims(np.sin(vs), 2)
+        Z = np.expand_dims(np.cos(vs) * np.cos(us), 2)
+        unit_map = np.concatenate([X, Z, Y], axis=2)
+
+        return unit_map
+
+    def display_inlier_outlier(cloud, ind):
+        inlier_cloud = cloud.select_by_index(ind)
+        outlier_cloud = cloud.select_by_index(ind, invert=True)
+
+        print("Showing outliers (red) and inliers (gray): ")
+        outlier_cloud.paint_uniform_color([1, 0, 0])
+        inlier_cloud.paint_uniform_color([0.8, 0.8, 0.8])
+        o3d.visualization.draw([inlier_cloud, outlier_cloud])
+
+    assert os.path.exists(rgb_img_filepath), 'rgb panorama doesnt exist!!!'
+    assert os.path.exists(depth_img_filepath), 'depth panorama doesnt exist!!!'
+
+    raw_depth_img = cv2.imread(depth_img_filepath, cv2.IMREAD_UNCHANGED)
+    if len(raw_depth_img.shape) == 3:
+        raw_depth_img = cv2.cvtColor(raw_depth_img, cv2.COLOR_BGR2GRAY)
+    depth_img = np.asarray(raw_depth_img)
+    if np.isnan(depth_img.any()) or len(depth_img[depth_img > 0]) == 0:
+        print('empyt depth image')
+        exit(-1)
+
+    raw_rgb_img = cv2.imread(rgb_img_filepath, cv2.IMREAD_UNCHANGED)
+    rgb_img = cv2.cvtColor(raw_rgb_img, cv2.COLOR_BGR2RGB)
+    if rgb_img.shape[2] == 4:
+        rgb_img = rgb_img[:, :, :3]
+    if np.isnan(rgb_img.any()) or len(rgb_img[rgb_img > 0]) == 0:
+        print('empyt rgb image')
+        exit(-1)
+    color = np.clip(rgb_img, 0.0, 255.0) / 255.0
+    print(f'raw_rgb shape: {rgb_img.shape} color shape: {color.shape}, ')
+
+    depth_img = np.expand_dims((depth_img/1000.0), axis=2)
+    pointcloud = depth_img * get_unit_spherical_map()
+
+    o3d_pointcloud = o3d.geometry.PointCloud()
+    o3d_pointcloud.points = o3d.utility.Vector3dVector(pointcloud.reshape(-1, 3))
+    o3d_pointcloud.colors = o3d.utility.Vector3dVector(color.reshape(-1, 3))
+    # remove outliers
+    # cl, ind = o3d_pointcloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+    # display_inlier_outlier(o3d_pointcloud, ind)
+    o3d.io.write_point_cloud(saved_color_pcl_filepath, o3d_pointcloud)
+    return o3d_pointcloud
     
 def parse_bbox_in_room(room_folderpath:str, room_layout_mesh):
     room_bbox_3d_path = os.path.join(room_folderpath, 'full', 'bbox_3d.json')
@@ -231,6 +289,7 @@ def prepare_dataset(raw_dataset_dir, scene_ids, out_dir):
 
             room_path = os.path.join(scene_dir, room_id, "panorama")
             source_img_path = os.path.join(room_path, "full", "rgb_rawlight.png")
+            source_depth_img_path = os.path.join(room_path, "full", "depth.png")
             source_cor_path = os.path.join(room_path, "layout.txt")
             source_cam_pos_path = os.path.join(room_path, "camera_xyz.txt")
             room_bbox_3d_path = os.path.join(room_path, 'full', 'bbox_3d.json')
@@ -239,7 +298,7 @@ def prepare_dataset(raw_dataset_dir, scene_ids, out_dir):
             room_layout_mesh = parse_room_layout(source_img_path, source_cam_pos_path, source_cor_path, room_id, scene_anno_3d_dict)
             # parse 3d bbox of objects in the room
             obj_bbox_3d_dict, debug_bbox_img, debug_bbox_trimesh = parse_bbox_in_room(room_path, room_layout_mesh)
-            
+
             out_img_dir = os.path.join(out_dir, room_type_str, 'img')
             out_cord_dir = os.path.join(out_dir, room_type_str, 'label_cor')
             out_cam_pos_dir = os.path.join(out_dir, room_type_str, 'cam_pos')
