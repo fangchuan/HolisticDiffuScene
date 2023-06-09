@@ -8,6 +8,7 @@ import imghdr
 import shutil
 import cv2
 import trimesh
+import open3d as o3d
 
 from typing import List, Tuple, Dict, Any, Union
 
@@ -168,7 +169,6 @@ def parse_room_layout(img_filepath:str, cam_pos_filepath:str, layout_coor_filepa
     equirect_img = cv2.cvtColor(equirect_img, cv2.COLOR_BGR2RGB)
     if equirect_img.shape[2] == 4:
         equirect_img = equirect_img[:, :, :3]
-    # print(f'equirect_img.shape: {equirect_img.shape}')
     H, W = equirect_img.shape[:2]
 
     # read camera position file
@@ -178,7 +178,6 @@ def parse_room_layout(img_filepath:str, cam_pos_filepath:str, layout_coor_filepa
     assert len(cam_pos_lst) == 1, cam_pos_filepath
     # convert the unit into meter
     cam_pos_lst = cam_pos_lst[0] * 0.001
-    # print(f'cam_pos_lst: {cam_pos_lst}')
 
     # Read ground truth corners
     corners_lst = []
@@ -192,7 +191,12 @@ def parse_room_layout(img_filepath:str, cam_pos_filepath:str, layout_coor_filepa
     points, faces= get_mesh_from_corners(corners_lst, H, W, camera_position=cam_pos_lst, rgb_img=equirect_img,
                                 b_ignore_floor=False, b_ignore_ceiling=False, b_ignore_wall=False, b_in_world_frame=False)
     # print(f'points.shape: {points.shape}, faces.shape: {faces.shape}')
-    room_layout_mesh = trimesh.Trimesh(vertices=points[:, :3], faces=faces, process=True)
+    # downsample the mesh
+    raw_mesh = o3d.geometry.TriangleMesh(vertices=o3d.utility.Vector3dVector(points[:,:3]), triangles=o3d.utility.Vector3iVector(faces))
+    simplified_mesh = raw_mesh.simplify_vertex_clustering(voxel_size=0.1, contraction=o3d.geometry.SimplificationContraction.Average)
+    simplified_vertices = simplified_mesh.vertices
+    simplified_faces = np.array(simplified_mesh.triangles)
+    room_layout_mesh = trimesh.Trimesh(vertices=simplified_vertices, faces=simplified_faces, process=True)
     return room_layout_mesh
         
 def prepare_dataset(raw_dataset_dir, scene_ids, out_dir):
@@ -290,19 +294,19 @@ def parse_args():
     parser.add_argument(
         '--out_all_path',
         default=
-        '/mnt/nas_3dv/hdd1/dataset/Structured3d/preprocessed/all_raw_light')
+        '/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/all_raw_light')
     parser.add_argument(
         '--out_train_path',
         default=
-        '/mnt/nas_3dv/hdd1/dataset/Structured3d/preprocessed/st3d_train_full_raw_light')
+        '/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/st3d_train_full_raw_light')
     parser.add_argument(
         '--out_valid_path',
         default=
-        '/mnt/nas_3dv/hdd1/dataset/Structured3d/preprocessed/st3d_valid_full_raw_light')
+        '/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/st3d_valid_full_raw_light')
     parser.add_argument(
         '--out_test_path',
         default=
-        '/mnt/nas_3dv/hdd1/dataset/Structured3d/preprocessed/st3d_test_full_raw_light')
+        '/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/st3d_test_full_raw_light')
     return parser.parse_args()
 
 
