@@ -54,6 +54,7 @@ def main():
             # ignore 'undefined' class
             max_layout_types = (NUM_CLASSES-1)
             layout_type_lst = th.randint(low=0, high=max_layout_types, size=(args.batch_size,), device=dist_util.dev())
+            layout_type_lst = th.full((args.batch_size,), 2, device=dist_util.dev())
             model_kwargs["y"] = layout_type_lst
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
@@ -72,7 +73,7 @@ def main():
         gathered_samples = [th.zeros_like(sample) for _ in range(dist.get_world_size())]
         dist.all_gather(gathered_samples, sample)  # gather not supported with NCCL
         all_layout_lst.extend([sample.cpu().numpy() for sample in gathered_samples])
-        if args.class_cond:
+        if args.b_class_cond:
             gathered_labels = [
                 th.zeros_like(layout_type_lst) for _ in range(dist.get_world_size())
             ]
@@ -82,14 +83,14 @@ def main():
 
     arr = np.concatenate(all_layout_lst, axis=0)
     arr = arr[: args.num_samples]
-    if args.class_cond:
+    if args.b_class_cond:
         label_arr = np.concatenate(all_layout_type_lst, axis=0)
         label_arr = label_arr[: args.num_samples]
     if dist.get_rank() == 0:
         shape_str = "x".join([str(x) for x in arr.shape])
         out_path = os.path.join(logger.get_dir(), f"samples_{shape_str}.npz")
         logger.log(f"saving to {out_path}")
-        if args.class_cond:
+        if args.b_class_cond:
             np.savez(out_path, arr, label_arr)
         else:
             np.savez(out_path, arr)
