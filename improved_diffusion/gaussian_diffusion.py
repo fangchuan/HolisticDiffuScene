@@ -13,7 +13,8 @@ import torch as th
 
 from .nn import mean_flat
 from .losses import normal_kl, discretized_gaussian_log_likelihood
-from . import logger 
+from . import logger
+
 
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     """
@@ -223,8 +224,8 @@ class GaussianDiffusion:
         """
         if model_kwargs is None:
             model_kwargs = {}
-        # logger.debug(f'GaussianDiffusion::p_mean_variance: input tensor shape: {x.shape}')
-        # logger.debug(f'GaussianDiffusion::p_mean_variance: input timestep shape: {t.shape}')
+        logger.debug(f'GaussianDiffusion::p_mean_variance: input tensor shape: {x.shape}')
+        logger.debug(f'GaussianDiffusion::p_mean_variance: input timestep shape: {t.shape}')
         B, C = x.shape[:2]
         assert t.shape == (B,)
         model_output = model(x, self._scale_timesteps(t), **model_kwargs)

@@ -3,8 +3,9 @@ Train a diffusion model on images.
 """
 import os
 import sys
-sys.path.append(".") # Adds higher directory to python modules path.
-sys.path.append("..") # Adds higher directory to python modules path.
+
+sys.path.append(".")  # Adds higher directory to python modules path.
+sys.path.append("..")  # Adds higher directory to python modules path.
 import argparse
 import datetime
 
@@ -23,10 +24,12 @@ from improved_diffusion.script_util import (
 from improved_diffusion.train_util import TrainLoop
 from dataset.st3d_dataset import PanoCorBoundDataset
 
+
 def make_dataloader_cycle(iterable):
     while True:
         for x in iterable:
             yield x
+
 
 def main():
     args = create_argparser().parse_args()
@@ -34,8 +37,8 @@ def main():
     # set up distributed training and logging
     dist_util.setup_dist()
     log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
-    logger.configure(dir=log_dir, format_strs=['tensorboard','stdout','log','csv'])
-    logger.set_level(logger.INFO)
+    logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
+    logger.set_level(logger.DEBUG)
 
     logger.log("creating UNet model and diffusion model...")
     unet_model, diffusion_model = create_model_and_diffusion(**args_to_dict(args,
@@ -78,7 +81,7 @@ def create_argparser():
         parser: _description_
     """
     defaults = dict(
-        data_dir="/data/dataset/Structured3D/preprocessed/st3d_train_full_raw_light/",
+        data_dir="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/all_raw_light/bedroom",
         log_dir='log',
         schedule_sampler="loss-second-moment",
         lr=1e-4,

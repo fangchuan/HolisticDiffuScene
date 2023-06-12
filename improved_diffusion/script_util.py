@@ -6,7 +6,7 @@ from . import gaussian_diffusion as gd
 from .respace import SpacedDiffusion, space_timesteps
 from .unet import SuperResModel, UNetModel
 
-from  . import logger
+from . import logger
 
 NUM_CLASSES = 16
 
@@ -18,7 +18,7 @@ def model_and_diffusion_defaults():
     return dict(
         # image_size=64,
         layout_size=1024,
-        layout_channels=3,
+        layout_channels=4,
         num_channels=128,
         num_res_blocks=2,
         num_heads=4,
@@ -47,16 +47,16 @@ def create_model_and_diffusion(
     b_class_cond: bool,
     b_learn_sigma: bool,
     sigma_small,
-    num_channels:int,
-    num_res_blocks:int,
+    num_channels: int,
+    num_res_blocks: int,
     num_heads,
     num_heads_upsample,
     attention_resolutions,
-    dropout:float,
-    diffusion_steps:int,
+    dropout: float,
+    diffusion_steps: int,
     noise_schedule,
     timestep_respacing,
-    b_use_kl:bool,
+    b_use_kl: bool,
     predict_xstart,
     rescale_timesteps,
     rescale_learned_sigmas,
@@ -150,7 +150,7 @@ def create_model(
     return UNetModel(
         in_channels=layout_channels,
         model_channels=num_channels,
-        out_channels=(3 if not learn_sigma else 6),
+        out_channels=(layout_channels if not learn_sigma else 2 * layout_channels),
         num_res_blocks=num_res_blocks,
         attention_resolutions=tuple(attention_downsample_ratio_lst),
         dropout=dropout,

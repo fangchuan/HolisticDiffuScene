@@ -16,12 +16,30 @@ import json
 import torch
 import torch.utils.data as data
 from . import panostretch
+from .metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, \
+ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN
 
 # room types
-ROOM_TYPE_DICT = {'living room': 0, 'kitchen':1, 'bedroom':2, 'bathroom':3, 'balcony':4, 'corridor':5,
-                  'dining room':6, 'study':7, 'studio':8, 'store room':9, 'garden':10, 'laundry room':11,
-                    'office':12, 'basement':13, 'garage':14, 'undefined':15}
+ROOM_TYPE_DICT = {
+    'living room': 0,
+    'kitchen': 1,
+    'bedroom': 2,
+    'bathroom': 3,
+    'balcony': 4,
+    'corridor': 5,
+    'dining room': 6,
+    'study': 7,
+    'studio': 8,
+    'store room': 9,
+    'garden': 10,
+    'laundry room': 11,
+    'office': 12,
+    'basement': 13,
+    'garage': 14,
+    'undefined': 15
+}
 # ROOM_CLASS_LST = [10, 8, 3, 2, 0, 4, 5, 14, 13, 12, 7, 9, 11, 1, 6, 15]
+
 
 def find_occlusion(coor):
     # equirectangular coordinates to sperical image coordinates
@@ -149,6 +167,7 @@ def np_coor2xy(coor, z=50, coorW=1024, coorH=512, floorW=1024, floorH=512):
     y = -c * np.cos(u) + floorH / 2 - 0.5
     return np.hstack([x[:, None], y[:, None]])
 
+
 def np_x_u_solve_y(x, u, floorW=1024, floorH=512):
     c = (x - floorW / 2 + 0.5) / np.sin(u)
     return -c * np.cos(u) + floorH / 2 - 0.5
@@ -157,6 +176,7 @@ def np_x_u_solve_y(x, u, floorW=1024, floorH=512):
 def np_y_u_solve_x(y, u, floorW=1024, floorH=512):
     c = -(y - floorH / 2 + 0.5) / np.cos(u)
     return c * np.sin(u) + floorW / 2 - 0.5
+
 
 def np_xy2coor(xy, z=50, coorW=1024, coorH=512, floorW=1024, floorH=512):
     '''
@@ -172,6 +192,7 @@ def np_xy2coor(xy, z=50, coorW=1024, coorH=512, floorW=1024, floorH=512):
     coory = (-v / np.pi + 0.5) * coorH - 0.5
 
     return np.hstack([coorx[:, None], coory[:, None]])
+
 
 def vote(vec, tol):
     vec = np.sort(vec)
@@ -191,12 +212,13 @@ def vote(vec, tol):
         max_row = max_idx // len(vec)
         max_col = max_idx % len(vec)
         assert max_col > max_row
-        best_fit = vec[max_row:max_col+1].mean()
+        best_fit = vec[max_row:max_col + 1].mean()
         p_score = (max_col - max_row + 1) / len(vec)
 
     l1_score = np.abs(vec - best_fit).mean()
 
     return best_fit, p_score, l1_score
+
 
 def get_gpid(coorx, coorW):
     gpid = np.zeros(coorW)
@@ -204,6 +226,7 @@ def get_gpid(coorx, coorW):
     gpid = np.cumsum(gpid).astype(int)
     gpid[gpid == gpid[-1]] = 0
     return gpid
+
 
 def gen_ww_cuboid(xy, gpid, tol):
     xy_cor = []
@@ -256,9 +279,27 @@ def gen_ww_general(init_coorx, xy, gpid, tol):
         u0 = np_coorx2u(init_coorx[(j - 1 + len(init_coorx)) % len(init_coorx)])
         u1 = np_coorx2u(init_coorx[j])
         if (x_score, -x_l1) > (y_score, -y_l1):
-            xy_cor.append({'type': 0, 'val': new_x, 'score': x_score, 'action': 'ori', 'gpid': j, 'u0': u0, 'u1': u1, 'tbd': True})
+            xy_cor.append({
+                'type': 0,
+                'val': new_x,
+                'score': x_score,
+                'action': 'ori',
+                'gpid': j,
+                'u0': u0,
+                'u1': u1,
+                'tbd': True
+            })
         else:
-            xy_cor.append({'type': 1, 'val': new_y, 'score': y_score, 'action': 'ori', 'gpid': j, 'u0': u0, 'u1': u1, 'tbd': True})
+            xy_cor.append({
+                'type': 1,
+                'val': new_y,
+                'score': y_score,
+                'action': 'ori',
+                'gpid': j,
+                'u0': u0,
+                'u1': u1,
+                'tbd': True
+            })
 
     # Construct wall from highest score to lowest
     while True:
@@ -308,7 +349,16 @@ def gen_ww_general(init_coorx, xy, gpid, tol):
                         else:
                             new_val = np_y_u_solve_x(xy_cor[n_idx]['val'], xy_cor[n_idx]['u0'])
                             new_type = 0
-                    new_add = {'type': new_type, 'val': new_val, 'score': 0, 'action': 'forced infer', 'gpid': -1, 'u0': -1, 'u1': -1, 'tbd': False}
+                    new_add = {
+                        'type': new_type,
+                        'val': new_val,
+                        'score': 0,
+                        'action': 'forced infer',
+                        'gpid': -1,
+                        'u0': -1,
+                        'u1': -1,
+                        'tbd': False
+                    }
                     xy_cor.insert(insert_at, new_add)
             continue
 
@@ -331,14 +381,41 @@ def gen_ww_general(init_coorx, xy, gpid, tol):
                 val0 = np_y_u_solve_x(xy_cor[p_idx]['val'], xy_cor[p_idx]['u1'])
                 val1 = np_x_u_solve_y(xy_cor[n_idx]['val'], xy_cor[n_idx]['u0'])
             new_add = [
-                {'type': tp0, 'val': val0, 'score': 0, 'action': 'forced infer', 'gpid': -1, 'u0': -1, 'u1': -1, 'tbd': False},
-                {'type': tp1, 'val': val1, 'score': 0, 'action': 'forced infer', 'gpid': -1, 'u0': -1, 'u1': -1, 'tbd': False},
+                {
+                    'type': tp0,
+                    'val': val0,
+                    'score': 0,
+                    'action': 'forced infer',
+                    'gpid': -1,
+                    'u0': -1,
+                    'u1': -1,
+                    'tbd': False
+                },
+                {
+                    'type': tp1,
+                    'val': val1,
+                    'score': 0,
+                    'action': 'forced infer',
+                    'gpid': -1,
+                    'u0': -1,
+                    'u1': -1,
+                    'tbd': False
+                },
             ]
-            xy_cor = xy_cor[:tbd] + new_add + xy_cor[tbd+1:]
+            xy_cor = xy_cor[:tbd] + new_add + xy_cor[tbd + 1:]
 
     return xy_cor
 
-def gen_ww(init_coorx_lst:np.array, coory_ceil_lst: np.array, z_ceil=50, coorW=1024, coorH=512, floorW=1024, floorH=512, tol=3, force_cuboid=True):
+
+def gen_ww(init_coorx_lst: np.array,
+           coory_ceil_lst: np.array,
+           z_ceil=50,
+           coorW=1024,
+           coorH=512,
+           floorW=1024,
+           floorH=512,
+           tol=3,
+           force_cuboid=True):
     """generate wall-wall from corner_x pixel coordinates and ceiling pixel coordinates
 
     Args:
@@ -383,6 +460,7 @@ def gen_ww(init_coorx_lst:np.array, coory_ceil_lst: np.array, z_ceil=50, coorW=1
 
     return cor, xy_cor
 
+
 def infer_coory(coory0, h, z0=50, coorH=512):
     v0 = np_coory2v(coory0, coorH)
     c0 = z0 / np.tan(v0)
@@ -412,10 +490,12 @@ def find_N_peaks(signal, filter_size=29, min_v=0.05, N=None):
         pk_loc = pk_loc[np.argsort(pk_loc)]
     return pk_loc, signal[pk_loc]
 
+
 def mean_percentile(vec, p1=25, p2=75):
     vmin = np.percentile(a=vec, q=p1)
     vmax = np.percentile(a=vec, q=p2)
     return vec[(vmin <= vec) & (vec <= vmax)].mean()
+
 
 def refine_boundary_by_fix_floor(coor_y_ceil, coor_y_floor, z_floor=50, coorH=512):
     '''
@@ -439,10 +519,16 @@ def refine_boundary_by_fix_floor(coor_y_ceil, coor_y_floor, z_floor=50, coorH=51
     # coor_y_ceil_refined = (-v_ceil_refine / np.pi + 0.5) * coorH - 0.5
     # return coor_y_ceil_refined, z_ceil_mean
 
-def get_mesh_from_corners(corners_lst: np.ndarray, H: int, W: int, camera_position: np.array,
-                            rgb_img: np.array, b_ignore_floor: bool=False, b_ignore_ceiling: bool=True,
-                            b_ignore_wall: bool=False,
-                            b_in_world_frame: bool=True) -> Tuple:
+
+def get_mesh_from_corners(corners_lst: np.ndarray,
+                          H: int,
+                          W: int,
+                          camera_position: np.array,
+                          rgb_img: np.array,
+                          b_ignore_floor: bool = False,
+                          b_ignore_ceiling: bool = True,
+                          b_ignore_wall: bool = False,
+                          b_in_world_frame: bool = True) -> Tuple:
     """ generate layout mesh from equirectangular image and corners
 
     Args:
@@ -462,10 +548,10 @@ def get_mesh_from_corners(corners_lst: np.ndarray, H: int, W: int, camera_positi
 
     # Convert corners to layout
     depth_img, floor_mask, ceil_mask, wall_mask = layout_2_depth(corners_lst,
-                                                                    H,
-                                                                    W,
-                                                                    floor_height=camera_position[2],
-                                                                    return_mask=True)
+                                                                 H,
+                                                                 W,
+                                                                 floor_height=camera_position[2],
+                                                                 return_mask=True)
     coorx, coory = np.meshgrid(np.arange(W), np.arange(H))
     us = np_coorx2u(coorx, W)
     vs = np_coory2v(coory, H)
@@ -529,6 +615,83 @@ def get_mesh_from_corners(corners_lst: np.ndarray, H: int, W: int, camera_positi
 
     return (points, faces)
 
+
+def ClassLabelsEncode(room_type: int, obj_bbox_label: str) -> np.array:
+    """Implement the encoding for the class labels."""
+    # Make a local copy of the class labels
+    classes = None
+    if room_type == ROOM_TYPE_DICT['bedroom']:
+        classes = ST3D_BEDROOM_FURNITURE
+    elif room_type == ROOM_TYPE_DICT['living room']:
+        classes = ST3D_LIVINGROOM_FURNITURE
+    elif room_type == ROOM_TYPE_DICT['dining room']:
+        classes = ST3D_DININGROOM_FURNITURE
+
+    def one_hot_label(all_labels, current_label):
+        return np.eye(len(all_labels))[all_labels.index(current_label)]
+
+    # Get the scene
+    # boxes = obj_bbox_lst
+    # L = len(boxes)  # sequence length
+    C = len(classes)  # number of classes
+    class_label = np.zeros(C, dtype=np.float32)
+    class_label = one_hot_label(classes, obj_bbox_label)
+    return class_label
+
+
+def TranslationEncode(obj_bbox_centroid: np.array) -> np.array:
+    """Implement the encoding for the object centroid."""
+    # Make a local copy of the class labels
+    box_centroid = obj_bbox_centroid
+    return box_centroid
+
+
+def SizeEncode(obj_bbox_size: np.array) -> np.array:
+    """Implement the encoding for the object size."""
+    # Make a local copy of the class labels
+    box_size = obj_bbox_size
+    return box_size
+
+
+def RotationEncode(obj_bbox_angle: np.array) -> np.array:
+    """Implement the encoding for the object rotation."""
+    # Make a local copy of the class labels
+    box_a_angle_rad = obj_bbox_angle
+    return box_a_angle_rad
+
+
+def padding_and_reshape_object_bbox(room_type: int, object_bbox_lst: np.array, bbox_dim: int) -> List:
+    """Implement the padding for the object bounding boxes."""
+    L = len(object_bbox_lst)
+    max_len = L
+    if room_type == ROOM_TYPE_DICT['bedroom']:
+        max_len = ST3D_BEDROOM_MAX_LEN
+        class_num = len(ST3D_BEDROOM_FURNITURE)
+    elif room_type == ROOM_TYPE_DICT['living room']:
+        max_len = ST3D_LIVINGROOM_MAX_LEN
+        class_num = len(ST3D_LIVINGROOM_FURNITURE)
+    elif room_type == ROOM_TYPE_DICT['dining room']:
+        max_len = ST3D_DININGROOM_MAX_LEN
+        class_num = len(ST3D_DININGROOM_FURNITURE)
+
+    # print(f'object_bbox_lst.shape before : {np.array(object_bbox_lst).shape}')
+
+    # Pad the end label in the end of each sequence, and convert the class labels to -1, 1
+    if L < max_len:
+        empty_label = np.eye(class_num)[-1]
+        padding = np.concatenate([empty_label, np.zeros(bbox_dim - class_num, dtype=np.float32)], axis=0)
+        object_bbox_lst = np.vstack([object_bbox_lst, np.tile(padding, [max_len - L, 1])])
+    elif L >= max_len:
+        object_bbox_lst = object_bbox_lst[:max_len]
+    object_bbox_lst = object_bbox_lst.flatten()
+    # print(f'object_bbox_lst.shape after: {np.array(object_bbox_lst).shape}')
+    # print(object_bbox_lst)
+    assert object_bbox_lst.shape[-1] == (max_len * bbox_dim) and object_bbox_lst.shape[-1] < 1024
+    ret_lst = np.zeros((1, 1024), dtype=np.float32)
+    ret_lst[:, :object_bbox_lst.shape[-1]] = object_bbox_lst
+    return ret_lst
+
+
 class PanoCorBoundDataset(data.Dataset):
     '''
     dataset for layout: PanoCoordinatesBoundary
@@ -559,7 +722,7 @@ class PanoCorBoundDataset(data.Dataset):
         self.img_fnames = sorted(
             [fname for fname in os.listdir(self.img_dir) if fname.endswith('.jpg') or fname.endswith('.png')])
         self.txt_fnames = ['%s.txt' % fname[:-4] for fname in self.img_fnames]
-        self.json_fnames = ['%s.json' % fname[:-4] for fname in self.img_fnames]
+        self.json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
         #  image file names and text file names on local_rank machine
         self.local_img_fnames = self.img_fnames[shard::num_shards]
         self.local_txt_fnames = self.txt_fnames[shard::num_shards]
@@ -589,7 +752,7 @@ class PanoCorBoundDataset(data.Dataset):
         return len(self.local_img_fnames)
 
     def __getitem__(self, idx: int) -> List:
-        """retrieve layout data
+        """retrieve scene data
 
         Args:
             idx (int): panorama/room idx
@@ -625,12 +788,21 @@ class PanoCorBoundDataset(data.Dataset):
             object_bbox_dicts = json.load(f)
             object_bbox_dicts = object_bbox_dicts['objects']
         for obj_bbox in object_bbox_dicts:
-            bbox_class_label = obj_bbox['name'].lower()
-            bbox_centroid = np.array(obj_bbox['centroid'], np.float32)
+            bbox_class_label = obj_bbox['class'].lower()
+            bbox_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=bbox_class_label)
+            bbox_centroid = np.array(obj_bbox['center'], np.float32)
+            bbox_centroid = TranslationEncode(bbox_centroid)
             bbox_size = np.array(obj_bbox['size'], np.float32)
+            bbox_size = SizeEncode(bbox_size)
             # only use Z angle
-            bbox_angle = np.array(obj_bbox['angles'], np.float32)[-1]
-            object_bbox_lst.append([bbox_class_label, bbox_centroid, bbox_size, bbox_angle])
+            bbox_angle = np.array(obj_bbox['angles'], np.float32)
+            bbox_angle = RotationEncode(bbox_angle)
+            bbox_property_encode = np.concatenate([bbox_class, bbox_centroid, bbox_size, bbox_angle], axis=-1)
+            bbox_property_encode_dim = bbox_property_encode.shape[-1]
+            object_bbox_lst.append(bbox_property_encode)
+        object_bbox_lst = padding_and_reshape_object_bbox(room_type=room_type,
+                                                          object_bbox_lst=np.array(object_bbox_lst),
+                                                          bbox_dim=bbox_property_encode_dim)
 
         # Read ground truth corners
         with open(os.path.join(self.cor_dir, self.local_txt_fnames[idx])) as f:
@@ -678,36 +850,25 @@ class PanoCorBoundDataset(data.Dataset):
         nearest_dist = dist.min(0)
         corner_y_prob_lst = (self.p_base**nearest_dist).reshape(1, -1)
 
-        # # Convert all data to tensor
-        # x = torch.FloatTensor(img.transpose([2, 0, 1]).copy())
-        # boundary_lst = torch.FloatTensor(boundary_lst.copy())
-        # corner_y_prob_lst = torch.FloatTensor(corner_y_prob_lst.copy())
-
-        # # Check whether additional output are requested
-        # out_lst = [x, boundary_lst, corner_y_prob_lst]
-        # if self.return_corners:
-        #     out_lst = np.append(out_lst, corners_lst)
-        # if self.return_path:
-        #     out_lst = np.append(out_lst, img_path)
-        # return out_lst
         # normalize to [-1, 1]
         boundary_lst = boundary_lst.copy().astype(np.float32)
-        boundary_lst = boundary_lst /(0.5*np.pi)
+        boundary_lst = boundary_lst / (0.5 * np.pi)
         # normalize to [-1, 1]
         corner_y_prob_lst = corner_y_prob_lst.copy().astype(np.float32)
-        corner_y_prob_lst = corner_y_prob_lst * 2 -1
-        out_lst = np.append(boundary_lst, corner_y_prob_lst, axis=0)
+        corner_y_prob_lst = corner_y_prob_lst * 2 - 1
+
+        out_lst = np.concatenate([boundary_lst, corner_y_prob_lst, object_bbox_lst], axis=0)
 
         class_dict = {}
         if room_type is not None:
             class_dict["y"] = np.array(room_type, dtype=np.int64)
         return out_lst, class_dict
-     
+
     def get_gt_layout_mesh(self,
-                        idx: int,
-                        b_ignore_floor: bool = False,
-                        b_ignore_ceiling: bool = True,
-                        b_ignore_wall: bool = False) -> Tuple:
+                           idx: int,
+                           b_ignore_floor: bool = False,
+                           b_ignore_ceiling: bool = True,
+                           b_ignore_wall: bool = False) -> Tuple:
         # Read image
         img_path = os.path.join(self.img_dir, self.img_fnames[idx])
         equirect_img = np.array(Image.open(img_path))
@@ -744,13 +905,22 @@ class PanoCorBoundDataset(data.Dataset):
         # nearest_dist = dist.min(0)
         # corner_y_prob_lst = (self.p_base**nearest_dist).reshape(1, -1)
 
-        points, faces= get_mesh_from_corners(corners_lst, H, W, camera_position=cam_pos_lst, rgb_img=equirect_img,
-                                    b_ignore_floor=b_ignore_floor, b_ignore_ceiling=b_ignore_ceiling, b_ignore_wall=b_ignore_wall)
+        points, faces = get_mesh_from_corners(corners_lst,
+                                              H,
+                                              W,
+                                              camera_position=cam_pos_lst,
+                                              rgb_img=equirect_img,
+                                              b_ignore_floor=b_ignore_floor,
+                                              b_ignore_ceiling=b_ignore_ceiling,
+                                              b_ignore_wall=b_ignore_wall)
 
         return (points, faces, corners_lst, cam_pos_lst)
 
-    def get_layout_mesh_from_prediction(self, bound_ceil_floor_lst:np.array, wall_prob_lst:np.array, b_force_raw:bool=False, 
-                                        b_force_cuboid:bool=False) -> Tuple:
+    def get_layout_mesh_from_prediction(self,
+                                        bound_ceil_floor_lst: np.array,
+                                        wall_prob_lst: np.array,
+                                        b_force_raw: bool = False,
+                                        b_force_cuboid: bool = False) -> Tuple:
         # random choose a camera position
         # idx = np.random.randint(len(self.local_img_fnames))
         idx = 2
@@ -774,8 +944,8 @@ class PanoCorBoundDataset(data.Dataset):
 
         # convert uv coords to pixel coords
         y_boundary_lst = (bound_ceil_floor_lst / np.pi + 0.5) * H - 0.5
-        y_boundary_lst[0] = np.clip(y_boundary_lst[0], 1, H/2-1)
-        y_boundary_lst[1] = np.clip(y_boundary_lst[1], H/2+1, H-2)
+        y_boundary_lst[0] = np.clip(y_boundary_lst[0], 1, H / 2 - 1)
+        y_boundary_lst[1] = np.clip(y_boundary_lst[1], H / 2 + 1, H - 2)
         corner_prob_lst = wall_prob_lst
 
         # Init floor height
@@ -801,19 +971,26 @@ class PanoCorBoundDataset(data.Dataset):
             print(f'corner_x_lst: {corner_x_lst.shape}')
 
             # Generate wall-walls
-            cor, xy_cor = gen_ww(corner_x_lst, y_boundary_lst[0], z_ceil, tol=abs(0.16 * z_floor / 1.6), force_cuboid=b_force_cuboid)
+            cor, xy_cor = gen_ww(corner_x_lst,
+                                 y_boundary_lst[0],
+                                 z_ceil,
+                                 tol=abs(0.16 * z_floor / 1.6),
+                                 force_cuboid=b_force_cuboid)
             if not b_force_cuboid:
                 # Check valid (for fear self-intersection)
                 xy2d = np.zeros((len(xy_cor), 2), np.float32)
                 for i in range(len(xy_cor)):
                     xy2d[i, xy_cor[i]['type']] = xy_cor[i]['val']
-                    xy2d[i, xy_cor[i-1]['type']] = xy_cor[i-1]['val']
+                    xy2d[i, xy_cor[i - 1]['type']] = xy_cor[i - 1]['val']
                 if not Polygon(xy2d).is_valid:
-                    print(
-                        'Fail to generate valid general layout!! '
-                        'Generate cuboid as default.', file=sys.stderr)
+                    print('Fail to generate valid general layout!! '
+                          'Generate cuboid as default.', file=sys.stderr)
                     corner_x_lst, _ = find_N_peaks(corner_prob_lst, filter_size=filter_size, min_v=0, N=4)
-                    cor, xy_cor = gen_ww(corner_x_lst, y_boundary_lst[0], z_ceil, tol=abs(0.16 * z_floor / 1.6), force_cuboid=True)
+                    cor, xy_cor = gen_ww(corner_x_lst,
+                                         y_boundary_lst[0],
+                                         z_ceil,
+                                         tol=abs(0.16 * z_floor / 1.6),
+                                         force_cuboid=True)
 
         # Expand ceiling pixel coords with floor
         coord_floor = infer_coory(cor[:, 1], z_floor - z_ceil, z_ceil)[:, None]
@@ -821,13 +998,18 @@ class PanoCorBoundDataset(data.Dataset):
         cor = np.hstack([cor, coord_floor])
 
         # Collect corner coords in equirectangular image
-        corners_lst = np.zeros((len(cor)*2, 2), np.float32)
+        corners_lst = np.zeros((len(cor) * 2, 2), np.float32)
         for j in range(len(cor)):
-            corners_lst[j*2] = cor[j, 0], cor[j, 1]
-            corners_lst[j*2 + 1] = cor[j, 0], cor[j, 2]
+            corners_lst[j * 2] = cor[j, 0], cor[j, 1]
+            corners_lst[j * 2 + 1] = cor[j, 0], cor[j, 2]
         print(f'corners_lst: {corners_lst.shape}')
         # equirect_img = np.random.randint(0, 255, size=(H, W, 3), dtype=np.uint8)
-        points, faces= get_mesh_from_corners(corners_lst, H, W, camera_position=cam_pos_lst, rgb_img=equirect_img,
-                                    b_ignore_floor=False, b_ignore_ceiling=True, b_ignore_wall=False)
+        points, faces = get_mesh_from_corners(corners_lst,
+                                              H,
+                                              W,
+                                              camera_position=cam_pos_lst,
+                                              rgb_img=equirect_img,
+                                              b_ignore_floor=False,
+                                              b_ignore_ceiling=True,
+                                              b_ignore_wall=False)
         return (points, faces, corners_lst, cam_pos_lst)
-        

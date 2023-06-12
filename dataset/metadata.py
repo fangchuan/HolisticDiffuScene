@@ -1,28 +1,183 @@
 OBJECT_LABEL_IDS = {
     # 1: "wall", 2:	"floor",
-                    "cabinet": 3, "bed": 4, "chair": 5, "sofa": 6, "table": 7, "door": 8,
-                    "window": 9, "bookshelf": 10, "picture": 11, "counter": 12, "blinds": 13, "desk": 14, "shelves": 15,
-                    "curtain": 16, "dresser": 17, "pillow": 18, "mirror": 19, "floor mat": 20, "clothes": 21,
-                    #   22: "ceiling",
-                    "books": 23, "fridge": 24, "television": 25, "paper": 26, "towel": 27, "shower curtain": 28, "box": 29,
-                    "whiteboard": 30, "person": 31, "night stand": 32, "toilet": 33, "sink": 34, "lamp": 35, "bathtub": 36,
-                    "bag": 37, 
-                    # 38: "structure", 39: "furniture", 40: "prop"
-                    }
-
+    "cabinet": 3,
+    "bed": 4,
+    "chair": 5,
+    "sofa": 6,
+    "table": 7,
+    "door": 8,
+    "window": 9,
+    "bookshelf": 10,
+    "picture": 11,
+    "counter": 12,
+    "blinds": 13,
+    "desk": 14,
+    "shelves": 15,
+    "curtain": 16,
+    "dresser": 17,
+    "pillow": 18,
+    "mirror": 19,
+    "floor mat": 20,
+    "clothes": 21,
+    #   22: "ceiling",
+    "books": 23,
+    "fridge": 24,
+    "television": 25,
+    "paper": 26,
+    "towel": 27,
+    "shower curtain": 28,
+    "box": 29,
+    "whiteboard": 30,
+    "person": 31,
+    "night stand": 32,
+    "toilet": 33,
+    "sink": 34,
+    "lamp": 35,
+    "bathtub": 36,
+    "bag": 37,
+    # 38: "structure", 39: "furniture", 40: "prop"
+}
 
 INVALID_SCENES_LST = [
-    'scene_00706', 'scene_01155', 'scene_01714', 'scene_01816', 'scene_03398', 'scene_01192',
-    'scene_01852'
+    'scene_00706', 'scene_01155', 'scene_01714', 'scene_01816', 'scene_03398', 'scene_01192', 'scene_01852'
 ]
 
 INVALID_ROOMS_LST = [
-    'scene_00212_494', 'scene_00403_11105', 'scene_00411_918447',
-    'scene_00810_1817', 'scene_01209_4566', 'scene_01410_180208',
-    'scene_01815_1429', 'scene_01815_237', 'scene_02011_2003',
-    'scene_02212_1058346', 'scene_02212_175980', 'scene_02411_26703128',
-    'scene_02608_345', 'scene_00014_1083', 'scene_00014_947',
-    'scene_00212_377', 'scene_01209_5767', 'scene_01210_277',
-    'scene_01608_270286', 'scene_01608_270288', 'scene_02411_706561',
-    'scene_02609_1419', 'scene_00609_159', 'scene_00706_141'
+    'scene_00212_494', 'scene_00403_11105', 'scene_00411_918447', 'scene_00810_1817', 'scene_01209_4566',
+    'scene_01410_180208', 'scene_01815_1429', 'scene_01815_237', 'scene_02011_2003', 'scene_02212_1058346',
+    'scene_02212_175980', 'scene_02411_26703128', 'scene_02608_345', 'scene_00014_1083', 'scene_00014_947',
+    'scene_00212_377', 'scene_01209_5767', 'scene_01210_277', 'scene_01608_270286', 'scene_01608_270288',
+    'scene_02411_706561', 'scene_02609_1419', 'scene_00609_159', 'scene_00706_141', 'scene_00030_735',
+    'scene_00121_67752', 'scene_00121_67753', 'scene_00246_95356', 'scene_00776_4232', 'scene_00982_1364',
+    'scene_02719_1241', 'scene_02719_995', 'scene_02973_5071', 'scene_03249_324', 'scene_03256_357131',
+    'scene_00008_915952', 'scene_00008_916061', 'scene_00018_354', 'scene_00035_380', 'scene_00077_1755',
+    'scene_00085_239', 'scene_00085_296', 'scene_00087_557463', 'scene_00089_269', 'scene_00089_570',
+    'scene_00089_7481', 'scene_00109_139', 'scene_00109_172', 'scene_00173_4918', 'scene_00174_868887',
+    'scene_00204_1131', 'scene_00218_1488316367', 'scene_00228_426431', 'scene_00228_426504', 'scene_00229_1281',
+    'scene_00229_868', 'scene_00246_95355', 'scene_00246_95357', 'scene_00265_452', 'scene_00265_688',
+    'scene_00265_972', 'scene_00292_251', 'scene_00292_270', 'scene_00292_312', 'scene_00325_343322',
+    'scene_00350_30815', 'scene_00350_30817', 'scene_00370_1126413', 'scene_00374_1470', 'scene_00374_559',
+    'scene_00388_378827', 'scene_00388_755260', 'scene_00413_389', 'scene_00413_749', 'scene_00414_602',
+    'scene_00423_465', 'scene_00423_650', 'scene_00423_7002', 'scene_00434_783330', 'scene_00440_2322',
+    'scene_00440_2389', 'scene_00440_2460', 'scene_00441_52901', 'scene_00441_52903', 'scene_00441_766978',
+    'scene_00446_533062', 'scene_00446_533331', 'scene_00467_334637', 'scene_00467_334729', 'scene_00467_336000',
+    'scene_00468_1252', 'scene_00468_1814', 'scene_00482_1333', 'scene_00482_558287', 'scene_00482_578893',
+    'scene_00483_558287', 'scene_00483_578893', 'scene_00494_1163', 'scene_00494_616', 'scene_00495_227',
+    'scene_00495_259', 'scene_00501_1132', 'scene_00501_1326', 'scene_00501_599', 'scene_00502_249', 'scene_00502_541',
+    'scene_00504_334', 'scene_00504_409', 'scene_00505_924101', 'scene_00507_1301', 'scene_00511_427',
+    'scene_00511_835', 'scene_00526_420', 'scene_00526_680', 'scene_00548_16273', 'scene_00565_1081', 'scene_00586_192',
+    'scene_00586_379', 'scene_00586_761345', 'scene_00588_1163', 'scene_00588_616', 'scene_00594_600',
+    'scene_00673_159', 'scene_00673_368', 'scene_00674_967341', 'scene_00741_48865', 'scene_00775_754',
+    'scene_00776_3834', 'scene_00889_1638', 'scene_00889_1730', 'scene_00889_349', 'scene_00890_1638',
+    'scene_00890_1730', 'scene_00890_349', 'scene_00891_1638', 'scene_00891_1730', 'scene_00891_349',
+    'scene_00935_143589', 'scene_00972_2365', 'scene_00975_532', 'scene_00975_534', 'scene_00975_634',
+    'scene_00977_514', 'scene_00982_1044', 'scene_00982_2113', 'scene_00982_2318', 'scene_00982_2656',
+    'scene_01006_967558', 'scene_01007_21005', 'scene_01007_4123', 'scene_01059_522', 'scene_01059_599',
+    'scene_01059_906008', 'scene_01095_2976', 'scene_01097_1153', 'scene_01183_1003', 'scene_01183_1674',
+    'scene_01373_744', 'scene_01373_746', 'scene_01378_641', 'scene_01378_893', 'scene_01476_159', 'scene_01481_297',
+    'scene_01481_683', 'scene_01483_2003', 'scene_01483_2254', 'scene_01484_1098', 'scene_01498_2157',
+    'scene_01507_367', 'scene_01519_373', 'scene_01525_1855', 'scene_01525_588', 'scene_01531_2425', 'scene_01669_165',
+    'scene_01675_18698', 'scene_01715_439831', 'scene_01720_294', 'scene_01720_314', 'scene_01720_357',
+    'scene_01720_400', 'scene_01794_575', 'scene_01795_609', 'scene_01975_1397', 'scene_01998_54778',
+    'scene_02001_4144', 'scene_02040_856', 'scene_02061_227', 'scene_02069_1277', 'scene_02178_885487',
+    'scene_02192_814412', 'scene_02195_451592', 'scene_02195_452078', 'scene_02210_150288', 'scene_02215_912358',
+    'scene_02215_927188', 'scene_02230_330306', 'scene_02230_330307', 'scene_02233_960772', 'scene_02248_69383',
+    'scene_02248_69384', 'scene_02260_909818', 'scene_02274_7427', 'scene_02284_340', 'scene_02298_336220',
+    'scene_02299_6671', 'scene_02299_8146', 'scene_02302_6671', 'scene_02302_8146', 'scene_02304_614345',
+    'scene_02332_665', 'scene_02344_170', 'scene_02344_217', 'scene_02364_181', 'scene_02364_3199',
+    'scene_02365_834325', 'scene_02365_834484', 'scene_02365_834539', 'scene_02370_688873', 'scene_02371_2221',
+    'scene_02378_413791', 'scene_02378_845585', 'scene_02400_582735', 'scene_02400_585917', 'scene_02402_13697',
+    'scene_02402_2289', 'scene_02402_3491', 'scene_02409_296115', 'scene_02409_305134', 'scene_02410_561',
+    'scene_02436_184', 'scene_02436_915', 'scene_02438_847885', 'scene_02440_448399', 'scene_02441_303035',
+    'scene_02441_654861', 'scene_02441_655857', 'scene_02453_793812', 'scene_02456_975348', 'scene_02513_940602',
+    'scene_02532_592300', 'scene_02534_47098', 'scene_02534_47100', 'scene_02536_717432', 'scene_02538_499614',
+    'scene_02552_2130', 'scene_02552_2132', 'scene_02556_83', 'scene_02573_143', 'scene_02573_2082', 'scene_02576_488',
+    'scene_02590_914128', 'scene_02619_431068', 'scene_02619_431070', 'scene_02646_799390', 'scene_02694_622185',
+    'scene_02710_989', 'scene_02710_991', 'scene_02713_558819', 'scene_02713_845211', 'scene_02720_2288',
+    'scene_02720_2879', 'scene_02720_7393', 'scene_02722_381', 'scene_02722_945', 'scene_02744_768769',
+    'scene_02752_455', 'scene_02757_488', 'scene_02757_646', 'scene_02771_327', 'scene_02793_500774',
+    'scene_02793_502227', 'scene_02799_12485', 'scene_02799_2301', 'scene_02799_41', 'scene_02811_576364',
+    'scene_02818_306', 'scene_02849_1429', 'scene_02849_3043', 'scene_02859_1187', 'scene_02882_433',
+    'scene_02888_749592', 'scene_02888_939271', 'scene_02891_445308', 'scene_02891_445309', 'scene_02894_872484',
+    'scene_02895_132', 'scene_02895_241', 'scene_02895_265', 'scene_02914_207', 'scene_02916_64106',
+    'scene_02921_399459', 'scene_02921_399460', 'scene_02921_399461', 'scene_02943_232', 'scene_02943_277',
+    'scene_02963_332', 'scene_02965_491292', 'scene_02978_874821', 'scene_02986_955217', 'scene_02986_955218',
+    'scene_02992_989', 'scene_02992_991', 'scene_02999_9628', 'scene_03005_221843', 'scene_03005_221845',
+    'scene_03015_534760', 'scene_03021_1212', 'scene_03021_848', 'scene_03024_78823', 'scene_03024_78825',
+    'scene_03032_85300', 'scene_03033_365142', 'scene_03034_369', 'scene_03038_259', 'scene_03053_951679',
+    'scene_03059_323', 'scene_03059_587', 'scene_03064_12048', 'scene_03064_3750', 'scene_03064_5211',
+    'scene_03068_1346', 'scene_03068_1965', 'scene_03071_1309', 'scene_03076_3424', 'scene_03076_3428',
+    'scene_03078_207', 'scene_03079_458831', 'scene_03079_458832', 'scene_03089_143', 'scene_03106_613392',
+    'scene_03109_1851', 'scene_03109_768', 'scene_03110_4464', 'scene_03110_4845', 'scene_03112_2131',
+    'scene_03114_165', 'scene_03116_2210', 'scene_03116_2212', 'scene_03117_538076', 'scene_03120_818994',
+    'scene_03124_816', 'scene_03125_1271', 'scene_03130_534586', 'scene_03135_1152', 'scene_03135_1207',
+    'scene_03144_902751', 'scene_03148_245', 'scene_03148_278', 'scene_03148_348', 'scene_03153_2024',
+    'scene_03153_706', 'scene_03154_975037', 'scene_03154_978821', 'scene_03155_170', 'scene_03155_220',
+    'scene_03156_636', 'scene_03174_441500', 'scene_03174_441501', 'scene_03188_381590', 'scene_03203_1110',
+    'scene_03203_735', 'scene_03208_225', 'scene_03208_445', 'scene_03208_526', 'scene_03210_127927',
+    'scene_03210_3032143', 'scene_03212_160959', 'scene_03213_560', 'scene_03215_1197', 'scene_03217_559160',
+    'scene_03220_1000647', 'scene_03220_384', 'scene_03220_516', 'scene_03223_4111', 'scene_03225_617147',
+    'scene_03231_3498', 'scene_03231_3790', 'scene_03231_4191', 'scene_03231_7389', 'scene_03232_395474',
+    'scene_03232_418562', 'scene_03234_1236', 'scene_03234_872', 'scene_03240_478', 'scene_03240_708',
+    'scene_03243_800737', 'scene_03243_800739', 'scene_03247_115', 'scene_03247_219', 'scene_03256_352325',
+    'scene_03256_369347', 'scene_03259_1141', 'scene_03259_502', 'scene_03262_3498', 'scene_03262_3790',
+    'scene_03262_4191', 'scene_03262_7389', 'scene_03263_1592', 'scene_03263_2967', 'scene_03263_596',
+    'scene_03264_370', 'scene_03264_701', 'scene_03272_1239', 'scene_03272_7822', 'scene_03275_1066', 'scene_03275_859',
+    'scene_03276_106600', 'scene_03276_106601', 'scene_03276_106602', 'scene_03277_1701', 'scene_03277_552',
+    'scene_03277_739', 'scene_03280_1014205', 'scene_03280_997255', 'scene_03284_573340', 'scene_03284_573341',
+    'scene_03292_4881', 'scene_03294_863843', 'scene_03294_863845', 'scene_03297_196159', 'scene_03297_196160',
+    'scene_03297_427131', 'scene_03300_190737', 'scene_03300_190738', 'scene_03301_948493', 'scene_03302_878215',
+    'scene_03302_878461', 'scene_03302_888475', 'scene_03303_41', 'scene_03303_42', 'scene_03313_10363',
+    'scene_03316_656457', 'scene_03368_606667', 'scene_03380_787', 'scene_03386_1253', 'scene_03389_535668',
+    'scene_03389_539880', 'scene_03389_550504', 'scene_03393_1429', 'scene_03393_3043', 'scene_03396_289381',
+    'scene_03407_287510', 'scene_03407_590626', 'scene_03414_114321', 'scene_03423_239', 'scene_03428_93897',
+    'scene_03429_626644', 'scene_03433_923', 'scene_03433_925', 'scene_03450_1429', 'scene_03450_3043',
+    'scene_03458_38097', 'scene_03459_1189', 'scene_03468_584', 'scene_03474_143', 'scene_03474_882',
+    'scene_03477_950590', 'scene_03486_1001495', 'scene_03486_989787', 'scene_00450_1420586',
+    'scene_00591_1017583466473548', 'scene_00620_501', 'scene_01177_239', 'scene_01494_172', 'scene_01753_972405',
+    'scene_01915_286', 'scene_02051_941474', 'scene_02056_944881', 'scene_02437_60182', 'scene_02793_504648',
+    'scene_03249_159'
 ]
+
+ST3D_BEDROOM_MIN_LEN = 3
+ST3D_BEDROOM_MAX_LEN = 13
+# 21
+ST3D_BEDROOM_FURNITURE = [
+    'shelves', 'television', 'dresser', 'picture', 'sink', 'fridge', 'bathtub', 'pillow', 'chair', 'bed', 'table',
+    'night stand', 'desk', 'counter', 'curtain', 'door', 'sofa', 'mirror', 'window', 'cabinet', 'lamp', 'empty'
+]
+
+ST3D_BEDROOM_FURNITURE_CNTS = {('lamp', 7658), ('cabinet', 6199), ('door', 5326), ('night stand', 4937), ('bed', 4885),
+                               ('curtain', 4734), ('picture', 4673), ('window', 4351), ('chair', 2117),
+                               ('television', 2090), ('desk', 1389), ('pillow', 1359), ('dresser', 694), ('table', 506),
+                               ('sofa', 472), ('shelves', 371), ('mirror', 161), ('fridge', 9), ('counter', 6),
+                               ('bathtub', 3), ('sink', 1)}
+
+ST3D_DININGROOM_MIN_LEN = 3
+ST3D_DININGROOM_MAX_LEN = 23
+
+# 18
+ST3D_DININGROOM_FURNITURE = [
+    'counter', 'curtain', 'pillow', 'box', 'door', 'shelves', 'mirror', 'sink', 'desk', 'chair', 'table', 'television',
+    'fridge', 'picture', 'sofa', 'window', 'lamp', 'cabinet', 'empty'
+]
+
+ST3D_DININGROOM_FURNITURE_CNTS = {('lamp', 398), ('door', 319), ('cabinet', 283), ('chair', 244), ('table', 215),
+                                  ('picture', 184), ('window', 167), ('curtain', 110), ('sofa', 81), ('fridge', 42),
+                                  ('pillow', 28), ('shelves', 18), ('counter', 16), ('desk', 8), ('television', 7),
+                                  ('mirror', 6), ('sink', 5), ('box', 2)}
+
+ST3D_LIVINGROOM_MIN_LEN = 3
+ST3D_LIVINGROOM_MAX_LEN = 23
+# 23
+ST3D_LIVINGROOM_FURNITURE = [
+    'picture', 'pillow', 'counter', 'lamp', 'shelves', 'cabinet', 'window', 'mirror', 'chair', 'bed', 'box', 'curtain',
+    'table', 'sink', 'desk', 'night stand', 'toilet', 'door', 'television', 'fridge', 'sofa', 'bathtub', 'dresser',
+    'empty'
+]
+
+ST3D_LIVINGROOM_FURNITURE_CNTS = {('lamp', 10760), ('door', 10585), ('cabinet', 7500), ('table', 6606), ('chair', 5767),
+                                  ('sofa', 5603), ('picture', 5514), ('curtain', 3609), ('television', 2019),
+                                  ('pillow', 1950), ('window', 1881), ('shelves', 937), ('fridge', 664),
+                                  ('mirror', 304), ('counter', 258), ('night stand', 156), ('desk', 143), ('bed', 69),
+                                  ('sink', 62), ('dresser', 12), ('bathtub', 3), ('box', 2), ('toilet', 1)}

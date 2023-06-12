@@ -4,10 +4,12 @@ from sklearn.preprocessing import normalize
 from scipy.spatial.transform import Rotation
 from .utils import euler_angle_to_matrix
 
+
 def interpolate_line(p1, p2, num=30):
     t = np.expand_dims(np.linspace(0, 1, num=num, dtype=np.float32), 1)
     points = p1 * (1 - t) + t * p2
     return points
+
 
 def cam3d2rad(cam3d):
     """
@@ -27,8 +29,7 @@ def cam3d2rad(cam3d):
     backend, atan2 = (np, np.arctan2)
     lon = atan2(cam3d[..., 0], cam3d[..., 1])
     # lat = backend.arcsin(cam3d[..., 1] / backend.linalg.norm(cam3d, axis=-1))
-    lat = backend.arccos(
-        cam3d[..., 2] / backend.linalg.norm(cam3d, axis=-1)) - np.pi/2
+    lat = backend.arccos(cam3d[..., 2] / backend.linalg.norm(cam3d, axis=-1)) - np.pi / 2
     return backend.stack([lon, lat], -1)
 
 
@@ -83,6 +84,7 @@ def cam3d2pix(cam3d, image):
     img_height, img_width = image.shape[:2]
     campix = camrad2pix(cam3d2rad(cam3d), img_height=img_height, img_width=img_width)
     return campix
+
 
 def obj2frame(point, bdb3d):
     """
@@ -154,7 +156,8 @@ def bdb3d_corners(bdb3d: (dict, np.ndarray)):
         corners = obj2frame(corners, bdb3d)
     return corners
 
-def bdb3d_corners_no_order(basis:np.array, centroid:np.array, half_sizes:np.array)-> np.array:
+
+def bdb3d_corners_no_order(basis: np.array, centroid: np.array, half_sizes: np.array) -> np.array:
     """_summary_
 
     Args:
@@ -200,8 +203,8 @@ def wrapped_line(image, p1, p2, colour, thickness, lineType=cv2.LINE_AA):
 
     dist1 = np.linalg.norm(_p1 - _p2)
 
-    p1b = np.array([p1[0]+image.shape[1], p1[1]])
-    p2b = np.array([p2[0]-image.shape[1], p2[1]])
+    p1b = np.array([p1[0] + image.shape[1], p1[1]])
+    p2b = np.array([p2[0] - image.shape[1], p2[1]])
 
     dist2 = np.linalg.norm(_p1 - p2b)
 
@@ -212,9 +215,15 @@ def wrapped_line(image, p1, p2, colour, thickness, lineType=cv2.LINE_AA):
         cv2.line(image, tuple(p1b), p2, colour, thickness, lineType=lineType)
 
 
-
 # visualize 3dbbox on panorama
-def vis_objs3d(image, v_bbox3d, camera_position, b_show_axes=False, b_show_centroid=False, b_show_bbox3d=True, b_show_info=False, thickness=2):
+def vis_objs3d(image,
+               v_bbox3d,
+               camera_position,
+               b_show_axes=False,
+               b_show_centroid=False,
+               b_show_bbox3d=True,
+               b_show_info=False,
+               thickness=2):
 
     def draw_line3d(image, p1, p2, color, thickness, quality=30, frame='world'):
         color = (np.ones(3, dtype=np.uint8) * color).tolist()
@@ -226,23 +235,20 @@ def vis_objs3d(image, v_bbox3d, camera_position, b_show_axes=False, b_show_centr
         pix = np.round(cam3d2pix(cam3d=normal_points, image=image)).astype(np.int32)
         for t in range(quality - 1):
             p1, p2 = pix[t], pix[t + 1]
-            wrapped_line(image, tuple(p1), tuple(p2), color,
-                         thickness, lineType=cv2.LINE_AA)
+            wrapped_line(image, tuple(p1), tuple(p2), color, thickness, lineType=cv2.LINE_AA)
 
     def draw_objaxes(image, centroid, sizes, rotation, thickness=2):
 
         for axis in np.eye(3, dtype=np.float32):
             endpoint = rotation @ ((axis / 2) * sizes) + centroid
             color = axis * 255
-            draw_line3d(image, centroid, endpoint,
-                        color, thickness, frame='cam3d')
+            draw_line3d(image, centroid, endpoint, color, thickness, frame='cam3d')
 
     def draw_centroid(image, centroid, color, thickness=2):
         color = (np.ones(3, dtype=np.uint8) * color).tolist()
-        normal_centroid = centroid/np.linalg.norm(centroid)
+        normal_centroid = centroid / np.linalg.norm(centroid)
         center = cam3d2pix(normal_centroid)
-        cv2.circle(image, tuple(center.astype(np.int32).tolist()),
-                   5, color, thickness=thickness, lineType=cv2.LINE_AA)
+        cv2.circle(image, tuple(center.astype(np.int32).tolist()), 5, color, thickness=thickness, lineType=cv2.LINE_AA)
 
     def draw_bdb3d(image, bdb3d, color, thickness=2):
         bbox_frame = 'camera'
@@ -277,19 +283,25 @@ def vis_objs3d(image, v_bbox3d, camera_position, b_show_axes=False, b_show_centr
         # color = [255 - c for c in color]
         # bdb3d centroid in camera frame
         bdb3d_centeroid_c = (bdb3d_centeroid_w - camera_position) * 0.001
-        normal_centroid = bdb3d_centeroid_c/np.linalg.norm(bdb3d_centeroid_c)
+        normal_centroid = bdb3d_centeroid_c / np.linalg.norm(bdb3d_centeroid_c)
         bdb3d_pix = cam3d2pix(normal_centroid, image=image)
         bottom_left = bdb3d_pix.astype(np.int32)
         bottom_left[1] -= 6
-        cv2.putText(image, obj_cls_name, tuple(bottom_left.tolist()),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness=1, lineType=cv2.LINE_AA)
+        cv2.putText(image,
+                    obj_cls_name,
+                    tuple(bottom_left.tolist()),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    color,
+                    thickness=1,
+                    lineType=cv2.LINE_AA)
 
     image = image.copy()
     dis = [np.linalg.norm([o['centroid']]) for o in v_bbox3d]
     i_objs = sorted(range(len(dis)), key=lambda k: dis[k])
     for i_obj in reversed(i_objs):
         bdb3d = v_bbox3d[i_obj]
-        obj_label = bdb3d['name']
+        obj_label = bdb3d['class']
 
         color = (np.random.random(3) * 255).astype(np.uint8).tolist()
         centroid = np.array(bdb3d['centroid'])
