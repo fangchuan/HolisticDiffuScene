@@ -5,8 +5,9 @@ numpy array. This can be used to produce samples for FID evaluation.
 
 import os
 import sys
-sys.path.append(".") # Adds higher directory to python modules path.
-sys.path.append("..") # Adds higher directory to python modules path.
+
+sys.path.append(".")  # Adds higher directory to python modules path.
+sys.path.append("..")  # Adds higher directory to python modules path.
 import argparse
 import datetime
 import time
@@ -30,15 +31,11 @@ def main():
 
     dist_util.setup_dist()
     log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
-    logger.configure(dir=log_dir, format_strs=['tensorboard','stdout','log','csv'])
+    logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
     logger.log("creating UNet model and diffusion model ...")
-    model, diffusion = create_model_and_diffusion(
-        **args_to_dict(args, model_and_diffusion_defaults().keys())
-    )
-    model.load_state_dict(
-        dist_util.load_state_dict(args.model_path, map_location="cpu")
-    )
+    model, diffusion = create_model_and_diffusion(**args_to_dict(args, model_and_diffusion_defaults().keys()))
+    model.load_state_dict(dist_util.load_state_dict(args.model_path, map_location="cpu"))
     model.to(dist_util.dev())
     model.eval()
 
@@ -52,13 +49,11 @@ def main():
         model_kwargs = {}
         if args.b_class_cond:
             # ignore 'undefined' class
-            max_layout_types = (NUM_CLASSES-1)
+            max_layout_types = (NUM_CLASSES - 1)
             layout_type_lst = th.randint(low=0, high=max_layout_types, size=(args.batch_size,), device=dist_util.dev())
             layout_type_lst = th.full((args.batch_size,), 2, device=dist_util.dev())
             model_kwargs["y"] = layout_type_lst
-        sample_fn = (
-            diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
-        )
+        sample_fn = (diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop)
         sample = sample_fn(
             model=model,
             shape=(args.batch_size, layout_channel_size, layout_size),
@@ -74,18 +69,16 @@ def main():
         dist.all_gather(gathered_samples, sample)  # gather not supported with NCCL
         all_layout_lst.extend([sample.cpu().numpy() for sample in gathered_samples])
         if args.b_class_cond:
-            gathered_labels = [
-                th.zeros_like(layout_type_lst) for _ in range(dist.get_world_size())
-            ]
+            gathered_labels = [th.zeros_like(layout_type_lst) for _ in range(dist.get_world_size())]
             dist.all_gather(gathered_labels, layout_type_lst)
             all_layout_type_lst.extend([labels.cpu().numpy() for labels in gathered_labels])
         logger.log(f"created {len(all_layout_lst) * args.batch_size} samples")
 
     arr = np.concatenate(all_layout_lst, axis=0)
-    arr = arr[: args.num_samples]
+    arr = arr[:args.num_samples]
     if args.b_class_cond:
         label_arr = np.concatenate(all_layout_type_lst, axis=0)
-        label_arr = label_arr[: args.num_samples]
+        label_arr = label_arr[:args.num_samples]
     if dist.get_rank() == 0:
         shape_str = "x".join([str(x) for x in arr.shape])
         out_path = os.path.join(logger.get_dir(), f"samples_{shape_str}.npz")

@@ -18,7 +18,8 @@ from typing import List, Tuple, Dict, Any, Union
 
 from misc.utils import matrix_to_euler_angles
 from misc.equirect_projection import vis_objs3d
-from dataset.metadata import INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS, ST3D_LIVINGROOM_MIN_LEN, ST3D_BEDROOM_MIN_LEN, ST3D_DININGROOM_MIN_LEN
+from dataset.metadata import (INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS, COLOR_TO_LABEL,
+                              ST3D_LIVINGROOM_MIN_LEN, ST3D_BEDROOM_MIN_LEN, ST3D_DININGROOM_MIN_LEN)
 from dataset.st3d_dataset import get_mesh_from_corners, np_coorx2u, np_coory2v
 '''
 Assume datas is extracted by `misc/structured3d_extract_zip.py`.
@@ -85,7 +86,11 @@ def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
             # only use z angle, rad
             transform_matrix[0:3, 0:3] = heading2rotmat(box['angles'][-1])
             box_trimesh_fmt = trimesh.creation.box(box_lengths, transform_matrix)
-            return box_trimesh_fmt.subdivide()
+            color = list(COLOR_TO_LABEL.keys())[list(COLOR_TO_LABEL.values()).index(box['class'])]
+            box_trimesh_fmt.visual.face_colors = np.random.uniform(0, 1, (len(box_trimesh_fmt.faces), 3))
+            # for facet in box_trimesh_fmt.facets:
+            #     box_trimesh_fmt.visual.face_colors[facet] = [color[0], color[1], color[2], 255]
+            return box_trimesh_fmt
 
         scene = trimesh.scene.Scene()
         for box in scene_bbox:

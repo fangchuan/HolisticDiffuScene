@@ -16,28 +16,30 @@ import open3d as o3d
 # from misc.colors import colormap_255
 
 from dataset.st3d_dataset import PanoCorBoundDataset, np_coor2xy, np_coor2xy, ROOM_TYPE_DICT
-
+from prepare_st3d_dataset import vis_scene_mesh
+from misc.equirect_projection import vis_objs3d
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--root_dir', default='/data/dataset/Structured3D/preprocessed/st3d_train_full_raw_light/')
-    parser.add_argument('--samples_filepath', default='/home/hkust/fangchuan/codes/Structured3D/sample_results/samples_10x3x1024.npz')
-    parser.add_argument('--ith', default=0, type=int,
-                        help='Pick a data id to visualize.'
-                             '-1 for visualize all data')
-    parser.add_argument('--flip', action='store_true',
-                        help='whether to random flip')
-    parser.add_argument('--rotate', action='store_true',
-                        help='whether to random horizon rotation')
-    parser.add_argument('--gamma', action='store_true',
-                        help='whether to random luminance change')
-    parser.add_argument('--vis_layout_mesh', action='store_true',
-                        help='whether to visualize layout mesh')
-    parser.add_argument('--vis_layout_wireframe', action='store_true',
-                        help='whether to visualize wireframe of layout')
+    parser.add_argument('--root_dir',
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/all_raw_light/bedroom/')
+    parser.add_argument(
+        '--samples_filepath',
+        default=
+        '/home/hkust/fangchuan/codes/Structured3D/sample_results/openai-2023-06-12-19-05-30-009115/samples_10x4x1024.npz'
+    )
+    parser.add_argument('--room_type', default='bedroom', type=str, help='generated room type')
+    parser.add_argument('--ith', default=0, type=int, help='Pick a data id to visualize.'
+                        '-1 for visualize all data')
+    parser.add_argument('--flip', action='store_true', help='whether to random flip')
+    parser.add_argument('--rotate', action='store_true', help='whether to random horizon rotation')
+    parser.add_argument('--gamma', action='store_true', help='whether to random luminance change')
+    parser.add_argument('--vis_layout_mesh', action='store_true', help='whether to visualize layout mesh')
+    parser.add_argument('--vis_layout_wireframe', action='store_true', help='whether to visualize wireframe of layout')
     parser.add_argument('--out_dir', default='sample_dataset_visualization')
     return parser.parse_args()
+
 
 def visualize_a_data(img, bound_y_lst, corner_y_lst):
     img = (img.numpy().transpose([1, 2, 0]) * 255).astype(np.uint8)
@@ -61,7 +63,8 @@ def visualize_a_data(img, bound_y_lst, corner_y_lst):
 
     return np.concatenate([git_corner_img, padding_img, img_with_boundary], 0)
 
-def visualize_synth_data(bound_y_lst, corner_y_lst):
+
+def visualize_synth_data(bound_y_lst, corner_y_lst, obj_bbox_lst, cam_position):
     img = np.zeros((512, 1024, 3), np.uint8)
     img_H, img_W = img.shape[:2]
     # scale to image pixel coordinates
@@ -76,10 +79,19 @@ def visualize_synth_data(bound_y_lst, corner_y_lst):
     img_with_boundary[bound_y_lst[0], np.arange(len(bound_y_lst[0])), 1] = 255
     img_with_boundary[bound_y_lst[1], np.arange(len(bound_y_lst[1])), 1] = 255
 
-    return np.concatenate([git_corner_img, padding_img, img_with_boundary], 0)
+    ret_img = np.concatenate([git_corner_img, padding_img, img_with_boundary], 0)
+    ret_img = vis_objs3d(ret_img,
+                         v_bbox3d=obj_bbox_lst,
+                         camera_position=cam_position,
+                         b_show_axes=False,
+                         b_show_centroid=False,
+                         b_show_bbox3d=True,
+                         b_show_info=True)
+    return ret_img
 
-# save layout mesh 
-def save_layout_mesh(save_filepath:str, points:np.array, faces:np.array):
+
+# save layout mesh
+def save_layout_mesh(save_filepath: str, points: np.array, faces: np.array):
     ply_header = '\n'.join([
         'ply',
         'format ascii 1.0',
@@ -103,7 +115,6 @@ def save_layout_mesh(save_filepath:str, points:np.array, faces:np.array):
             f.write(f'3 {i:d} {j:d} {k:d}\n')
 
 
-
 if __name__ == "__main__":
 
     args = parse_args()
@@ -114,21 +125,22 @@ if __name__ == "__main__":
     for key, val in vars(args).items():
         print('    {:16} {}'.format(key, val))
 
-    dataset = PanoCorBoundDataset(
-        root_dir=args.root_dir,
-        flip=args.flip, rotate=args.rotate, gamma=args.gamma, 
-        return_path=True)
+    dataset = PanoCorBoundDataset(root_dir=args.root_dir,
+                                  flip=args.flip,
+                                  rotate=args.rotate,
+                                  gamma=args.gamma,
+                                  return_path=True)
 
     # Showing some information about dataset
     print('len(dataset): {}'.format(len(dataset)))
-    img, boundary_lst, wall_y_prob_lst, img_filepath = dataset[0]
-    print('image : ', img.size())
-    print('ceiling-wall and floor-wall boundary veto: ', boundary_lst.size())
-    print('wall-wall probability vector: ', wall_y_prob_lst.size())
+    # img, boundary_lst, wall_y_prob_lst, img_filepath = dataset[0]
+    # print('image : ', img.size())
+    # print('ceiling-wall and floor-wall boundary veto: ', boundary_lst.size())
+    # print('wall-wall probability vector: ', wall_y_prob_lst.size())
 
     b_vis_mesh_from_corners = False
     b_vis_mesh_from_boundary_lst = True
-    
+
     # load sample results: Bx3x1024
     sample_result_lst = np.load(args.samples_filepath)
 
@@ -148,7 +160,7 @@ if __name__ == "__main__":
     #         if b_vis_mesh_from_corners:
     #             layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_gt_layout_mesh(idx)
     #         elif b_vis_mesh_from_boundary_lst:
-    #             layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_layout_mesh_from_prediction(bound_ceil_floor_lst=boundary_lst, 
+    #             layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_layout_mesh_from_prediction(bound_ceil_floor_lst=boundary_lst,
     #                                                                                                                           wall_prob_lst=wall_prob_lst)
     #         print('layout_ply_points: ', layout_ply_points.shape)
     #         print('layout_ply_faces: ', layout_ply_faces.shape)
@@ -190,35 +202,58 @@ if __name__ == "__main__":
     #                 draw_geometries.append(wf_line_set)
 
     #             o3d.visualization.draw_geometries(draw_geometries, mesh_show_back_face=True)
-            
+
     #         break
 
     for idx in range(len(sample_result_lst['arr_0'])):
         scene_sample_result = sample_result_lst['arr_0'][idx]
+        # print(f'scene_sample_result: {scene_sample_result.shape}')
         scene_sample_label = sample_result_lst['arr_1'][idx]
         scene_sample_label = [key for key in ROOM_TYPE_DICT.keys() if ROOM_TYPE_DICT[key] == scene_sample_label][0]
         scene_sample_label = scene_sample_label.replace(' ', '_')
         print(f'scene_sample_label: {scene_sample_label}')
 
-        # save results ply
-        boundary_lst = scene_sample_result[:2, :]
-        wall_prob_lst = scene_sample_result[2, :]
+        # convert sample into real range
+        boundary_lst = scene_sample_result[:2, :] * 0.5 * np.pi
+        wall_prob_lst = (scene_sample_result[2, :] + 1) * 0.5
+        if args.room_type == 'bedroom':
+            obj_feat_num, obj_feat_dim = 13, 30
+        elif args.room_type == 'living_room':
+            obj_feat_num, obj_feat_dim = 24, 32
+        elif args.room_type == 'dining_room':
+            obj_feat_num, obj_feat_dim = 24, 32
 
-        # save synthetic boundaries as image
-        img_fname = f'{scene_sample_label}_{idx}.png'
-        out_img = visualize_synth_data(bound_y_lst=boundary_lst, corner_y_lst=wall_prob_lst)
-        save_img_filepath = os.path.join(args.out_dir, img_fname)
-        Image.fromarray(out_img).save(save_img_filepath)
+        obj_bbox_lst = scene_sample_result[3, :(obj_feat_num * obj_feat_dim)].reshape((obj_feat_num, obj_feat_dim))
 
         if b_vis_mesh_from_corners:
             layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_gt_layout_mesh(idx)
         elif b_vis_mesh_from_boundary_lst:
-            layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_layout_mesh_from_prediction(bound_ceil_floor_lst=boundary_lst, 
-                                                                                                                            wall_prob_lst=wall_prob_lst, b_force_raw=True)
+            layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst, room_layout_mesh, obj_bbox_dict_lst = dataset.get_predicted_layout_mesh(
+                room_type=args.room_type,
+                bound_ceil_floor_lst=boundary_lst,
+                wall_prob_lst=wall_prob_lst,
+                obj_bbox_lst=obj_bbox_lst,
+                b_force_raw=False)
         print('layout_ply_points: ', layout_ply_points.shape)
         print('layout_ply_faces: ', layout_ply_faces.shape)
         print('layout_corner_lst: ', layout_corner_lst.shape)
         print('cam_pos_lst: ', cam_pos_lst)
+        print('obj_bbox_dict_lst: ', len(obj_bbox_dict_lst))
+
+        # save synthetic boundaries as image
+        img_fname = f'{scene_sample_label}_{idx}.png'
+        out_img = visualize_synth_data(bound_y_lst=boundary_lst,
+                                       corner_y_lst=wall_prob_lst,
+                                       obj_bbox_lst=obj_bbox_dict_lst,
+                                       cam_position=cam_pos_lst)
+        save_img_filepath = os.path.join(args.out_dir, img_fname)
+        Image.fromarray(out_img).save(save_img_filepath)
+
+        # save synthetic object and room_layout as ply
         ply_fname = f'{scene_sample_label}_{idx}.ply'
         save_ply_filepath = os.path.join(args.out_dir, ply_fname)
-        save_layout_mesh(save_ply_filepath, layout_ply_points, layout_ply_faces)
+        # save_layout_mesh(save_ply_filepath, layout_ply_points, layout_ply_faces)
+        scene_mesh = vis_scene_mesh(room_layout_mesh=room_layout_mesh,
+                                    obj_bbox_lst=obj_bbox_dict_lst,
+                                    room_layout_bbox=None)
+        scene_mesh.export(save_ply_filepath)

@@ -1,4 +1,5 @@
 import sys
+
 sys.path = [p for p in sys.path if "2.7" not in p]
 
 import os
@@ -10,55 +11,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from multiprocessing import Process
-from dataset.metadata import INVALID_SCENES_LST, INVALID_ROOMS_LST
+from dataset.metadata import INVALID_SCENES_LST, INVALID_ROOMS_LST, COLOR_TO_LABEL
 
 PATH_TO_DATASET = '/data/dataset/Structured3D/Structured3D/'
-
-
-
-COLOR_TO_LABEL = {
-    (0, 0, 0): "unknown",
-    (174, 199, 232): "wall",
-    (152, 223, 138): "floor",
-    (31, 119, 180): "cabinet",
-    (255, 187, 120): "bed",
-    (188, 189, 34): "chair",
-    (140, 86, 75): "sofa",
-    (255, 152, 150): "table",
-    (214, 39, 40): "door",
-    (197, 176, 213): "window",
-    (148, 103, 189): "bookshelf",
-    (196, 156, 148): "picture",
-    (23, 190, 207): "counter",
-    (178, 76, 76): "blinds",
-    (247, 182, 210): "desk",
-    (66, 188, 102): "shelves",
-    (219, 219, 141): "curtain",
-    (140, 57, 197): "dresser",
-    (202, 185, 52): "pillow",
-    (51, 176, 203): "mirror",
-    (200, 54, 131): "floor mat",
-    (92, 193, 61): "clothes",
-    (78, 71, 183): "ceiling",
-    (172, 114, 82): "books",
-    (255, 127, 14): "fridge",
-    (91, 163, 138): "television",
-    (153, 98, 156): "paper",
-    (140, 153, 101): "towel",
-    (158, 218, 229): "shower curtain",
-    (100, 125, 154): "box",
-    (178, 127, 135): "whiteboard",
-    (120, 185, 128): "person",
-    (146, 111, 194): "night stand",
-    (44, 160, 44): "toilet",
-    (112, 128, 144): "sink",
-    (96, 207, 209): "lamp",
-    (227, 119, 194): "bathtub",
-    (213, 92, 176): "bag",
-    (94, 106, 211): "structure",
-    (82, 84, 163): "furniture",
-    (100, 85, 144): "prop"
-}
 
 
 def flip_towards_viewer(normals, points):
@@ -111,7 +66,7 @@ def get_corners_of_bb3d_no_index(basis, coeffs, centroid):
     return corners
 
 
-def complete_bbox_json(path, scene)->int:
+def complete_bbox_json(path, scene) -> int:
     annotations_file = os.path.join(path, "scene_{}".format(scene), "bbox_3d.json")
     fixed_annotations_file = os.path.join(path, "scene_{}".format(scene), "bbox_3d_fixed.json")
 
@@ -158,7 +113,8 @@ def complete_bbox_json(path, scene)->int:
             bbox = annos[id2index[index]]
 
             X, Y = np.where(instance == index)
-            labels, occurences = np.unique([COLOR_TO_LABEL[tuple(semantic[x][y])] for x, y in zip(X, Y)], return_counts=True)
+            labels, occurences = np.unique([COLOR_TO_LABEL[tuple(semantic[x][y])] for x, y in zip(X, Y)],
+                                           return_counts=True)
 
             if 'candidate_labels_and_occurences' not in bbox:
                 bbox['candidate_labels_and_occurences'] = dict(zip(labels, [str(occ) for occ in occurences]))
@@ -179,20 +135,18 @@ def complete_bbox_json(path, scene)->int:
                 bbox['corners_no_index'] = corners.tolist()
             if 'corners_with_index' not in bbox:
                 bbox['corners_with_index'] = corners_with_index.tolist()
-            
+
             room_annos_lst.append(bbox.copy())
         # update bbox_3d.json for current room
         with open(room_annotations_file, 'w') as f:
             json.dump(room_annos_lst, f)
-        
-        success_cnt += 1    
+
+        success_cnt += 1
     # update bbox_3d.json for the whole scene
     with open(fixed_annotations_file, 'w') as f:
         json.dump(annos, f)
 
     return success_cnt
-    
-
 
 
 def complete_bbox_json_for_indexes(path, scenes_indexes, processor_id):
@@ -201,7 +155,8 @@ def complete_bbox_json_for_indexes(path, scenes_indexes, processor_id):
     for counter, scene_index in enumerate(scenes_indexes):
         success_room_cnt += complete_bbox_json(path, scene_index)
         text = 'Processor {} finished scene {}, that is {}/{} scenes, {} rooms, progress is at: {}%'.format(
-        str(processor_id), scene_index, str(counter + 1), str(len(scenes_indexes)), str(success_room_cnt), str((counter + 1) / len(scenes_indexes) * 100.))
+            str(processor_id), scene_index, str(counter + 1), str(len(scenes_indexes)), str(success_room_cnt),
+            str((counter + 1) / len(scenes_indexes) * 100.))
         print(text)
         with open(processor_report_file, 'w+') as f:
             f.write(text + os.linesep)
@@ -227,7 +182,7 @@ if __name__ == "__main__":
     nb_processors = 1
     length = len(scene_indexes_to_convert)
     scene_indexes_splits = [
-        scene_indexes_to_convert[i * length // nb_processors: (i + 1) * length // nb_processors]
+        scene_indexes_to_convert[i * length // nb_processors:(i + 1) * length // nb_processors]
         for i in range(nb_processors)
     ]
 

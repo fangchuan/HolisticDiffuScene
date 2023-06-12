@@ -280,9 +280,9 @@ def vis_objs3d(image,
             obj_cls_name (_type_): _description_
             color (_type_): _description_
         """
-        # color = [255 - c for c in color]
         # bdb3d centroid in camera frame
-        bdb3d_centeroid_c = (bdb3d_centeroid_w - camera_position) * 0.001
+        # bdb3d_centeroid_c = (bdb3d_centeroid_w - camera_position) * 0.001
+        bdb3d_centeroid_c = bdb3d_centeroid_w
         normal_centroid = bdb3d_centeroid_c / np.linalg.norm(bdb3d_centeroid_c)
         bdb3d_pix = cam3d2pix(normal_centroid, image=image)
         bottom_left = bdb3d_pix.astype(np.int32)
@@ -297,16 +297,16 @@ def vis_objs3d(image,
                     lineType=cv2.LINE_AA)
 
     image = image.copy()
-    dis = [np.linalg.norm([o['centroid']]) for o in v_bbox3d]
+    dis = [np.linalg.norm([o['center']]) for o in v_bbox3d]
     i_objs = sorted(range(len(dis)), key=lambda k: dis[k])
     for i_obj in reversed(i_objs):
         bdb3d = v_bbox3d[i_obj]
         obj_label = bdb3d['class']
 
         color = (np.random.random(3) * 255).astype(np.uint8).tolist()
-        centroid = np.array(bdb3d['centroid'])
-        sizes = np.array(bdb3d['dimensions'])
-        rotation = np.array(bdb3d['rotations'])
+        centroid = np.array(bdb3d['center'])
+        sizes = np.array(bdb3d['size'])
+        rotation = np.array(bdb3d['angles'])
 
         if b_show_axes:
             draw_objaxes(image, centroid, sizes, rotation, thickness=thickness)

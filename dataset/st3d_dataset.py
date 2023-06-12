@@ -13,7 +13,8 @@ from typing import Any, List, Dict, Tuple
 # import imghdr
 import json
 
-import torch
+import trimesh
+
 import torch.utils.data as data
 from . import panostretch
 from .metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, \
@@ -497,7 +498,7 @@ def mean_percentile(vec, p1=25, p2=75):
     return vec[(vmin <= vec) & (vec <= vmax)].mean()
 
 
-def refine_boundary_by_fix_floor(coor_y_ceil, coor_y_floor, z_floor=50, coorH=512):
+def refine_boundary_by_fix_floor(coor_y_ceil, coor_y_floor, z_ceil=50, coorH=512):
     '''
     Refine coor_y_ceil by coor_y_floor
     coor_y_floor are assumed on given height z_floor
@@ -505,7 +506,7 @@ def refine_boundary_by_fix_floor(coor_y_ceil, coor_y_floor, z_floor=50, coorH=51
     v_ceil = np_coory2v(coor_y_ceil, coorH)
     v_floor = np_coory2v(coor_y_floor, coorH)
 
-    c0 = z_floor / np.tan(v_ceil)
+    c0 = z_ceil / np.tan(v_ceil)
     z1 = c0 * np.tan(v_floor)
     z1_mean = mean_percentile(z1)
     v1_refine = np.arctan2(z1_mean, c0)
@@ -536,7 +537,7 @@ def get_mesh_from_corners(corners_lst: np.ndarray,
         H (int): _description_
         W (int): _description_
         camera_position (np.array): _description_
-        rgb_img (np.array): _description_
+        rgb_img (np.array): rgb panorama
         b_ignore_floor (bool, optional): _description_. Defaults to False.
         b_ignore_ceiling (bool, optional): _description_. Defaults to True.
         b_ignore_wall (bool, optional): _description_. Defaults to False.
@@ -916,11 +917,13 @@ class PanoCorBoundDataset(data.Dataset):
 
         return (points, faces, corners_lst, cam_pos_lst)
 
-    def get_layout_mesh_from_prediction(self,
-                                        bound_ceil_floor_lst: np.array,
-                                        wall_prob_lst: np.array,
-                                        b_force_raw: bool = False,
-                                        b_force_cuboid: bool = False) -> Tuple:
+    def get_predicted_layout_mesh(self,
+                                  room_type: str,
+                                  bound_ceil_floor_lst: np.array,
+                                  wall_prob_lst: np.array,
+                                  obj_bbox_lst: np.array = None,
+                                  b_force_raw: bool = False,
+                                  b_force_cuboid: bool = False) -> Tuple:
         # random choose a camera position
         # idx = np.random.randint(len(self.local_img_fnames))
         idx = 2
@@ -959,7 +962,7 @@ class PanoCorBoundDataset(data.Dataset):
             # Do not run post-processing, export raw polygon (1024*2 vertices) instead.
             # [TODO] Current post-processing lead to bad results on complex layout.
             # celing pixel coords
-            cor = np.stack([np.arange(1024), y_boundary_lst[0]], 1)
+            cor = np.stack([np.arange(1024), y_boundary_lst[0]], axis=1)
 
         else:
             # Detech wall-wall peaks
@@ -1010,6 +1013,64 @@ class PanoCorBoundDataset(data.Dataset):
                                               camera_position=cam_pos_lst,
                                               rgb_img=equirect_img,
                                               b_ignore_floor=False,
-                                              b_ignore_ceiling=True,
-                                              b_ignore_wall=False)
-        return (points, faces, corners_lst, cam_pos_lst)
+                                              b_ignore_ceiling=False,
+                                              b_ignore_wall=False,
+                                              b_in_world_frame=False)
+        room_layout_mesh = None
+        obj_bbox_dict_list = None
+        if obj_bbox_lst is not None:
+            room_layout_mesh = trimesh.Trimesh(vertices=points[:, :3], faces=faces)
+            room_layout_bbox_min = trimesh.bounds.corners(room_layout_mesh.bounding_box_oriented.bounds).min(axis=0)
+            room_layout_bbox_max = trimesh.bounds.corners(room_layout_mesh.bounding_box_oriented.bounds).max(axis=0)
+            room_layout_bbox_size = room_layout_bbox_max - room_layout_bbox_min
+            print(f'room_layout_bbox_size: {room_layout_bbox_size}')
+            layout_bbox = room_layout_mesh.bounding_box_oriented
+
+            if room_type == 'bedroom':
+                class_labels_lst = (ST3D_BEDROOM_FURNITURE)
+            elif room_type == 'living_room':
+                class_labels_lst = (ST3D_LIVINGROOM_FURNITURE)
+            elif room_type == 'dining_room':
+                class_labels_lst = (ST3D_DININGROOM_FURNITURE)
+            else:
+                raise NotImplementedError
+            class_idx = 0
+            centroid_idx = len(class_labels_lst)
+            size_idx = 3 + centroid_idx
+            angle_idx = 3 + size_idx
+
+            obj_bbox_dict_list = []
+            for i in range(len(obj_bbox_lst)):
+                # print(f'predict object bbox feature: {obj_bbox_lst[i]}')
+                obj_bbox_dict = {}
+
+                # recover class label
+                class_label_prob = obj_bbox_lst[i][:centroid_idx]
+                # print(f'class_label_prob: {class_label_prob}')
+                class_label_prob = np.where(class_label_prob > 0.5, 1, 0)
+                if len(class_label_prob) == 0:
+                    print(f'object {i} has no class label')
+                class_label = class_labels_lst[class_label_prob.argmax()]
+                if class_label == 'empty':
+                    print(f'object {i} is empty')
+                    continue
+                obj_bbox_dict['class'] = class_label
+
+                # recover centroid
+                centroid = obj_bbox_lst[i][centroid_idx:size_idx]
+                centroid = centroid * room_layout_bbox_size
+                obj_bbox_dict['center'] = centroid.tolist()
+                # recover size
+                size = obj_bbox_lst[i][size_idx:angle_idx]
+                size = (size + 1) * 0.5
+                size = size * room_layout_bbox_size
+                obj_bbox_dict['size'] = size.tolist()
+                # recover angle
+                angle = obj_bbox_lst[i][angle_idx:]
+                angle_0 = np.arccos(angle[0])
+                angle_1 = np.arcsin(angle[1])
+                print(f' object {class_label} centroid: {centroid} size: {size} angle: {angle_0}')
+                obj_bbox_dict['angles'] = [0, 0, angle_0]
+                obj_bbox_dict_list.append(obj_bbox_dict)
+
+        return (points, faces, corners_lst, cam_pos_lst, room_layout_mesh, obj_bbox_dict_list)
