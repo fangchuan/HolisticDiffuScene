@@ -191,11 +191,11 @@ ST3D_BEDROOM_FURNITURE = [
     'night stand', 'desk', 'counter', 'curtain', 'door', 'sofa', 'mirror', 'window', 'cabinet', 'lamp', 'empty'
 ]
 
-ST3D_BEDROOM_FURNITURE_CNTS = {('lamp', 7658), ('cabinet', 6199), ('door', 5326), ('night stand', 4937), ('bed', 4885),
-                               ('curtain', 4734), ('picture', 4673), ('window', 4351), ('chair', 2117),
-                               ('television', 2090), ('desk', 1389), ('pillow', 1359), ('dresser', 694), ('table', 506),
-                               ('sofa', 472), ('shelves', 371), ('mirror', 161), ('fridge', 9), ('counter', 6),
-                               ('bathtub', 3), ('sink', 1)}
+ST3D_BEDROOM_FURNITURE_CNTS = {'lamp': 7658, 'cabinet':6199, 'door': 5326, 'night stand': 4937, 'bed':4885,
+                               'curtain': 4734, 'picture': 4673, 'window': 4351, 'chair': 2117,
+                               'television': 2090, 'desk': 1389, 'pillow': 1359, 'dresser': 694, 'table': 506,
+                               'sofa': 472, 'shelves': 371, 'mirror': 161, 'fridge': 9, 'counter': 6,
+                               'bathtub': 3, 'sink': 1}
 
 ST3D_DININGROOM_MIN_LEN = 3
 ST3D_DININGROOM_MAX_LEN = 23
@@ -206,10 +206,10 @@ ST3D_DININGROOM_FURNITURE = [
     'fridge', 'picture', 'sofa', 'window', 'lamp', 'cabinet', 'empty'
 ]
 
-ST3D_DININGROOM_FURNITURE_CNTS = {('lamp', 398), ('door', 319), ('cabinet', 283), ('chair', 244), ('table', 215),
-                                  ('picture', 184), ('window', 167), ('curtain', 110), ('sofa', 81), ('fridge', 42),
-                                  ('pillow', 28), ('shelves', 18), ('counter', 16), ('desk', 8), ('television', 7),
-                                  ('mirror', 6), ('sink', 5), ('box', 2)}
+ST3D_DININGROOM_FURNITURE_CNTS = {'lamp': 398, 'door': 319, 'cabinet': 283, 'chair': 244, 'table': 215,
+                                  'picture': 184, 'window': 167, 'curtain': 110, 'sofa': 81, 'fridge': 42,
+                                  'pillow': 28, 'shelves': 18, 'counter': 16, 'desk': 8, 'television': 7,
+                                  'mirror': 6, 'sink': 5, 'box': 2}
 
 ST3D_LIVINGROOM_MIN_LEN = 3
 ST3D_LIVINGROOM_MAX_LEN = 23
@@ -220,8 +220,8 @@ ST3D_LIVINGROOM_FURNITURE = [
     'empty'
 ]
 
-ST3D_LIVINGROOM_FURNITURE_CNTS = {('lamp', 10760), ('door', 10585), ('cabinet', 7500), ('table', 6606), ('chair', 5767),
-                                  ('sofa', 5603), ('picture', 5514), ('curtain', 3609), ('television', 2019),
-                                  ('pillow', 1950), ('window', 1881), ('shelves', 937), ('fridge', 664),
-                                  ('mirror', 304), ('counter', 258), ('night stand', 156), ('desk', 143), ('bed', 69),
-                                  ('sink', 62), ('dresser', 12), ('bathtub', 3), ('box', 2), ('toilet', 1)}
+ST3D_LIVINGROOM_FURNITURE_CNTS = {'lamp': 10760, 'door': 10585, 'cabinet': 7500, 'table': 6606, 'chair': 5767,
+                                  'sofa': 5603, 'picture': 5514, 'curtain': 3609, 'television': 2019,
+                                  'pillow': 1950, 'window': 1881, 'shelves': 937, 'fridge': 664,
+                                  'mirror': 304, 'counter': 258, 'night stand': 156, 'desk': 143, 'bed': 69,
+                                  'sink': 62, 'dresser': 12, 'bathtub': 3, 'box': 2, 'toilet': 1}
