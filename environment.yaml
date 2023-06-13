@@ -207,9 +207,9 @@ dependencies:
       - tensorflow-io-gcs-filesystem==0.32.0
       - termcolor==2.3.0
       - threadpoolctl==3.1.0
-      - torch==1.12.0+cu113
-      - torchaudio==0.12.0+cu113
-      - torchvision==0.13.0+cu113
+      - torch==1.12.0+cu113  --extra-index-url https://download.pytorch.org/whl/cu113
+      - torchaudio==0.12.0+cu113  --extra-index-url https://download.pytorch.org/whl/cu113
+      - torchvision==0.13.0+cu113  --extra-index-url https://download.pytorch.org/whl/cu113
       - tqdm==4.65.0
       - traitlets==5.9.0
       - typing-extensions==4.5.0
