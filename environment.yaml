@@ -220,4 +220,5 @@ dependencies:
       - werkzeug==2.3.4
       - widgetsnbextension==4.0.7
       - wrapt==1.14.1
+      - trimesh
 prefix: /home/hkust/anaconda3/envs/structured3d
