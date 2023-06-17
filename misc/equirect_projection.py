@@ -286,7 +286,7 @@ def vis_objs3d(image,
         normal_centroid = bdb3d_centeroid_c / np.linalg.norm(bdb3d_centeroid_c)
         bdb3d_pix = cam3d2pix(normal_centroid, image=image)
         bottom_left = bdb3d_pix.astype(np.int32)
-        bottom_left[1] -= 6
+        # bottom_left[1] -= 6
         cv2.putText(image,
                     obj_cls_name,
                     tuple(bottom_left.tolist()),

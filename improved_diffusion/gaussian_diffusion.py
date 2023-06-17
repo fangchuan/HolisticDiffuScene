@@ -12,7 +12,7 @@ import numpy as np
 import torch as th
 
 from .nn import mean_flat
-from .losses import normal_kl, discretized_gaussian_log_likelihood
+from .losses import normal_kl, discretized_gaussian_log_likelihood, continuous_gaussian_log_likelihood, pred_3d_iou_loss
 from . import logger
 
 
@@ -170,6 +170,7 @@ class GaussianDiffusion:
 
     def q_sample(self, x_start, t, noise=None):
         """
+        重参数化采样x[t]
         Diffuse the data for a given number of diffusion steps.
 
         In other words, sample from q(x_t | x_0).
@@ -324,6 +325,7 @@ class GaussianDiffusion:
                  - 'sample': a random sample from the model.
                  - 'pred_xstart': a prediction of x_0.
         """
+        # 根据神经网络预测x[t-1]的均值、方差、对数方差、x[0]的预测值
         out = self.p_mean_variance(
             model,
             x,
@@ -332,8 +334,10 @@ class GaussianDiffusion:
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
         )
+        # 这里仍然使用重参数化是因为我们假设reverse process也是一个高斯过程
         noise = th.randn_like(x)
         nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(x.shape) - 1))))  # no noise when t == 0
+        # 0.5是为了得到标准差
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
@@ -578,9 +582,10 @@ class GaussianDiffusion:
 
     def _vb_terms_bpd(self, model, x_start, x_t, t, clip_denoised=True, model_kwargs=None):
         """
+        需要优化的KL散度, Eq(5,6)
         Get a term for the variational lower-bound.
 
-        The resulting units are bits (rather than nats, as one might expect).
+        The resulting units are bit pwr dimension (rather than nats, as one might expect).
         This allows for comparison to other papers.
 
         :return: a dict with the following keys:
@@ -596,12 +601,18 @@ class GaussianDiffusion:
         kl = normal_kl(true_mean, true_log_variance_clipped, out["mean"], out["log_variance"])
         kl = mean_flat(kl) / np.log(2.0)
 
-        # compute L0 loss
-        decoder_nll = -discretized_gaussian_log_likelihood(
+        # compute L0 loss: approximated by subtraction of CDF of normal distribution
+        # decoder_nll = -discretized_gaussian_log_likelihood(
+        #     x_start, means=out["mean"], log_scales=0.5 * out["log_variance"])
+        decoder_nll = -continuous_gaussian_log_likelihood(
             x_start, means=out["mean"], log_scales=0.5 * out["log_variance"])
         assert decoder_nll.shape == x_start.shape
+
+        logger.info(f"predict_gaussian_dist.log_prob(x): {decoder_nll}")
         decoder_nll = mean_flat(decoder_nll) / np.log(2.0)
 
+        # if t == 0:
+        #     iou_loss = pred_3d_iou_loss(x_start, **model_kwargs, out["mean"], out["log_variance"])
         # At the first timestep return the decoder NLL,
         # otherwise return KL(q(x_{t-1}|x_t,x_0) || p(x_{t-1}|x_t))
         output = th.where((t == 0), decoder_nll, kl)
@@ -610,6 +621,9 @@ class GaussianDiffusion:
     def training_losses(self, model, x_start, t, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
+        * only KL loss is used;
+        * only MSE loss is used;
+        * KL loss and MSE loss are used together.
 
         :param model: the model to evaluate loss on.
         :param x_start: the [N x C x ...] tensor of inputs.

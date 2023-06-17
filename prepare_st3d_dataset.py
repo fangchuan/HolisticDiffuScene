@@ -152,7 +152,7 @@ def vis_color_pointcloud(rgb_img_filepath, depth_img_filepath, saved_color_pcl_f
         print('empyt rgb image')
         exit(-1)
     color = np.clip(rgb_img, 0.0, 255.0) / 255.0
-    print(f'raw_rgb shape: {rgb_img.shape} color shape: {color.shape}, ')
+    # print(f'raw_rgb shape: {rgb_img.shape} color shape: {color.shape}, ')
 
     depth_img = np.expand_dims((depth_img / 1000.0), axis=2)
     pointcloud = depth_img * get_unit_spherical_map()

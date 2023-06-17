@@ -40,7 +40,14 @@ ROOM_TYPE_DICT = {
     'garage': 14,
     'undefined': 15
 }
+
+
 # ROOM_CLASS_LST = [10, 8, 3, 2, 0, 4, 5, 14, 13, 12, 7, 9, 11, 1, 6, 15]
+def get_room_type(room_type_v: int) -> str:
+    for k, v in ROOM_TYPE_DICT.items():
+        if v == room_type_v:
+            return k
+    return 'undefined'
 
 
 def find_occlusion(coor):
@@ -661,7 +668,8 @@ def RotationEncode(obj_bbox_angle: np.array) -> np.array:
     box_a_angle_rad = obj_bbox_angle
     return box_a_angle_rad
 
-def ordered_bboxes_with_class_frequencies(room_type:int, object_bbox_lst:List[Dict]) -> List[Dict]:
+
+def ordered_bboxes_with_class_frequencies(room_type: int, object_bbox_lst: List[Dict]) -> List[Dict]:
     if room_type == ROOM_TYPE_DICT['bedroom']:
         class_freq_dict = ST3D_BEDROOM_FURNITURE_CNTS
     elif room_type == ROOM_TYPE_DICT['living room']:
@@ -669,7 +677,7 @@ def ordered_bboxes_with_class_frequencies(room_type:int, object_bbox_lst:List[Di
     elif room_type == ROOM_TYPE_DICT['dining room']:
         class_freq_dict = ST3D_DININGROOM_FURNITURE_CNTS
 
-    bbox_size_lst = np.array([(np.array(bbox['size']) + 1)*0.5 for bbox in object_bbox_lst])
+    bbox_size_lst = np.array([(np.array(bbox['size']) + 1) * 0.5 for bbox in object_bbox_lst])
     # print(f'bbox_size_lst: {bbox_size_lst}')
     class_freqs_lst = np.array([[class_freq_dict[bbox['class']]] for bbox in object_bbox_lst])
     # print('class_labels_lst: {}, class_freqs_lst: {}'.format([bbox['class'] for bbox in object_bbox_lst], class_freqs_lst))
@@ -680,6 +688,7 @@ def ordered_bboxes_with_class_frequencies(room_type:int, object_bbox_lst:List[Di
 
     ordered_bboxes = [object_bbox_lst[i] for i in ordering[::-1]]
     return ordered_bboxes
+
 
 def padding_and_reshape_object_bbox(room_type: int, object_bbox_lst: np.array, bbox_dim: int) -> List:
     """Implement the padding for the object bounding boxes."""
@@ -694,7 +703,6 @@ def padding_and_reshape_object_bbox(room_type: int, object_bbox_lst: np.array, b
     elif room_type == ROOM_TYPE_DICT['dining room']:
         max_len = ST3D_DININGROOM_MAX_LEN
         class_num = len(ST3D_DININGROOM_FURNITURE)
-
 
     # Pad the end label in the end of each sequence, and convert the class labels to -1, 1
     if L < max_len:
@@ -807,8 +815,9 @@ class PanoCorBoundDataset(data.Dataset):
             object_bbox_dicts = json.load(f)
             object_bbox_dicts = object_bbox_dicts['objects']
         # sort object bbox by class frequency and bbox size
-        object_bbox_dicts = ordered_bboxes_with_class_frequencies(room_type=room_type, object_bbox_lst=object_bbox_dicts)
-        
+        object_bbox_dicts = ordered_bboxes_with_class_frequencies(room_type=room_type,
+                                                                  object_bbox_lst=object_bbox_dicts)
+
         for obj_bbox in object_bbox_dicts:
             bbox_class_label = obj_bbox['class'].lower()
             bbox_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=bbox_class_label)

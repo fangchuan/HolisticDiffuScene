@@ -11,11 +11,11 @@ from misc.utils import get_corners_of_bb3d_no_index, project_3d_points_to_2d, pa
 from misc.equirect_projection import vis_objs3d
 from dataset.metadata import INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS
 
-
 TARGET_ROOM_TYPE_LST = ['living room', 'bedroom', 'dining room', 'kitchen', 'bathroom', 'study']
 
+
 def visualize_bbox(dataset_folderpath, output_folderpath):
-    
+
     SCENE_LST = ['scene_%05d' % i for i in range(0, 3500) if ('scene_%05d' % i) not in INVALID_SCENES_LST]
 
     for scene_id in SCENE_LST:
@@ -45,7 +45,7 @@ def visualize_bbox(dataset_folderpath, output_folderpath):
             id2index = dict()
             for index, object in enumerate(annos):
                 id2index[object.get('ID')] = index
-                
+
             room_type_str = 'undefined'
             if room_type_lst is not None:
                 for rt in room_type_lst:
@@ -60,6 +60,7 @@ def visualize_bbox(dataset_folderpath, output_folderpath):
             height, width, _ = rgb_img.shape
 
             instance_img = cv2.imread(os.path.join(room_path, 'full', 'instance.png'), cv2.IMREAD_UNCHANGED)
+            depth_img = cv2.imread(os.path.join(room_path, 'full', 'depth.png'), cv2.IMREAD_UNCHANGED)
 
             cam_position = np.loadtxt(os.path.join(room_path, 'camera_xyz.txt'))
             cam_position = cam_position
@@ -70,7 +71,7 @@ def visualize_bbox(dataset_folderpath, output_folderpath):
             for index in np.unique(instance_img)[:-1]:
                 # for each instance in current image
                 bbox = annos[id2index[index]]
-                
+
                 if bbox['label'] not in OBJECT_LABEL_IDS.values():
                     continue
 
@@ -86,7 +87,7 @@ def visualize_bbox(dataset_folderpath, output_folderpath):
 
                 # obj_bbox_dict['angles'] = R.from_matrix(basis).as_euler('xyz', degrees=False).tolist()
                 obj_bbox_dict['angles'] = matrix_to_euler_angles(basis).tolist()
-                if  bbox['label'] == 'door':
+                if bbox['label'] == 'door':
                     print(f'basis of door: {basis}')
                     print(f'angles of door: {obj_bbox_dict["angles"]}')
                 obj_bbox_dict['center'] = list((centroid - cam_position) * 0.001)
@@ -94,7 +95,14 @@ def visualize_bbox(dataset_folderpath, output_folderpath):
                 obj_bbox_lst.append(obj_bbox_dict)
 
             if room_type_str != 'undefined':
-                anno_img = vis_objs3d(image=rgb_img, v_bbox3d=obj_bbox_lst, camera_position=cam_position, b_show_axes=False, b_show_centroid=False, b_show_bbox3d=True, b_show_info=True, thickness=2)
+                anno_img = vis_objs3d(image=rgb_img,
+                                      v_bbox3d=obj_bbox_lst,
+                                      camera_position=cam_position,
+                                      b_show_axes=False,
+                                      b_show_centroid=False,
+                                      b_show_bbox3d=True,
+                                      b_show_info=True,
+                                      thickness=2)
                 output_img_filepath = os.path.join(output_folderpath, room_type_str, room_id_str + '_bbox.png')
                 print(f'save visualization for object bbox annotation of {room_id_str}')
                 cv2.imwrite(output_img_filepath, anno_img)
@@ -105,8 +113,7 @@ def visualize_bbox(dataset_folderpath, output_folderpath):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Structured3D 3D Bounding Box Visualization")
+    parser = argparse.ArgumentParser(description="Structured3D 3D Bounding Box Visualization")
     parser.add_argument("--dataset_path",
                         default="/data/dataset/Structured3D/Structured3D/",
                         help="raw dataset path",
