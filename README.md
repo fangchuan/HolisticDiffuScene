@@ -150,3 +150,9 @@ Please contact us at [Structured3D Group](mailto:structured3d@googlegroups.com) 
 ## Acknowledgement
 
 We would like to thank Kujiale.com for providing the database of house designs and the rendering engine. We especially thank Qing Ye and Qi Wu from Kujiale.com for the help on the data rendering.
+
+## 开发日志:
+1. openai-2023-06-12-19-05-30-009115: 把房间数据编码为4x1024向量, 走通training/sampling过程;
+2. openai-2023-06-15-09-25-18-855079: 对房间数据进行排序, 以frequency/box_size进行排序, 生成结果中没有door的问题基本解决, 但是仍然有1/10没有bed;
+3. openai-2023-06-19-14-44-06-950438: 更换doffusion loss为 mse+klloss, 对碰撞问题没有帮助;
+4. openai-2023-06-19-19-17-58-043907: 添加iou loss, t=0....(T-1)都有iou loss, 以normalized_bbox_center计算iou;

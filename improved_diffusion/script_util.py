@@ -36,6 +36,7 @@ def model_and_diffusion_defaults():
         predict_xstart=False,
         rescale_timesteps=True,
         rescale_learned_sigmas=True,
+        use_3d_iou=True,
         use_checkpoint=False,
         use_scale_shift_norm=True,
     )
@@ -57,9 +58,10 @@ def create_model_and_diffusion(
     noise_schedule,
     timestep_respacing,
     b_use_kl: bool,
-    predict_xstart,
-    rescale_timesteps,
-    rescale_learned_sigmas,
+    predict_xstart: bool,
+    rescale_timesteps: bool,
+    rescale_learned_sigmas: bool,
+    use_3d_iou: bool,
     use_checkpoint,
     use_scale_shift_norm,
 ):
@@ -83,7 +85,8 @@ def create_model_and_diffusion(
         b_use_kl (bool): whether to use KL divergence
         predict_xstart (_type_): _description_
         rescale_timesteps (_type_): _description_
-        rescale_learned_sigmas (_type_): _description_
+        rescale_learned_sigmas (bool): whether to rescale learned variance;
+        use_3d_iou (bool): whether use 3d iou loss;
         use_checkpoint (_type_): _description_
         use_scale_shift_norm (_type_): _description_
 
@@ -115,6 +118,7 @@ def create_model_and_diffusion(
         predict_xstart=predict_xstart,
         rescale_timesteps=rescale_timesteps,
         rescale_learned_sigmas=rescale_learned_sigmas,
+        b_use_3d_iou=use_3d_iou,
         timestep_respacing=timestep_respacing,
     )
     return model, diffusion
@@ -275,6 +279,7 @@ def create_gaussian_diffusion(
     predict_xstart=False,
     rescale_timesteps=False,
     rescale_learned_sigmas=False,
+    b_use_3d_iou=False,
     timestep_respacing="",
 ):
     betas = gd.get_named_beta_schedule(noise_schedule, steps)
@@ -282,6 +287,8 @@ def create_gaussian_diffusion(
         loss_type = gd.LossType.RESCALED_KL
     elif rescale_learned_sigmas:
         loss_type = gd.LossType.RESCALED_MSE
+        if b_use_3d_iou:
+            loss_type = gd.LossType.RESCALED_MSE_IOU
     else:
         loss_type = gd.LossType.MSE
     if not timestep_respacing:

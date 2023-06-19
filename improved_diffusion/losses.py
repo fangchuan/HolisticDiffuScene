@@ -5,12 +5,14 @@ https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0
 """
 
 import numpy as np
-
+from typing import Dict, List, Optional, Tuple, Union
 import torch as th
 
 from dataset.st3d_dataset import get_room_type
 from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE
 from . import logger
+from shapely.geometry.polygon import Polygon
+from misc.utils import euler_angle_to_matrix
 
 
 def normal_kl(mean1, logvar1, mean2, logvar2):
@@ -122,13 +124,70 @@ def continuous_gaussian_log_likelihood(x, *, means, log_scales):
     return log_probs
 
 
-def recover_predict_3d_bbox(x_pred, room_type_lst):
-    phy_viol_weight = 0.001
+def bdb3d_corners(bdb3d: Dict) -> th.Tensor:
+    """
+    Get ordered corners of given 3D bounding box dict or disordered corners
 
-    B, _, _ = x_pred.shape
+    Parameters
+    ----------
+    bdb3d: 3D bounding box dict
+
+    Returns
+    -------
+    8 x 3 numpy array of bounding box corner points in the following order:
+    right-forward-down
+    left-forward-down
+    right-back-down
+    left-back-down
+    right-forward-up
+    left-forward-up
+    right-back-up
+    left-back-up
+    """
+    # corners = np.unpackbits(np.arange(8, dtype=np.uint8)[..., np.newaxis],
+    #                         axis=1, bitorder='little', count=-5).astype(np.float32)
+    device = bdb3d['center'].device
+    corners = th.zeros((8, 3), dtype=th.float32)
+    corners[0, :] = th.tensor([1., 1., 0.])
+    corners[1, :] = th.tensor([0., 1., 0.])
+    corners[2, :] = th.tensor([1., 0., 0.])
+    corners[3, :] = th.tensor([0., 0., 0.])
+    corners[4, :] = th.tensor([1., 1., 1.])
+    corners[5, :] = th.tensor([0., 1., 1.])
+    corners[6, :] = th.tensor([1., 0., 1.])
+    corners[7, :] = th.tensor([0., 0., 1.])
+    corners = corners.to(device)
+    corners = corners - th.tensor(0.5, dtype=th.float32, device=device)
+    # logger.info(f'corners: {corners.device}')
+    # logger.info(f'corners: {corners}')
+
+    rotation = euler_angle_to_matrix(bdb3d['angles']).to(device)
+    # logger.info(f'rotation: {rotation.device}')
+    centroid = bdb3d['center']
+    # logger.info(f'centroid: {centroid.device}')
+    sizes = bdb3d['size']
+    # logger.info(f'sizes: {sizes.device}')
+
+    corners = th.mul(corners, sizes)
+    # logger.info(f'corners: {corners.device}')
+    corners = th.matmul(rotation, corners.t()).t()
+    # logger.info(f'corners: {corners.device}')
+    return corners + centroid
+
+
+def iou_among_predicted_3d_bbox(x_pred, room_type_lst, t_zero_mask):
+    phy_viol_weight = 1000
+
+    # only use x[0][3,:] to calculate iou among objects
+    B, C, feat_size = x_pred.shape
+    object_feat_idx = C - 1
+    assert C == 4, "The input x_pred should be (B, 4, 1024)"
+    assert t_zero_mask.shape[0] == B, "The input t_zero_mask should be (B, 1, 1)"
+
+    batch_pred_bbox_iou_loss_lst = []
     for batch_idx in range(B):
         room_type = room_type_lst[batch_idx]
-        print(f'room_type value: {room_type}')
+        # print(f'room_type value: {room_type}')
         room_type_str = get_room_type(room_type)
         if room_type_str == 'bedroom':
             obj_feat_num, obj_feat_dim = 13, 30
@@ -140,71 +199,171 @@ def recover_predict_3d_bbox(x_pred, room_type_lst):
             obj_feat_num, obj_feat_dim = 24, 32
             class_labels_lst = (ST3D_DININGROOM_FURNITURE)
 
-    class_idx = 0
-    centroid_idx = len(class_labels_lst)
-    size_idx = 3 + centroid_idx
-    angle_idx = 3 + size_idx
-    obj_bbox_lst = x_pred[batch_idx, 0, :(obj_feat_num * obj_feat_dim)].reshape((obj_feat_num, obj_feat_dim))
+        class_idx = 0
+        centroid_idx = len(class_labels_lst)
+        size_idx = 3 + centroid_idx
+        angle_idx = 3 + size_idx
+        pred_obj_bbox_lst = x_pred[batch_idx, object_feat_idx, :(obj_feat_num * obj_feat_dim)].reshape(
+            (obj_feat_num, obj_feat_dim))
 
-    # set room layout bbox size as 5m x 5m x 5m
-    room_layout_bbox_size = th.tensor([5.0, 5.0, 5.0], dtype=th.float32, device=x_pred.device)
-    obj_bbox_dict_list = []
-    for i in range(len(obj_bbox_lst)):
-        # print(f'predict object bbox feature: {obj_bbox_lst[i]}')
-        obj_bbox_dict = {}
+        # set room layout bbox size as 5m x 5m x 5m
+        room_layout_bbox_size = th.tensor([1.0, 1.0, 1.0], dtype=th.float32, device=x_pred.device)
+        obj_bbox_lst = []
+        obj_bbox_idx_lst = []
+        obj_bbox_cls_lst = []
+        for i in range(len(pred_obj_bbox_lst)):
+            # print(f'predict object bbox feature: {pred_obj_bbox_lst[i]}')
+            obj_bbox_dict = {}
 
-        # recover class label
-        class_label_prob = obj_bbox_lst[i][:centroid_idx]
-        # print(f'class_label_prob: {class_label_prob}')
-        class_label_prob = th.where(class_label_prob > 0.5, 1, 0)
-        if th.all(class_label_prob == 0):
-            print(f'object {i} has no class label')
-        class_label = class_labels_lst[class_label_prob.argmax()]
-        if class_label == 'empty':
-            print(f'object {i} is empty')
-            continue
-        obj_bbox_dict['class'] = class_label
+            # recover class label
+            class_label_prob = pred_obj_bbox_lst[i][:centroid_idx]
+            # print(f'class_label_prob: {class_label_prob}')
+            class_label_prob = th.where(class_label_prob > 0.5, 1, 0)
+            if th.all(class_label_prob == 0):
+                logger.debug(f'object {i} has no class label')
+                continue
+            class_label = class_labels_lst[class_label_prob.argmax()]
+            if class_label == 'empty':
+                logger.debug(f'object {i} is empty')
+                continue
 
-        # recover centroid
-        centroid = obj_bbox_lst[i][centroid_idx:size_idx]
-        centroid = centroid * room_layout_bbox_size
-        obj_bbox_dict['center'] = centroid.tolist()
-        # recover size
-        size = obj_bbox_lst[i][size_idx:angle_idx]
-        size = (size + 1) * 0.5
-        size = size * room_layout_bbox_size
-        obj_bbox_dict['size'] = size.tolist()
-        # recover angle
-        angle = obj_bbox_lst[i][angle_idx:]
-        angle_0 = np.arccos(angle[0])
-        # angle_1 = np.arcsin(angle[1])
-        print(f' object {class_label} centroid: {centroid} size: {size} angle: {angle_0}')
-        obj_bbox_dict['angles'] = [0, 0, angle_0]
-        obj_bbox_dict_list.append(obj_bbox_dict)
+            obj_bbox_idx_lst.append(i)
+            obj_bbox_dict['class'] = class_label
+            obj_bbox_cls_lst.append(class_label)
 
-        if (phy_viol_weight > 0):
-            violation_loss, end_points = physical_violation_loss_cube(end_points)
-        else:
-            violation_loss = th.tensor(0)
+            # recover centroid
+            centroid = pred_obj_bbox_lst[i][centroid_idx:size_idx]
+            centroid = centroid * room_layout_bbox_size
+            centroid = th.clamp(centroid, -1, 1)
+            obj_bbox_dict['center'] = centroid
+            # recover size
+            size = pred_obj_bbox_lst[i][size_idx:angle_idx]
+            size = (size + 1) * 0.5
+            size = th.clamp(size, 1e-6, 1.0)
+            size = size * room_layout_bbox_size
+            obj_bbox_dict['size'] = size
+            # recover angle
+            angle = pred_obj_bbox_lst[i][angle_idx:]
+            angle_0 = th.arccos(angle[0])
+            angle_0 = th.where(th.isnan(angle_0), 0, angle_0)
+            angles = th.tensor([0, 0, angle_0], dtype=th.float32, device=x_pred.device)
+            obj_bbox_dict['angles'] = angles
+
+            # print(f' object {class_label} centroid: {centroid} size: {size} angle: {angles}')
+
+            bbox_3d = bdb3d_corners(obj_bbox_dict)
+            obj_bbox_lst.append(bbox_3d)
+
+        obj_bbox_lst = th.stack(obj_bbox_lst, dim=0)
+        # logger.info(f'obj_bbox_lst: {obj_bbox_lst.shape}')
+
+        # calculate iou between objects
+        # bedroom: iou_loss Bx13x30
+        iou_loss = th.zeros_like(pred_obj_bbox_lst, dtype=th.float32, device=x_pred.device)
+        for i in range(len(obj_bbox_lst)):
+            for j in range(i + 1, len(obj_bbox_lst)):
+                # skip window and curtain iou loss
+                if obj_bbox_cls_lst[i] in ['window', 'curtain'] and obj_bbox_cls_lst[j] in ['window', 'curtain']:
+                    continue
+                iou = bdb3d_iou(obj_bbox_lst[i], obj_bbox_lst[j])
+                # if iou > 0.1:
+                # print(f'object {obj_bbox_cls_lst[i]} and object {obj_bbox_cls_lst[j]} has iou: {iou}')
+                # only apply iou to the two objects
+                object1_idx = obj_bbox_idx_lst[i]
+                object2_idx = obj_bbox_idx_lst[j]
+                iou_loss[object1_idx][centroid_idx:size_idx] += phy_viol_weight * iou
+                iou_loss[object2_idx][centroid_idx:size_idx] += phy_viol_weight * iou
+        # logger.info(f'iou_loss: {iou_loss}')
+        # iou_loss_lst: Bx4x1024
+        iou_loss_lst = th.zeros((C, feat_size), dtype=th.float32, device=x_pred.device)
+        iou_loss_lst[object_feat_idx, :(obj_feat_num * obj_feat_dim)] = iou_loss.contiguous().view(-1)
+        # logger.info(f'iou_loss_lst: {iou_loss_lst[object_feat_idx, :(obj_feat_num * obj_feat_dim)]}')
+        batch_pred_bbox_iou_loss_lst.append(iou_loss_lst)
+
+    # batch_pred_bbox_iou_loss_lst: Bx4x1024
+    batch_pred_bbox_iou_loss_lst = th.stack(batch_pred_bbox_iou_loss_lst, dim=0)
+
+    # l1_critertion = th.nn.SmoothL1Loss(reduction='mean')
+    # mse_critertion = th.nn.MSELoss(reduction='mean')
+    # batch_iou_loss = mse_critertion(batch_pred_bbox_iou_loss_lst,
+    #                                 th.zeros_like(batch_pred_bbox_iou_loss_lst, device=x_pred.device))
+    batch_iou_loss = batch_pred_bbox_iou_loss_lst
+    return batch_iou_loss
 
 
-def pred_3d_iou_loss(x, condition, means, log_scales):
+def bdb3d_iou(cu1, cu2):
+    """
+        Calculate the Intersection over Union (IoU) of two 3D cuboid.
+
+        Parameters
+        ----------
+        cu1 : numpy array, 8x3
+        cu2 : numpy array, 8x3
+
+        Returns
+        -------
+        float
+            in [0, 1]
+    """
+
+    # 2D projection on the horizontal plane (x-y plane)
+    polygon2D_1 = Polygon([(cu1[0][0], cu1[0][1]), (cu1[1][0], cu1[1][1]), (cu1[3][0], cu1[3][1]),
+                           (cu1[2][0], cu1[2][1])])
+
+    polygon2D_2 = Polygon([(cu2[0][0], cu2[0][1]), (cu2[1][0], cu2[1][1]), (cu2[3][0], cu2[3][1]),
+                           (cu2[2][0], cu2[2][1])])
+
+    # from matplotlib import pyplot
+    # pyplot.plot(*polygon2D_1.exterior.xy)
+    # pyplot.plot(*polygon2D_2.exterior.xy)
+    # pyplot.axis('equal')
+    # pyplot.show()
+
+    # 2D intersection area of the two projections.
+    intersect_2D = polygon2D_1.intersection(polygon2D_2).area
+
+    # the volume of the intersection part of cu1 and cu2
+    inter_vol = intersect_2D * max(0.0, min(cu1[4][2], cu2[4][2]) - max(cu1[0][2], cu2[0][2]))
+
+    # the volume of cu1 and cu2
+    vol1 = polygon2D_1.area * (cu1[4][2] - cu1[0][2])
+    vol2 = polygon2D_2.area * (cu2[4][2] - cu2[0][2])
+
+    # return 3D IoU
+    return inter_vol / (vol1 + vol2 - inter_vol)
+
+
+def pred_3d_iou_loss(x_gt, y, tms, means, log_scales):
     """
     Compute the 3D IoU of a Gaussian distribution of 3D objects.
 
-    :param x: the target images. It is assumed that this was uint8 values,
+    :param x_gt: the target images. It is assumed that this was uint8 values,
               rescaled to the range [-1, 1].
+    :param y: the condition Tensor.
+    :param tms: timestamp .
     :param means: the Gaussian mean Tensor.
     :param log_scales: the Gaussian log stddev Tensor.
     :return: a tensor like x of log probabilities (in nats).
     """
-    B, C, _ = x.shape
-    assert condition.shape[0] == B
-    x_start_gt = x[:, C - 1, :]
+    B, C, feat_size = x_gt.shape
+    assert y.shape[0] == B
+
+    # objects_feature_idx = C - 1
+    # x_start_gt = x_gt[:, objects_feature_idx, :]
     # get predicted sample for x[0]
-    x_start_pred = th.distributions.Normal(means, th.exp(log_scales))
-    x_start_pred = x_start_pred.sample()
-    # only use x[0][3,:] to calculate iou among objects
-    x_start_pred = x_start_pred[:, C - 1, :]
-    x_start_pred = recover_predict_3d_bbox(x_start_pred, condition)
-    # calculate iou
+    noise = th.randn_like(x_gt)
+    nonzero_mask = ((tms != 0).float().view(-1, *([1] * (len(x_gt.shape) - 1))))  # no noise when t == 0
+    logger.debug(f'nonzero_mask: {nonzero_mask.shape}')
+    # 0.5是为了得到标准差
+    sample = means + nonzero_mask * th.exp(0.5 * log_scales) * noise
+    # x_pred = sample[:, objects_feature_idx, :]
+    x_pred = sample
+
+    # only calculate iou loss when t==0
+    zero_mask = (tms == 0).float().view(-1, *([1] * (len(x_gt.shape) - 1)))
+    #  calculate iou loss
+    batch_iou_loss = iou_among_predicted_3d_bbox(x_pred, y, zero_mask)
+    # logger.debug(f'batch_iou_loss_lst: {batch_iou_loss_lst}')
+    # batch_iou_loss = zero_mask * batch_iou_loss
+    # logger.debug(f'batch_iou_loss: {batch_iou_loss.shape}')
+    return batch_iou_loss

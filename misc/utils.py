@@ -2,6 +2,7 @@
 Adapted from https://github.com/thusiyuan/cooperative_scene_parsing/blob/master/utils/sunrgbd_utils.py
 """
 import numpy as np
+import torch as th
 
 
 def normalize(vector):
@@ -131,13 +132,14 @@ def project_struct_bdb_to_2d(basis, coeffs, center, R_ex, K):
     bdb2d = dict()
     bdb2d['x1'] = int(max(np.min(corners[0, :]), 1))  # x1
     bdb2d['y1'] = int(max(np.min(corners[1, :]), 1))  # y1
-    bdb2d['x2'] = int(min(np.max(corners[0, :]), 2*K[0, 2]))  # x2
-    bdb2d['y2'] = int(min(np.max(corners[1, :]), 2*K[1, 2]))  # y2
+    bdb2d['x2'] = int(min(np.max(corners[0, :]), 2 * K[0, 2]))  # x2
+    bdb2d['y2'] = int(min(np.max(corners[1, :]), 2 * K[1, 2]))  # y2
     # if not check_bdb(bdb2d, 2*K[0, 2], 2*K[1, 2]):
     #     bdb2d = None
     return bdb2d
 
-def matrix_to_euler_angles(R_w_i:np.array):
+
+def matrix_to_euler_angles(R_w_i: np.array):
     """
     Convert rotation matrix to euler angles in Z-X-Y order
     """
@@ -147,7 +149,8 @@ def matrix_to_euler_angles(R_w_i:np.array):
 
     return np.array([roll, pitch, yaw])
 
-def euler_angle_to_matrix(angles_lst):
+
+def euler_angle_to_matrix(angles_lst: (list, th.Tensor)):
     """ rotation matrix in Z(yaw)-X(roll)-Y(pitch) order R_w_i
 
     Args:
@@ -156,11 +159,34 @@ def euler_angle_to_matrix(angles_lst):
     Returns:
         _type_: _description_
     """
-    roll = angles_lst[0] 
-    pitch = angles_lst[1] 
-    yaw = angles_lst[2] 
-    R = np.zeros((3, 3))
-    R = np.array([[np.cos(yaw) * np.cos(pitch) - np.sin(roll) * np.sin(yaw) * np.sin(pitch), -np.cos(roll) * np.sin(yaw), np.cos(yaw) * np.sin(pitch) + np.cos(pitch) * np.sin(roll) * np.sin(yaw)],
-                  [np.cos(pitch) * np.sin(yaw) + np.cos(yaw) * np.sin(roll) * np.sin(pitch), np.cos(roll) * np.cos(yaw), np.sin(yaw) * np.sin(pitch) - np.cos(yaw) * np.sin(roll) * np.cos(pitch)],
-                  [-np.cos(roll) * np.sin(pitch), np.sin(roll), np.cos(roll) * np.cos(pitch)]])
+    roll = angles_lst[0]
+    pitch = angles_lst[1]
+    yaw = angles_lst[2]
+    if isinstance(angles_lst, list):
+        R = np.zeros((3, 3))
+        R = np.array([[
+            np.cos(yaw) * np.cos(pitch) - np.sin(roll) * np.sin(yaw) * np.sin(pitch), -np.cos(roll) * np.sin(yaw),
+            np.cos(yaw) * np.sin(pitch) + np.cos(pitch) * np.sin(roll) * np.sin(yaw)
+        ],
+                      [
+                          np.cos(pitch) * np.sin(yaw) + np.cos(yaw) * np.sin(roll) * np.sin(pitch),
+                          np.cos(roll) * np.cos(yaw),
+                          np.sin(yaw) * np.sin(pitch) - np.cos(yaw) * np.sin(roll) * np.cos(pitch)
+                      ], [-np.cos(roll) * np.sin(pitch),
+                          np.sin(roll), np.cos(roll) * np.cos(pitch)]])
+    elif isinstance(angles_lst, th.Tensor):
+        R = th.zeros((3, 3))
+        R[0, 0] = th.cos(yaw) * th.cos(pitch) - th.sin(roll) * th.sin(yaw) * th.sin(pitch)
+        R[0, 1] = -th.cos(roll) * th.sin(yaw)
+        R[0, 2] = th.cos(yaw) * th.sin(pitch) + th.cos(pitch) * th.sin(roll) * th.sin(yaw)
+        R[1, 0] = th.cos(pitch) * th.sin(yaw) + th.cos(yaw) * th.sin(roll) * th.sin(pitch)
+        R[1, 1] = th.cos(roll) * th.cos(yaw)
+        R[1, 2] = th.sin(yaw) * th.sin(pitch) - th.cos(yaw) * th.sin(roll) * th.cos(pitch)
+        R[2, 0] = -th.cos(roll) * th.sin(pitch)
+        R[2, 1] = th.sin(roll)
+        R[2, 2] = th.cos(roll) * th.cos(pitch)
+        R = R.to(angles_lst.device)
+        # print(R)
+    else:
+        raise NotImplementedError
     return R

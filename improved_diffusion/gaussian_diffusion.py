@@ -88,6 +88,7 @@ class ModelVarType(enum.Enum):
 class LossType(enum.Enum):
     MSE = enum.auto()  # use raw MSE loss (and KL when learning variances)
     RESCALED_MSE = (enum.auto())  # use raw MSE loss (with RESCALED_KL when learning variances)
+    RESCALED_MSE_IOU = (enum.auto())  # use raw MSE loss plus 3D IoU loss (with RESCALED_KL when learning variances)
     KL = enum.auto()  # use the variational lower-bound
     RESCALED_KL = enum.auto()  # like KL, but rescale to estimate the full VLB
 
@@ -602,13 +603,13 @@ class GaussianDiffusion:
         kl = mean_flat(kl) / np.log(2.0)
 
         # compute L0 loss: approximated by subtraction of CDF of normal distribution
-        # decoder_nll = -discretized_gaussian_log_likelihood(
-        #     x_start, means=out["mean"], log_scales=0.5 * out["log_variance"])
-        decoder_nll = -continuous_gaussian_log_likelihood(
+        decoder_nll = -discretized_gaussian_log_likelihood(
             x_start, means=out["mean"], log_scales=0.5 * out["log_variance"])
+        # decoder_nll = -continuous_gaussian_log_likelihood(
+        #     x_start, means=out["mean"], log_scales=0.5 * out["log_variance"])
         assert decoder_nll.shape == x_start.shape
 
-        logger.info(f"predict_gaussian_dist.log_prob(x): {decoder_nll}")
+        # logger.info(f"predict_gaussian_dist.log_prob(x): {decoder_nll}")
         decoder_nll = mean_flat(decoder_nll) / np.log(2.0)
 
         # if t == 0:
@@ -616,7 +617,12 @@ class GaussianDiffusion:
         # At the first timestep return the decoder NLL,
         # otherwise return KL(q(x_{t-1}|x_t,x_0) || p(x_{t-1}|x_t))
         output = th.where((t == 0), decoder_nll, kl)
-        return {"output": output, "pred_xstart": out["pred_xstart"]}
+        return {
+            "output": output,
+            "pred_xstart": out["pred_xstart"],
+            "pred_mean": out["mean"],
+            "pred_log_variance": out["log_variance"]
+        }
 
     def training_losses(self, model, x_start, t, model_kwargs=None, noise=None):
         """
@@ -653,9 +659,11 @@ class GaussianDiffusion:
             )["output"]
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
-        elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
+        elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE or self.loss_type == LossType.RESCALED_MSE_IOU:
             model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
 
+            pred_x_prev_mean = None
+            pred_x_prev_log_var = None
             if self.model_var_type in [
                     ModelVarType.LEARNED,
                     ModelVarType.LEARNED_RANGE,
@@ -666,17 +674,27 @@ class GaussianDiffusion:
                 # Learn the variance using the variational bound, but don't let
                 # it affect our mean prediction.
                 frozen_out = th.cat([model_output.detach(), model_var_values], dim=1)
-                terms["vb"] = self._vb_terms_bpd(
+                out = self._vb_terms_bpd(
                     model=lambda *args, r=frozen_out: r,
                     x_start=x_start,
                     x_t=x_t,
                     t=t,
                     clip_denoised=False,
-                )["output"]
+                )
+                pred_x_prev_mean = out["pred_mean"]
+                pred_x_prev_log_var = out["pred_log_variance"]
+                terms["vb"] = out["output"]
                 if self.loss_type == LossType.RESCALED_MSE:
                     # Divide by 1000 for equivalence with initial implementation.
                     # Without a factor of 1/1000, the VB term hurts the MSE term.
                     terms["vb"] *= self.num_timesteps / 1000.0
+                if self.loss_type == LossType.RESCALED_MSE_IOU:
+                    iou_loss = pred_3d_iou_loss(x_start,
+                                                **model_kwargs,
+                                                means=pred_x_prev_mean,
+                                                log_scales=pred_x_prev_log_var,
+                                                tms=t)
+                    terms["iou"] = mean_flat(iou_loss)
 
             target = {
                 ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(x_start=x_start, x_t=x_t, t=t)[0],
@@ -685,8 +703,11 @@ class GaussianDiffusion:
             }[self.model_mean_type]
             assert model_output.shape == target.shape == x_start.shape
             terms["mse"] = mean_flat((target - model_output)**2)
+
             if "vb" in terms:
                 terms["loss"] = terms["mse"] + terms["vb"]
+                if "iou" in terms:
+                    terms["loss"] += terms["iou"]
             else:
                 terms["loss"] = terms["mse"]
         else:

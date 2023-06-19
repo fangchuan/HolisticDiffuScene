@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument(
         '--samples_filepath',
         default=
-        '/home/hkust/fangchuan/codes/Structured3D/sample_results/openai-2023-06-14-10-30-33-751558/samples_10x4x1024.npz'
+        '/home/hkust/fangchuan/codes/Structured3D/sample_results/openai-2023-06-19-14-44-06-950438/samples_10x4x1024.npz'
     )
     parser.add_argument('--room_type', default='bedroom', type=str, help='generated room type')
     parser.add_argument('--ith', default=0, type=int, help='Pick a data id to visualize.'
