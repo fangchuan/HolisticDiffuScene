@@ -612,8 +612,6 @@ class GaussianDiffusion:
         # logger.info(f"predict_gaussian_dist.log_prob(x): {decoder_nll}")
         decoder_nll = mean_flat(decoder_nll) / np.log(2.0)
 
-        # if t == 0:
-        #     iou_loss = pred_3d_iou_loss(x_start, **model_kwargs, out["mean"], out["log_variance"])
         # At the first timestep return the decoder NLL,
         # otherwise return KL(q(x_{t-1}|x_t,x_0) || p(x_{t-1}|x_t))
         output = th.where((t == 0), decoder_nll, kl)
@@ -689,11 +687,12 @@ class GaussianDiffusion:
                     # Without a factor of 1/1000, the VB term hurts the MSE term.
                     terms["vb"] *= self.num_timesteps / 1000.0
                 if self.loss_type == LossType.RESCALED_MSE_IOU:
+                    alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x_start.shape)
                     iou_loss = pred_3d_iou_loss(x_start,
                                                 **model_kwargs,
                                                 means=pred_x_prev_mean,
                                                 log_scales=pred_x_prev_log_var,
-                                                tms=t)
+                                                weights=alpha_bar)
                     terms["iou"] = mean_flat(iou_loss)
 
             target = {

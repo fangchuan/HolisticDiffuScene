@@ -159,11 +159,11 @@ def euler_angle_to_matrix(angles_lst: (list, th.Tensor)):
     Returns:
         _type_: _description_
     """
-    roll = angles_lst[0]
-    pitch = angles_lst[1]
-    yaw = angles_lst[2]
+
     if isinstance(angles_lst, list):
-        R = np.zeros((3, 3))
+        roll = angles_lst[0]
+        pitch = angles_lst[1]
+        yaw = angles_lst[2]
         R = np.array([[
             np.cos(yaw) * np.cos(pitch) - np.sin(roll) * np.sin(yaw) * np.sin(pitch), -np.cos(roll) * np.sin(yaw),
             np.cos(yaw) * np.sin(pitch) + np.cos(pitch) * np.sin(roll) * np.sin(yaw)
@@ -175,17 +175,37 @@ def euler_angle_to_matrix(angles_lst: (list, th.Tensor)):
                       ], [-np.cos(roll) * np.sin(pitch),
                           np.sin(roll), np.cos(roll) * np.cos(pitch)]])
     elif isinstance(angles_lst, th.Tensor):
-        R = th.zeros((3, 3))
-        R[0, 0] = th.cos(yaw) * th.cos(pitch) - th.sin(roll) * th.sin(yaw) * th.sin(pitch)
-        R[0, 1] = -th.cos(roll) * th.sin(yaw)
-        R[0, 2] = th.cos(yaw) * th.sin(pitch) + th.cos(pitch) * th.sin(roll) * th.sin(yaw)
-        R[1, 0] = th.cos(pitch) * th.sin(yaw) + th.cos(yaw) * th.sin(roll) * th.sin(pitch)
-        R[1, 1] = th.cos(roll) * th.cos(yaw)
-        R[1, 2] = th.sin(yaw) * th.sin(pitch) - th.cos(yaw) * th.sin(roll) * th.cos(pitch)
-        R[2, 0] = -th.cos(roll) * th.sin(pitch)
-        R[2, 1] = th.sin(roll)
-        R[2, 2] = th.cos(roll) * th.cos(pitch)
-        R = R.to(angles_lst.device)
+        if len(angles_lst.shape) == 1:
+            roll = angles_lst[0]
+            pitch = angles_lst[1]
+            yaw = angles_lst[2]
+            R = th.zeros((3, 3))
+            R[0, 0] = th.cos(yaw) * th.cos(pitch) - th.sin(roll) * th.sin(yaw) * th.sin(pitch)
+            R[0, 1] = -th.cos(roll) * th.sin(yaw)
+            R[0, 2] = th.cos(yaw) * th.sin(pitch) + th.cos(pitch) * th.sin(roll) * th.sin(yaw)
+            R[1, 0] = th.cos(pitch) * th.sin(yaw) + th.cos(yaw) * th.sin(roll) * th.sin(pitch)
+            R[1, 1] = th.cos(roll) * th.cos(yaw)
+            R[1, 2] = th.sin(yaw) * th.sin(pitch) - th.cos(yaw) * th.sin(roll) * th.cos(pitch)
+            R[2, 0] = -th.cos(roll) * th.sin(pitch)
+            R[2, 1] = th.sin(roll)
+            R[2, 2] = th.cos(roll) * th.cos(pitch)
+            R = R.to(angles_lst.device)
+        elif len(angles_lst.shape) == 3:
+            B, C, _ = angles_lst.shape
+            roll = angles_lst[:, :, 0]
+            pitch = angles_lst[:, :, 1]
+            yaw = angles_lst[:, :, 2]
+            R = th.zeros((B, C, 3, 3))
+            R[:, :, 0, 0] = th.cos(yaw) * th.cos(pitch) - th.sin(roll) * th.sin(yaw) * th.sin(pitch)
+            R[:, :, 0, 1] = -th.cos(roll) * th.sin(yaw)
+            R[:, :, 0, 2] = th.cos(yaw) * th.sin(pitch) + th.cos(pitch) * th.sin(roll) * th.sin(yaw)
+            R[:, :, 1, 0] = th.cos(pitch) * th.sin(yaw) + th.cos(yaw) * th.sin(roll) * th.sin(pitch)
+            R[:, :, 1, 1] = th.cos(roll) * th.cos(yaw)
+            R[:, :, 1, 2] = th.sin(yaw) * th.sin(pitch) - th.cos(yaw) * th.sin(roll) * th.cos(pitch)
+            R[:, :, 2, 0] = -th.cos(roll) * th.sin(pitch)
+            R[:, :, 2, 1] = th.sin(roll)
+            R[:, :, 2, 2] = th.cos(roll) * th.cos(pitch)
+            R = R.to(angles_lst.device)
         # print(R)
     else:
         raise NotImplementedError
