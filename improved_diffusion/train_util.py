@@ -141,6 +141,7 @@ class TrainLoop:
         self.model.convert_to_fp16()
 
     def run_loop(self):
+        th.autograd.set_detect_anomaly(True)
         while (not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps):
             # get next batch
             batch_data, cond_data = next(self.data)

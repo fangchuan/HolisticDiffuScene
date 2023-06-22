@@ -159,3 +159,4 @@ We would like to thank Kujiale.com for providing the database of house designs a
    hkust-gpu03: openai-2023-06-19-20-55-21-510761: 添加iou loss, 只t=0，以normalized_bbox_center计算iou;
 5. openai-2023-06-20-*: 现有的iou loss计算太慢, 训练时间变为原来3倍;
 6. openai-2023-06-21-*: 使用pytorch3d-box_overlap, 未提供backward函数, 无法把iou loss反向传播;
+7. openai-2023-06-22-11-42-17-175271: 加速iou_3d计算, 训练3.5W步, totoal_loss有下降, 但是iou_loss没有下降;

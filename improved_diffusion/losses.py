@@ -14,6 +14,9 @@ from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, 
 from . import logger
 from shapely.geometry.polygon import Polygon
 from misc.utils import euler_angle_to_matrix
+from .rotated_iou_loss import bdb3d_iou
+
+l1_critertion = th.nn.SmoothL1Loss(reduction='none')
 
 
 def normal_kl(mean1, logvar1, mean2, logvar2):
@@ -203,8 +206,8 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     assert C == 4, "The input x_pred should be (B, 4, 1024)"
     assert iou_loss_weights.shape == (B, C, feat_size), "The loss weights tensor should be (B, 4, 1024)"
 
-    # logger.debug(f'iou_loss_weights: {iou_loss_weights.shape}')
-    # logger.debug(f'iou_loss_weights: {iou_loss_weights}')
+    logger.debug(f'iou_loss_weights: {iou_loss_weights.shape}')
+    logger.debug(f'iou_loss_weights: {iou_loss_weights}')
 
     class_labels_lst = ST3D_BEDROOM_FURNITURE
     obj_feat_num, obj_feat_dim = 13, 30
@@ -216,60 +219,62 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     # Bx13x30
     pred_object_bbox = x_pred[:, object_feat_idx, :(obj_feat_num * obj_feat_dim)].reshape(B, obj_feat_num, obj_feat_dim)
     pred_object_class_prob = th.where(pred_object_bbox[:, :, :centroid_idx] > 0.5, 1, 0)
-    logger.info(f'pred_object_class_prob: {pred_object_class_prob.shape}')
+    logger.debug(f'pred_object_class_prob: {pred_object_class_prob.shape}')
     # skip probability of empty object
     no_object_mask = th.all(pred_object_class_prob == 0, dim=2, keepdim=True)
     pred_object_class = th.argmax(pred_object_class_prob, dim=2, keepdim=True)
-    logger.info(f'pred_object_class: {pred_object_class.shape}')
+    logger.debug(f'pred_object_class: {pred_object_class.shape}')
     # skip empty object
     no_object_mask = th.logical_or(no_object_mask,
                                    th.all(pred_object_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
-    no_object_mask = no_object_mask.unsqueeze(2)
-    logger.info(f'no_object_mask: {no_object_mask.shape}')
+    # no_object_mask = no_object_mask.unsqueeze(2)
+    logger.debug(f'no_object_mask: {no_object_mask.shape}')
 
     pred_object_centroid = pred_object_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
-    pred_object_centroid = pred_object_centroid.unsqueeze(2)
-    logger.info(f'pred_object_centroid: {pred_object_centroid.shape}')
+    pred_object_centroid = th.where(pred_object_centroid.isnan(), 0.0, pred_object_centroid)
+    logger.debug(f'pred_object_centroid: {pred_object_centroid.shape}')
 
-    pred_object_size = ((pred_object_bbox[:, :, size_idx:angle_idx] + 1) * 0.5).clamp(min=1e-3, max=1.0)
-    pred_object_size = pred_object_size.unsqueeze(2)
-    logger.info(f'pred_object_size: {pred_object_size.shape}')
+    pred_object_size = ((pred_object_bbox[:, :, size_idx:angle_idx] + 1) * 0.5).clamp(min=1e-4, max=1.0)
+    pred_object_size = th.where(pred_object_size.isnan(), 0.0, pred_object_size)
+    logger.debug(f'pred_object_size: {pred_object_size.shape}')
     # no_object_mask = th.logical_or(no_object_mask, th.all(pred_object_size <= 1e-3, dim=2, keepdim=True))
     # logger.info(f'pred_object_size < 1e-3: {th.all(pred_object_size <= 1e-3, dim=3, keepdim=True).shape}')
     # logger.info(f'pred_object_size < 1e-3: {th.all(pred_object_size <= 1e-3, dim=3, keepdim=True)}')
 
-    pred_object_angle = th.arccos(pred_object_bbox[:, :, angle_idx].clamp(min=-1, max=1.0))
-    zero_angle_padding = th.zeros((B, obj_feat_num, 2), device=x_pred.device)
-    pred_object_angle = th.cat((zero_angle_padding, pred_object_angle.unsqueeze(2)), dim=2)
-    logger.info(f'pred_object_angle: {pred_object_angle.shape}')
+    pred_object_angle = th.clamp(pred_object_bbox[:, :, angle_idx], min=-0.999999, max=0.999999)
+    # pred_object_angle = th.where(pred_object_angle.isnan(), 0.0, pred_object_angle)
+    pred_object_angle = th.arccos(pred_object_angle)
+    # zero_angle_padding = th.zeros((B, obj_feat_num, 1, 2), device=x_pred.device)
+    # pred_object_angle = th.cat((zero_angle_padding, pred_object_angle.unsqueeze(2)), dim=3)
+    pred_object_angle = pred_object_angle.unsqueeze(2)
+    logger.debug(f'pred_object_angle: {pred_object_angle.shape}')
 
-    # Bx13x8x3
-    pred_object_bbox_corners = bbox_corners(pred_object_centroid, pred_object_size, pred_object_angle)
+    # Bx13x7
+    pred_object_bboxes = th.cat((pred_object_centroid, pred_object_size, pred_object_angle), dim=2)
+    logger.debug(f'pred_object_bboxes: {pred_object_bboxes.shape}')
+
+    # # Bx13x8x3
+    # pred_object_bbox_corners = bbox_corners(pred_object_centroid, pred_object_size, pred_object_angle)
+
     # logger.info(f'pred_object_bbox_corners: {pred_object_bbox_corners.shape}')
-    no_object_mask = no_object_mask.repeat(1, 1, 8, 3)
-    is_object_mask = ~no_object_mask
+
+    is_object_mask = (~no_object_mask).float()
     # logger.info(f'pred_object_bbox_corners[no_object_mask].shape: {pred_object_bbox_corners[is_object_mask].shape}')
     batch_pred_bbox_iou_loss_lst = []
     for batch_idx in range(B):
         # each batch(room) has different number of objects
         # Assume inputs: boxes1 (M, 8, 3) and boxes2 (N, 8, 3)
-        object_bbox_arr = []
-        for object_idx in range(obj_feat_num):
-            if is_object_mask[batch_idx, object_idx, 0, 0]:
-                object_bbox_arr.append(pred_object_bbox_corners[batch_idx, object_idx, :, :])
-
-        # mask = is_object_mask[batch_idx, :, :, :]
-        # bbox_arr = pred_object_bbox_corners[batch_idx, mask].reshape(-1, 8, 3)
-        object_bbox_arr = th.stack(object_bbox_arr, dim=0)
+        object_bbox_arr = pred_object_bboxes[batch_idx, ...]
         # logger.info(f'bbox_arr: {object_bbox_arr}')
-        bdb3d_iou(object_bbox_arr, object_bbox_arr)
-        intersec_vol, iou_3d = box3d_overlap(object_bbox_arr, object_bbox_arr, eps=1e-6)
+        iou_3d = bdb3d_iou(object_bbox_arr, object_bbox_arr)
+        # ignore empty object
+        iou_3d = is_object_mask[batch_idx, ...] * iou_3d
 
         object_num = object_bbox_arr.shape[0]
         # logger.debug(f'object_num: {object_bbox_arr.shape[0]}')
 
+        # ignore self-intersection
         mask = th.eye(object_num, device=x_pred.device).to(th.bool)
-        # logger.info(f'mask: {mask}')
         iou_3d = (~mask).float() * iou_3d
         # iou_3d /2
         iou_3d = iou_3d.contiguous().view(-1)
@@ -277,7 +282,8 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
         # logger.info(f'iou_3d: {iou_3d}')
         iou_loss_lst = th.zeros((C, feat_size), dtype=th.float32, device=x_pred.device)
         iou_loss_lst[object_feat_idx, :iou_3d.shape[0]] = iou_3d
-
+        # iou_loss_lst = l1_critertion(iou_loss_lst, th.zeros_like(iou_loss_lst))
+        logger.debug(f'iou_loss_lst: {iou_loss_lst.shape}')
         batch_pred_bbox_iou_loss_lst.append(iou_loss_lst)
 
     batch_pred_bbox_iou_loss = th.stack(batch_pred_bbox_iou_loss_lst, dim=0)
@@ -393,48 +399,6 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     # return batch_iou_loss
 
 
-def bdb3d_iou(cu1, cu2):
-    """
-        Calculate the Intersection over Union (IoU) of two 3D cuboid.
-
-        Parameters
-        ----------
-        cu1 : numpy array, 8x3
-        cu2 : numpy array, 8x3
-
-        Returns
-        -------
-        float
-            in [0, 1]
-    """
-
-    # 2D projection on the horizontal plane (x-y plane)
-    polygon2D_1 = Polygon([(cu1[0][0], cu1[0][1]), (cu1[1][0], cu1[1][1]), (cu1[3][0], cu1[3][1]),
-                           (cu1[2][0], cu1[2][1])])
-
-    polygon2D_2 = Polygon([(cu2[0][0], cu2[0][1]), (cu2[1][0], cu2[1][1]), (cu2[3][0], cu2[3][1]),
-                           (cu2[2][0], cu2[2][1])])
-
-    # from matplotlib import pyplot
-    # pyplot.plot(*polygon2D_1.exterior.xy)
-    # pyplot.plot(*polygon2D_2.exterior.xy)
-    # pyplot.axis('equal')
-    # pyplot.show()
-
-    # 2D intersection area of the two projections.
-    intersect_2D = polygon2D_1.intersection(polygon2D_2).area
-
-    # the volume of the intersection part of cu1 and cu2
-    inter_vol = intersect_2D * max(0.0, min(cu1[4][2], cu2[4][2]) - max(cu1[0][2], cu2[0][2]))
-
-    # the volume of cu1 and cu2
-    vol1 = polygon2D_1.area * (cu1[4][2] - cu1[0][2])
-    vol2 = polygon2D_2.area * (cu2[4][2] - cu2[0][2])
-
-    # return 3D IoU
-    return inter_vol / (vol1 + vol2 - inter_vol)
-
-
 def pred_3d_iou_loss(x_gt, y, means, log_scales, weights):
     """
     Compute the 3D IoU of a Gaussian distribution of 3D objects.
@@ -460,7 +424,7 @@ def pred_3d_iou_loss(x_gt, y, means, log_scales, weights):
     # sample = means + nonzero_mask * th.exp(0.5 * log_scales) * noise
 
     x_pred = means
-
+    pyhsical_violation_weight = 500
     # only calculate iou loss when t==0
     # zero_mask = (tms == 0).float().view(-1, *([1] * (len(x_gt.shape) - 1)))
     #  calculate iou loss
@@ -468,9 +432,9 @@ def pred_3d_iou_loss(x_gt, y, means, log_scales, weights):
     # logger.debug(f'batch_iou_loss_lst: {batch_iou_loss_lst}')
     # batch_iou_loss = zero_mask * batch_iou_loss
     # logger.debug(f'batch_iou_loss: {batch_iou_loss.shape}')
-    batch_iou_loss = batch_iou_loss.sum(dim=1)
-    logger.info(f'batch_iou_loss: {batch_iou_loss.shape}')
-    batch_iou_loss = batch_iou_loss[batch_iou_loss > 0]
-    logger.info(f'batch_iou_loss > 0: {batch_iou_loss.shape}')
+    batch_iou_loss = batch_iou_loss.sum(dim=1) * pyhsical_violation_weight
+    logger.debug(f'batch_iou_loss: {batch_iou_loss.shape}')
+    # batch_iou_loss = batch_iou_loss[:, batch_iou_loss > 0]
+    # logger.info(f'batch_iou_loss > 0: {batch_iou_loss.shape}')
 
     return batch_iou_loss
