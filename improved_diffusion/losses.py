@@ -228,7 +228,7 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     # skip empty object
     no_object_mask = th.logical_or(no_object_mask,
                                    th.all(pred_object_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
-    # no_object_mask = no_object_mask.unsqueeze(2)
+    # BxCx1
     logger.debug(f'no_object_mask: {no_object_mask.shape}')
 
     pred_object_centroid = pred_object_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
@@ -256,20 +256,8 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     # logger.info(f'pred_object_bbox_corners[no_object_mask].shape: {pred_object_bbox_corners[is_object_mask].shape}')
     batch_pred_bbox_iou_loss_lst = []
     for batch_idx in range(B):
-        # room_type = room_type_lst[batch_idx]
-        # room_type_str = get_room_type(room_type)
-        # if room_type_str == 'bedroom':
-        #     obj_feat_num, obj_feat_dim = 13, 30
-        #     class_labels_lst = (ST3D_BEDROOM_FURNITURE)
-        # elif room_type_str == 'living room':
-        #     obj_feat_num, obj_feat_dim = 24, 32
-        #     class_labels_lst = (ST3D_LIVINGROOM_FURNITURE)
-        # elif room_type_str == 'dining room':
-        #     obj_feat_num, obj_feat_dim = 24, 32
-        #     class_labels_lst = (ST3D_DININGROOM_FURNITURE)
 
         # each batch(room) has different number of objects
-        # Assume inputs: boxes1 (M, 8, 3) and boxes2 (N, 8, 3)
         object_bbox_arr = pred_object_bboxes[batch_idx, ...]
         # logger.info(f'bbox_arr: {object_bbox_arr}')
         iou_3d = bdb3d_iou(object_bbox_arr, object_bbox_arr)

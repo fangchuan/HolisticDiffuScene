@@ -156,7 +156,7 @@ We would like to thank Kujiale.com for providing the database of house designs a
 2. openai-2023-06-15-09-25-18-855079: 对房间数据进行排序, 以frequency/box_size进行排序, 生成结果中没有door的问题基本解决, 但是仍然有1/10没有bed;
 3. openai-2023-06-19-14-44-06-950438: 更换doffusion loss为 mse+klloss, 对碰撞问题没有帮助;
 4. hkust-gpu02: openai-2023-06-19-19-17-58-043907: 添加iou loss, t=0....(T-1)都有iou loss, 以normalized_bbox_center计算iou;
-   hkust-gpu03: openai-2023-06-19-20-55-21-510761: 添加iou loss, 只t=0，以normalized_bbox_center计算iou;
+   hkust-gpu03: openai-2023-06-19-20-55-21-510761: 添加iou loss, 只t=0，以normalized_bbox_center计算iou;  ---- 训练9W步的生成结果: 碰撞没有减少, 物体orientation出现问题, 比如bed/cabinet不贴墙面； 
 5. openai-2023-06-20-*: 现有的iou loss计算太慢, 训练时间变为原来3倍;
 6. openai-2023-06-21-*: 使用pytorch3d-box_overlap, 未提供backward函数, 无法把iou loss反向传播;
-7. openai-2023-06-22-11-42-17-175271: 加速iou_3d计算, 训练3.5W步, totoal_loss有下降, 但是iou_loss没有下降;
+7. openai-2023-06-22-11-42-17-175271: 加速iou_3d计算, 训练3.5W步, totoal_loss有下降, 但是iou_loss没有下降; ---- 训练20W步的生成结果: 碰撞没有减少, 物体orientation出现问题, 比如bed/cabinet不贴墙面； 
