@@ -444,6 +444,7 @@ class GaussianDiffusion:
     ):
         """
         Sample x_{t-1} from the model using DDIM.
+        refer to  Eq(12) in https://arxiv.org/pdf/2010.02502.pdf
 
         Same usage as p_sample().
         """

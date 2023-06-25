@@ -78,6 +78,8 @@ class SpacedDiffusion(GaussianDiffusion):
                 new_betas.append(1 - alpha_cumprod / last_alpha_cumprod)
                 last_alpha_cumprod = alpha_cumprod
                 self.timestep_map.append(i)
+
+        # 重新计算respacing 后的betas
         kwargs["betas"] = np.array(new_betas)
         super().__init__(**kwargs)
 
@@ -106,8 +108,19 @@ class _WrappedModel:
         self.original_num_steps = original_num_steps
 
     def __call__(self, x, ts, **kwargs):
+        """ 将ts映射到resapcing后的时间索引
+
+        Args:
+            x (_type_): _description_
+            ts (th.Tensor): 连续时间[0...T]的索引
+
+        Returns:
+            _type_: _description_
+        """
+        # map_tensor中包含DDIM respacing后的时间索引
         map_tensor = th.tensor(self.timestep_map, device=ts.device, dtype=ts.dtype)
         new_ts = map_tensor[ts]
         if self.rescale_timesteps:
+            # 控制new_timestamp的范围在[0...1000]浮点数
             new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
         return self.model(x, new_ts, **kwargs)
