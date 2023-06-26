@@ -285,6 +285,8 @@ def create_gaussian_diffusion(
     betas = gd.get_named_beta_schedule(noise_schedule, steps)
     if use_kl:
         loss_type = gd.LossType.RESCALED_KL
+        if b_use_3d_iou:
+            loss_type = gd.LossType.RESCALED_KL_IOU
     elif rescale_learned_sigmas:
         loss_type = gd.LossType.RESCALED_MSE
         if b_use_3d_iou:

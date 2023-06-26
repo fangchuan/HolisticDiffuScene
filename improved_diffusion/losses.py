@@ -7,7 +7,6 @@ https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Union
 import torch as th
-from pytorch3d.ops import box3d_overlap
 
 from dataset.st3d_dataset import get_room_type
 from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE

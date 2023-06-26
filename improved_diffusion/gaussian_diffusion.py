@@ -91,6 +91,7 @@ class LossType(enum.Enum):
     RESCALED_MSE_IOU = (enum.auto())  # use raw MSE loss plus 3D IoU loss (with RESCALED_KL when learning variances)
     KL = enum.auto()  # use the variational lower-bound
     RESCALED_KL = enum.auto()  # like KL, but rescale to estimate the full VLB
+    RESCALED_KL_IOU = enum.auto()  # like KL, but rescale to estimate the full VLB plus 3D IoU loss
 
     def is_vb(self):
         return self == LossType.KL or self == LossType.RESCALED_KL
@@ -648,17 +649,36 @@ class GaussianDiffusion:
 
         terms = {}
 
-        if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL:
-            terms["loss"] = self._vb_terms_bpd(
+        if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL or self.loss_type == LossType.RESCALED_KL_IOU:
+            out = self._vb_terms_bpd(
                 model=model,
                 x_start=x_start,
                 x_t=x_t,
                 t=t,
                 clip_denoised=False,
                 model_kwargs=model_kwargs,
-            )["output"]
+            )
+            terms["vb"] = out["output"]
             if self.loss_type == LossType.RESCALED_KL:
-                terms["loss"] *= self.num_timesteps
+                terms["vb"] *= self.num_timesteps
+
+            terms["loss"] = terms["vb"]
+            if self.loss_type == LossType.RESCALED_KL_IOU:
+                terms["vb"] *= self.num_timesteps
+                terms["loss"] = terms["vb"]
+                
+                # logger.info(f"KL loss: {terms['loss']}")
+
+                pred_x_start = out["pred_xstart"]
+                alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x_start.shape)
+                # Bx1024
+                iou_loss = pred_3d_iou_loss(x_start, **model_kwargs, means=pred_x_start, weights=alpha_bar)
+                terms["iou"] = iou_loss.sum(dim=1)
+
+                terms["loss"] = terms["vb"] + terms["iou"]
+
+                # logger.info(f"total loss: {terms['loss']}")
+
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE or self.loss_type == LossType.RESCALED_MSE_IOU:
             model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
 
@@ -710,7 +730,7 @@ class GaussianDiffusion:
             if "vb" in terms:
                 terms["loss"] = terms["mse"] + terms["vb"]
                 if "iou" in terms:
-                    terms["loss"] += terms["iou"]
+                    terms["loss"] = terms["mse"] + terms["vb"] + terms["iou"]
             else:
                 terms["loss"] = terms["mse"]
         else:
