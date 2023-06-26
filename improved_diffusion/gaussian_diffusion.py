@@ -134,6 +134,7 @@ class GaussianDiffusion:
         assert (betas > 0).all() and (betas <= 1).all()
 
         self.num_timesteps = int(betas.shape[0])
+        logger.info(f"num_timesteps: {self.num_timesteps}")
 
         alphas = 1.0 - betas
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
@@ -662,7 +663,6 @@ class GaussianDiffusion:
             model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
 
             pred_x_prev_mean = None
-            pred_x_prev_log_var = None
             if self.model_var_type in [
                     ModelVarType.LEARNED,
                     ModelVarType.LEARNED_RANGE,
@@ -680,21 +680,24 @@ class GaussianDiffusion:
                     t=t,
                     clip_denoised=False,
                 )
+
                 pred_x_prev_mean = out["pred_mean"]
-                pred_x_prev_log_var = out["pred_log_variance"]
+                pred_x_start = out["pred_xstart"]
+
                 terms["vb"] = out["output"]
                 if self.loss_type == LossType.RESCALED_MSE:
                     # Divide by 1000 for equivalence with initial implementation.
                     # Without a factor of 1/1000, the VB term hurts the MSE term.
                     terms["vb"] *= self.num_timesteps / 1000.0
                 if self.loss_type == LossType.RESCALED_MSE_IOU:
+                    terms["vb"] *= self.num_timesteps / 1000.0
+
                     alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x_start.shape)
-                    iou_loss = pred_3d_iou_loss(x_start,
-                                                **model_kwargs,
-                                                means=pred_x_prev_mean,
-                                                log_scales=pred_x_prev_log_var,
-                                                weights=alpha_bar)
-                    terms["iou"] = mean_flat(iou_loss)
+                    logger.debug(f"tms: {t}")
+                    logger.debug(f"alpha_bar: {alpha_bar}")
+                    # Bx1024
+                    iou_loss = pred_3d_iou_loss(x_start, **model_kwargs, means=pred_x_start, weights=alpha_bar)
+                    terms["iou"] = iou_loss.sum(dim=1)
 
             target = {
                 ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(x_start=x_start, x_t=x_t, t=t)[0],

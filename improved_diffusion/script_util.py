@@ -294,8 +294,10 @@ def create_gaussian_diffusion(
     if not timestep_respacing:
         timestep_respacing = [steps]
 
+    used_timestamps = space_timesteps(steps, timestep_respacing)
+    # logger.info(f"used_timestamps: {used_timestamps}")
     return SpacedDiffusion(
-        use_timesteps=space_timesteps(steps, timestep_respacing),
+        use_timesteps=used_timestamps,
         betas=betas,
         model_mean_type=(gd.ModelMeanType.EPSILON if not predict_xstart else gd.ModelMeanType.START_X),
         model_var_type=((gd.ModelVarType.FIXED_LARGE if not sigma_small else gd.ModelVarType.FIXED_SMALL)

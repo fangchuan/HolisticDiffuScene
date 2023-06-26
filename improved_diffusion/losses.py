@@ -206,9 +206,6 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     assert C == 4, "The input x_pred should be (B, 4, 1024)"
     assert iou_loss_weights.shape == (B, C, feat_size), "The loss weights tensor should be (B, 4, 1024)"
 
-    logger.debug(f'iou_loss_weights: {iou_loss_weights.shape}')
-    logger.debug(f'iou_loss_weights: {iou_loss_weights}')
-
     class_labels_lst = ST3D_BEDROOM_FURNITURE
     obj_feat_num, obj_feat_dim = 13, 30
 
@@ -239,8 +236,10 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     pred_object_size = th.where(pred_object_size.isnan(), 0.0, pred_object_size)
     logger.debug(f'pred_object_size: {pred_object_size.shape}')
 
-    pred_object_angle = th.clamp(pred_object_bbox[:, :, angle_idx], min=-0.999999, max=0.999999)
-    pred_object_angle = th.arccos(pred_object_angle)
+    # pred_object_angle = th.clamp(pred_object_bbox[:, :, angle_idx], min=-0.999999, max=0.999999)
+    # pred_object_angle = th.arccos(pred_object_angle)
+    pred_object_angle_0 = th.arccos(pred_object_bbox[:, :, angle_idx].clamp(min=-0.999999, max=0.999999))
+    pred_object_angle = th.where(th.isnan(pred_object_angle_0), 0, pred_object_angle_0)
     pred_object_angle = pred_object_angle.unsqueeze(2)
     logger.debug(f'pred_object_angle: {pred_object_angle.shape}')
 
@@ -259,7 +258,7 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
 
         # each batch(room) has different number of objects
         object_bbox_arr = pred_object_bboxes[batch_idx, ...]
-        # logger.info(f'bbox_arr: {object_bbox_arr}')
+        # 13x13
         iou_3d = bdb3d_iou(object_bbox_arr, object_bbox_arr)
         # ignore empty object
         iou_3d = is_object_mask[batch_idx, ...] * iou_3d
@@ -275,11 +274,15 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
         iou_loss_lst = th.zeros((C, feat_size), dtype=th.float32, device=x_pred.device)
         iou_loss_lst[object_feat_idx, :iou_3d.shape[0]] = iou_3d
         # iou_loss_lst = l1_critertion(iou_loss_lst, th.zeros_like(iou_loss_lst))
-        logger.debug(f'iou_loss_lst: {iou_loss_lst.shape}')
+        logger.debug(f'iou_3d: {iou_3d.shape}')
         batch_pred_bbox_iou_loss_lst.append(iou_loss_lst)
 
+    # BxCx1024
     batch_pred_bbox_iou_loss = th.stack(batch_pred_bbox_iou_loss_lst, dim=0)
+    logger.debug(f'batch_pred_bbox_iou_loss berfore weighting: {batch_pred_bbox_iou_loss}')
     batch_iou_loss = batch_pred_bbox_iou_loss * iou_loss_weights
+    logger.debug(f'batch_pred_bbox_iou_loss after weighting: {batch_pred_bbox_iou_loss}')
+
     return batch_iou_loss
 
     # batch_pred_bbox_iou_loss_lst = []
@@ -391,7 +394,7 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     # return batch_iou_loss
 
 
-def pred_3d_iou_loss(x_gt, y, means, log_scales, weights):
+def pred_3d_iou_loss(x_gt, y, means, weights):
     """
     Compute the 3D IoU of a Gaussian distribution of 3D objects.
 
@@ -407,7 +410,7 @@ def pred_3d_iou_loss(x_gt, y, means, log_scales, weights):
     assert y.shape[0] == B
 
     x_pred = means
-    pyhsical_violation_weight = 500
+    pyhsical_violation_weight = 1.0
     #  calculate iou loss
     batch_iou_loss = iou_among_predicted_3d_bbox(x_pred, y, weights)
     batch_iou_loss = batch_iou_loss.sum(dim=1) * pyhsical_violation_weight
