@@ -160,3 +160,5 @@ We would like to thank Kujiale.com for providing the database of house designs a
 5. openai-2023-06-20-*: 现有的iou loss计算太慢, 训练时间变为原来3倍;
 6. openai-2023-06-21-*: 使用pytorch3d-box_overlap, 未提供backward函数, 无法把iou loss反向传播;
 7. openai-2023-06-22-11-42-17-175271: 加速iou_3d计算, 训练3.5W步, totoal_loss有下降, 但是iou_loss没有下降; ---- 训练20W步的生成结果: 碰撞没有减少, 物体orientation出现问题, 比如bed/cabinet不贴墙面； 
+8. openai-2023-06-26-18-25-34-618025: total_loss=kl_loss + mse_loss + iou_loss, 使用pred_xstart计算 iou_loss, iou_loss不使用1024平均, 采用1024 vec_sum操作, 8W步训练过程iou_loss有下降, 但是下降过程非常noisy; 结果太noisy, iou_loss权重太大;
+9. openai-2023-06-26-22-02-01-510271: total_loss=kl_loss + iou_loss, 使用pred_xstart计算iou_loss, iou_loss不使用1024平均, 采用1024 vec_sum操作, 7W步训练过程iou_loss有下降, 但是下降过程非常noisy; 结果太noisy, iou_loss权重太大;

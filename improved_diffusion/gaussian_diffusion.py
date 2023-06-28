@@ -665,8 +665,6 @@ class GaussianDiffusion:
             terms["loss"] = terms["vb"]
             if self.loss_type == LossType.RESCALED_KL_IOU:
                 terms["vb"] *= self.num_timesteps
-                terms["loss"] = terms["vb"]
-                
                 # logger.info(f"KL loss: {terms['loss']}")
 
                 pred_x_start = out["pred_xstart"]
@@ -682,7 +680,6 @@ class GaussianDiffusion:
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE or self.loss_type == LossType.RESCALED_MSE_IOU:
             model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
 
-            pred_x_prev_mean = None
             if self.model_var_type in [
                     ModelVarType.LEARNED,
                     ModelVarType.LEARNED_RANGE,
@@ -701,7 +698,6 @@ class GaussianDiffusion:
                     clip_denoised=False,
                 )
 
-                pred_x_prev_mean = out["pred_mean"]
                 pred_x_start = out["pred_xstart"]
 
                 terms["vb"] = out["output"]

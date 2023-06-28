@@ -224,6 +224,14 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     # skip empty object
     no_object_mask = th.logical_or(no_object_mask,
                                    th.all(pred_object_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
+    # skip curtain and window
+    curtain_mask = th.all(pred_object_class == class_labels_lst.index('curtain'), dim=2, keepdim=True)
+    window_mask = th.all(pred_object_class == class_labels_lst.index('window'), dim=2, keepdim=True)
+
+    # skip bed and pillow
+    bed_mask = th.all(pred_object_class == class_labels_lst.index('bed'), dim=2, keepdim=True)
+    pillow_mask = th.all(pred_object_class == class_labels_lst.index('pillow'), dim=2, keepdim=True)
+
     # BxCx1
     logger.debug(f'no_object_mask: {no_object_mask.shape}')
 
@@ -235,8 +243,6 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     pred_object_size = th.where(pred_object_size.isnan(), 0.0, pred_object_size)
     logger.debug(f'pred_object_size: {pred_object_size.shape}')
 
-    # pred_object_angle = th.clamp(pred_object_bbox[:, :, angle_idx], min=-0.999999, max=0.999999)
-    # pred_object_angle = th.arccos(pred_object_angle)
     pred_object_angle_0 = th.arccos(pred_object_bbox[:, :, angle_idx].clamp(min=-0.999999, max=0.999999))
     pred_object_angle = th.where(th.isnan(pred_object_angle_0), 0, pred_object_angle_0)
     pred_object_angle = pred_object_angle.unsqueeze(2)
@@ -255,19 +261,25 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     batch_pred_bbox_iou_loss_lst = []
     for batch_idx in range(B):
 
-        # each batch(room) has different number of objects
+        # 13x7
         object_bbox_arr = pred_object_bboxes[batch_idx, ...]
         # 13x13
         iou_3d = bdb3d_iou(object_bbox_arr, object_bbox_arr)
         # ignore empty object
         iou_3d = is_object_mask[batch_idx, ...] * iou_3d
+        # ignore iou between curtain and window
+        if th.any(curtain_mask[batch_idx, ...]) and th.any(window_mask[batch_idx, ...]):
+            curtain_window_mask = th.mm(curtain_mask[batch_idx, ...].float(), window_mask[batch_idx, ...].t().float())
+            iou_3d = (1 - curtain_window_mask) * iou_3d
 
-        object_num = object_bbox_arr.shape[0]
-        # logger.debug(f'object_num: {object_bbox_arr.shape[0]}')
+        # ignore iou between bed and pillow
+        if th.any(bed_mask[batch_idx, ...]) and th.any(pillow_mask[batch_idx, ...]):
+            bed_pillow_mask = th.mm(bed_mask[batch_idx, ...].float(), pillow_mask[batch_idx, ...].t().float())
+            iou_3d = (1 - bed_pillow_mask) * iou_3d
 
         # ignore self-intersection
-        mask = th.eye(object_num, device=x_pred.device).to(th.bool)
-        iou_3d = (~mask).float() * iou_3d
+        mask = th.eye(object_bbox_arr.shape[0], device=x_pred.device)
+        iou_3d = (1 - mask) * iou_3d
         # iou_3d /2
         iou_3d = iou_3d.contiguous().view(-1)
         iou_loss_lst = th.zeros((C, feat_size), dtype=th.float32, device=x_pred.device)
@@ -409,7 +421,7 @@ def pred_3d_iou_loss(x_gt, y, means, weights):
     assert y.shape[0] == B
 
     x_pred = means
-    pyhsical_violation_weight = 1.0
+    pyhsical_violation_weight = 0.001
     #  calculate iou loss
     batch_iou_loss = iou_among_predicted_3d_bbox(x_pred, y, weights)
     batch_iou_loss = batch_iou_loss.sum(dim=1) * pyhsical_violation_weight
