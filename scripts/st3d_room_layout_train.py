@@ -37,7 +37,7 @@ def main():
     # set up distributed training and logging
     dist_util.setup_dist()
     log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
-    logger.configure(dir=log_dir, format_strs=[ 'stdout', 'log', 'csv'])
+    logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
     logger.set_level(logger.INFO)
 
     logger.log("creating UNet model and diffusion model...")
