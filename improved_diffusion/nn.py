@@ -10,11 +10,13 @@ import torch.nn as nn
 
 # PyTorch 1.7 has SiLU, but we support PyTorch 1.5.
 class SiLU(nn.Module):
+
     def forward(self, x):
         return x * th.sigmoid(x)
 
 
 class GroupNorm32(nn.GroupNorm):
+
     def forward(self, x):
         return super().forward(x.float()).type(x.dtype)
 
@@ -111,9 +113,8 @@ def timestep_embedding(timesteps, dim, max_period=10000):
     :return: an [N x dim] Tensor of positional embeddings.
     """
     half = dim // 2
-    freqs = th.exp(
-        -math.log(max_period) * th.arange(start=0, end=half, dtype=th.float32) / half
-    ).to(device=timesteps.device)
+    freqs = th.exp(-math.log(max_period) * th.arange(start=0, end=half, dtype=th.float32) /
+                   half).to(device=timesteps.device)
     args = timesteps[:, None].float() * freqs[None]
     embedding = th.cat([th.cos(args), th.sin(args)], dim=-1)
     if dim % 2:
@@ -140,6 +141,7 @@ def checkpoint(func, inputs, params, flag):
 
 
 class CheckpointFunction(th.autograd.Function):
+
     @staticmethod
     def forward(ctx, run_function, length, *args):
         ctx.run_function = run_function
@@ -168,3 +170,20 @@ class CheckpointFunction(th.autograd.Function):
         del ctx.input_params
         del output_tensors
         return (None, None) + input_grads
+
+
+class PositionEmbeddingLearned(nn.Module):
+    """
+    Absolute pos embedding, learned.
+    """
+
+    def __init__(self, input_channel, out_channel=1024):
+        super().__init__()
+        self.position_embedding_head = nn.Sequential(nn.Conv1d(input_channel, out_channel, kernel_size=1),
+                                                     nn.BatchNorm1d(out_channel), nn.ReLU(inplace=True),
+                                                     nn.Conv1d(out_channel, out_channel, kernel_size=1))
+
+    def forward(self, xyz):
+        xyz = xyz.transpose(1, 2).contiguous()
+        position_embedding = self.position_embedding_head(xyz)
+        return position_embedding

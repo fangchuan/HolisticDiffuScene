@@ -21,6 +21,8 @@ from .metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DI
 ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN,\
 ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS
 
+from improved_diffusion import logger
+
 # room types
 ROOM_TYPE_DICT = {
     'living room': 0,
@@ -691,7 +693,12 @@ def ordered_bboxes_with_class_frequencies(room_type: int, object_bbox_lst: List[
 
 
 def padding_and_reshape_object_bbox(room_type: int, object_bbox_lst: np.array, bbox_dim: int) -> List:
-    """Implement the padding for the object bounding boxes."""
+    """ Implement the padding for the object bounding boxes.
+    :param room_type: the room type value: 2 for bedroom, 0 for living room, 6 for dining room
+    :param object_bbox_lst: the object bounding box list (L, bbox_dim)
+    :param bbox_dim: the dimension of the bounding box encoding.
+    :return: the padded and flatten object bounding box list (1,1024)
+    """
     L = len(object_bbox_lst)
     max_len = L
     if room_type == ROOM_TYPE_DICT['bedroom']:
@@ -711,10 +718,13 @@ def padding_and_reshape_object_bbox(room_type: int, object_bbox_lst: np.array, b
         object_bbox_lst = np.vstack([object_bbox_lst, np.tile(padding, [max_len - L, 1])])
     elif L >= max_len:
         object_bbox_lst = object_bbox_lst[:max_len]
-    object_bbox_lst = object_bbox_lst.flatten()
+    # object_bbox_lst = object_bbox_lst.flatten()
 
-    assert object_bbox_lst.shape[-1] == (max_len * bbox_dim) and object_bbox_lst.shape[-1] < 1024
-    ret_lst = np.zeros((1, 1024), dtype=np.float32)
+    # assert object_bbox_lst.shape[-1] == (max_len * bbox_dim) and object_bbox_lst.shape[-1] < 1024
+    # ret_lst = np.zeros((1, 1024), dtype=np.float32)
+    # ret_lst[:, :object_bbox_lst.shape[-1]] = object_bbox_lst
+    target_bbox_dim = 1024
+    ret_lst = np.zeros((max_len, target_bbox_dim), dtype=np.float32)
     ret_lst[:, :object_bbox_lst.shape[-1]] = object_bbox_lst
     return ret_lst
 
@@ -834,6 +844,7 @@ class PanoCorBoundDataset(data.Dataset):
         object_bbox_lst = padding_and_reshape_object_bbox(room_type=room_type,
                                                           object_bbox_lst=np.array(object_bbox_lst),
                                                           bbox_dim=bbox_property_encode_dim)
+        # logger.debug(f'target object bbox shape: {object_bbox_lst[:, :30]}')
 
         # Read ground truth corners
         with open(os.path.join(self.cor_dir, self.local_txt_fnames[idx])) as f:

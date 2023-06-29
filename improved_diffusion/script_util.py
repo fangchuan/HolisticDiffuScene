@@ -18,13 +18,13 @@ def model_and_diffusion_defaults():
     return dict(
         # image_size=64,
         layout_size=1024,
-        layout_channels=4,
+        layout_channels=16,
         num_channels=128,
         num_res_blocks=2,
         num_heads=4,
         num_heads_upsample=-1,
         # attention_resolutions="16,8",
-        attention_resolutions="256, 128",
+        attention_resolutions="1024, 512, 256, 128",
         dropout=0.0,
         b_learn_sigma=False,
         sigma_small=False,
@@ -36,7 +36,7 @@ def model_and_diffusion_defaults():
         predict_xstart=False,
         rescale_timesteps=True,
         rescale_learned_sigmas=True,
-        use_3d_iou=True,
+        use_3d_iou=False,
         use_checkpoint=False,
         use_scale_shift_norm=True,
     )
@@ -75,7 +75,7 @@ def create_model_and_diffusion(
         sigma_small (_type_): _description_
         num_channels (int): UNet channel size
         num_res_blocks (int): number of residual blocks per downsample.
-        num_heads (_type_): _description_
+        num_heads (int): number of attention heads
         num_heads_upsample (_type_): _description_
         attention_resolutions (_type_):  which resnet will use attention
         dropout (float): dropout probability
@@ -152,6 +152,7 @@ def create_model(
     logger.info(f"attention downsaple ratios: {attention_downsample_ratio_lst}")
 
     return UNetModel(
+        feature_size=layout_feature_size,
         in_channels=layout_channels,
         model_channels=num_channels,
         out_channels=(layout_channels if not learn_sigma else 2 * layout_channels),

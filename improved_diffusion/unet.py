@@ -6,6 +6,9 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+from collections import OrderedDict
+
+from typing import Dict, List, Tuple, Optional
 
 from .fp16_util import convert_module_to_f16, convert_module_to_f32
 from .nn import (
@@ -17,9 +20,11 @@ from .nn import (
     normalization,
     timestep_embedding,
     checkpoint,
+    PositionEmbeddingLearned,
 )
 
 from . import logger
+
 
 class TimestepBlock(nn.Module):
     """
@@ -33,16 +38,32 @@ class TimestepBlock(nn.Module):
         """
 
 
-class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
+class SpatialAttentionBlock(nn.Module):
+    """
+    An attention block that allows spatial positions to attend to each other.
+
+    Originally ported from here, but adapted to the N-d case.
+    """
+
+    @abstractmethod
+    def forward(self, x, pos_emb):
+        """
+        Apply the module to `x` given `emb` timestep embeddings.
+        """
+
+
+class TimestepEmbedSequential(nn.Sequential, TimestepBlock, SpatialAttentionBlock):
     """
     A sequential module that passes timestep embeddings to the children that
     support it as an extra input.
     """
 
-    def forward(self, x, emb):
+    def forward(self, x, emb, query_pos=None):
         for layer in self:
             if isinstance(layer, TimestepBlock):
                 x = layer(x, emb)
+            elif isinstance(layer, SpatialAttentionBlock):
+                x = layer(x, query_pos)
             else:
                 x = layer(x)
         return x
@@ -190,7 +211,7 @@ class ResBlock(TimestepBlock):
         return self.skip_connection(x) + h
 
 
-class AttentionBlock(nn.Module):
+class AttentionBlock(SpatialAttentionBlock):
     """
     An attention block that allows spatial positions to attend to each other.
 
@@ -198,7 +219,13 @@ class AttentionBlock(nn.Module):
     https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L66.
     """
 
-    def __init__(self, channels, num_heads=1, use_checkpoint=False):
+    def __init__(self,
+                 channels,
+                 num_heads=1,
+                 use_checkpoint=False,
+                 pos_emb_layers=None,
+                 pos_emb_in_channels=None,
+                 pos_emb_out_channels=None):
         super().__init__()
         self.channels = channels
         self.num_heads = num_heads
@@ -208,15 +235,44 @@ class AttentionBlock(nn.Module):
         self.qkv = conv_nd(1, channels, channels * 3, 1)
         self.attention = QKVAttention()
         self.proj_out = zero_module(conv_nd(1, channels, channels, 1))
+        self.pos_emb_layers = pos_emb_layers
+        if pos_emb_layers is not None:
+            self.pos_emb_proj = nn.Sequential(
+                SiLU(),
+                linear(
+                    pos_emb_in_channels,
+                    pos_emb_out_channels,
+                ),
+            )
 
-    def forward(self, x):
-        return checkpoint(self._forward, (x,), self.parameters(), self.use_checkpoint)
+    def with_pos_embed(self, tensor, pos: Optional[th.Tensor]):
+        return tensor if pos is None else tensor + pos
 
-    def _forward(self, x):
+    def forward(self, x, query_pos=None):
+        return checkpoint(self._forward, (x, query_pos), self.parameters(), self.use_checkpoint)
+
+    def _forward(self, x, query_pos=None):
+        pos_emb = None
+        if (query_pos is not None) and (self.pos_emb_layers is not None):
+            # Bx128x16
+            pos_emb = self.pos_emb_layers(query_pos)
+            logger.debug(f"AttentionBlock::_forward pos_emb: {pos_emb.shape}")
+            # Bx128x128, project position embedding to match the feature dimension
+            pos_emb = self.pos_emb_proj(pos_emb)
+            logger.debug(f"AttentionBlock::_forward projected_pos_emb: {pos_emb.shape}")
+
         b, c, *spatial = x.shape
+        logger.debug(f"AttentionBlock::_forward {b, c, spatial}")
         x = x.reshape(b, c, -1)
-        qkv = self.qkv(self.norm(x))
+        x = self.norm(x)
+        x = self.with_pos_embed(x, pos_emb)
+
+        # logger.debug(f"AttentionBlock::_forward reshaped x: {x.shape}")
+        qkv = self.qkv(x)
+        # logger.debug(f"AttentionBlock::_forward qkv: {qkv.shape}")
         qkv = qkv.reshape(b * self.num_heads, -1, qkv.shape[2])
+        # logger.debug(f"AttentionBlock::_forward reshaped qkv: {qkv.shape}")
+
         h = self.attention(qkv)
         h = h.reshape(b, -1, h.shape[-1])
         h = self.proj_out(h)
@@ -305,6 +361,13 @@ class UNetModel(nn.Module):
         num_heads=1,
         num_heads_upsample=-1,
         use_scale_shift_norm=False,
+        feature_size=64,
+        bbox_centroid_idx=22,
+        bbox_centroid_dim=3,
+        bbox_size_idx=25,
+        bbox_size_dim=3,
+        use_position_embedding=True,
+        use_centroid_and_size_pos_embedding=True,
     ):
         super().__init__()
 
@@ -325,6 +388,13 @@ class UNetModel(nn.Module):
         self.num_heads = num_heads
         self.num_heads_upsample = num_heads_upsample
 
+        self.use_position_embedding = use_position_embedding
+        self.use_centroid_and_size_pos_embedding = use_centroid_and_size_pos_embedding
+        self.bbox_centroid_idx = bbox_centroid_idx
+        self.bbox_centroid_dim = bbox_centroid_dim
+        self.bbox_size_idx = bbox_size_idx
+        self.bbox_size_dim = bbox_size_dim
+
         # time embedding block
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
@@ -337,40 +407,69 @@ class UNetModel(nn.Module):
         if self.num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
 
+        # position embedding block
+        self.input_pos_emb_layers = nn.ModuleList([])
+        self.middle_pos_emb_layers = nn.ModuleList([])
+        self.output_pos_emb_layers = nn.ModuleList([])
+
+        # position dimension is 6 if using centroid and size for position embedding,
+        # otherwise it is 3
+        position_dim = 6 if use_centroid_and_size_pos_embedding else 3
+
+        # self attention block
+        self.self_attn_input_blocks = nn.ModuleList([])
+        self.self_attn_output_blocks = nn.ModuleList([])
+
         # input block
-        self.input_blocks = nn.ModuleList(
-            [TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))])
+        self.input_blocks = nn.ModuleList([
+            TimestepEmbedSequential(
+                OrderedDict([('input_conv', conv_nd(dims, in_channels, model_channels, 3, padding=1))]))
+        ])
         input_block_chans = [model_channels]
         ch = model_channels
         # downsample rates for the attention layers
         downsample_ratio = 1
         for level, mult in enumerate(channel_mult):
-            for _ in range(num_res_blocks):
-                layers = [
+            for idx in range(num_res_blocks):
+                # each resblock consists of a resblock, an optional attention block
+                idx_str = f'{level}_{idx}'
+                layers = [(
+                    'resblock_' + idx_str,
                     ResBlock(
                         channels=ch,  # input channels
                         emb_channels=time_embed_dim,  # embedding channels
-                        dropout=dropout, # dropout probability
+                        dropout=dropout,  # dropout probability
                         out_channels=mult * model_channels,
                         dims=dims,
                         use_checkpoint=use_checkpoint,
                         use_scale_shift_norm=use_scale_shift_norm,
-                    )
-                ]
+                    ))]
                 # increase minput channels for next resblock
                 ch = mult * model_channels
                 # insert attention block if needed
                 if downsample_ratio in attention_resolutions:
-                    layers.append(AttentionBlock(channels=ch, use_checkpoint=use_checkpoint, num_heads=num_heads))
+                    pos_emb_layer = PositionEmbeddingLearned(input_channel=position_dim, out_channel=ch)
+                    layers.append(('attnblock_' + idx_str,
+                                   AttentionBlock(channels=ch,
+                                                  use_checkpoint=use_checkpoint,
+                                                  num_heads=num_heads,
+                                                  pos_emb_layers=pos_emb_layer,
+                                                  pos_emb_in_channels=in_channels,
+                                                  pos_emb_out_channels=feature_size)))
 
-                self.input_blocks.append(TimestepEmbedSequential(*layers))
+                self.input_blocks.append(TimestepEmbedSequential(OrderedDict(layers)))
                 input_block_chans.append(ch)
+            # create downsampling block at each level
             if level != len(channel_mult) - 1:
-                self.input_blocks.append(TimestepEmbedSequential(Downsample(channels=ch, use_conv=conv_resample, dims=dims)))
+                self.input_blocks.append(
+                    TimestepEmbedSequential(
+                        OrderedDict([('down_' + idx_str, Downsample(channels=ch, use_conv=conv_resample, dims=dims))])))
                 input_block_chans.append(ch)
                 downsample_ratio *= 2
+                feature_size = feature_size // 2
 
         # out_channel is same as input_channel in moddle block
+        pos_emb_layer = PositionEmbeddingLearned(input_channel=position_dim, out_channel=ch)
         self.middle_block = TimestepEmbedSequential(
             ResBlock(
                 ch,
@@ -380,7 +479,12 @@ class UNetModel(nn.Module):
                 use_checkpoint=use_checkpoint,
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
-            AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads),
+            AttentionBlock(ch,
+                           use_checkpoint=use_checkpoint,
+                           num_heads=num_heads,
+                           pos_emb_layers=pos_emb_layer,
+                           pos_emb_in_channels=in_channels,
+                           pos_emb_out_channels=feature_size),
             ResBlock(
                 ch,
                 time_embed_dim,
@@ -394,28 +498,32 @@ class UNetModel(nn.Module):
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks + 1):
-                layers = [
-                    ResBlock(
-                        ch + input_block_chans.pop(),
-                        time_embed_dim,
-                        dropout,
-                        out_channels=model_channels * mult,
-                        dims=dims,
-                        use_checkpoint=use_checkpoint,
-                        use_scale_shift_norm=use_scale_shift_norm,
-                    )
-                ]
+                idx_str = f'{level}_{i}'
+                layers = [('resblock_' + idx_str,
+                           ResBlock(
+                               ch + input_block_chans.pop(),
+                               time_embed_dim,
+                               dropout,
+                               out_channels=model_channels * mult,
+                               dims=dims,
+                               use_checkpoint=use_checkpoint,
+                               use_scale_shift_norm=use_scale_shift_norm,
+                           ))]
                 ch = model_channels * mult
                 if downsample_ratio in attention_resolutions:
-                    layers.append(AttentionBlock(
-                        ch,
-                        use_checkpoint=use_checkpoint,
-                        num_heads=num_heads_upsample,
-                    ))
+                    pos_emb_layer = PositionEmbeddingLearned(input_channel=position_dim, out_channel=ch)
+                    layers.append(('attnblock_' + idx_str,
+                                   AttentionBlock(ch,
+                                                  use_checkpoint=use_checkpoint,
+                                                  num_heads=num_heads_upsample,
+                                                  pos_emb_layers=pos_emb_layer,
+                                                  pos_emb_in_channels=in_channels,
+                                                  pos_emb_out_channels=feature_size)))
                 if level and i == num_res_blocks:
-                    layers.append(Upsample(channels=ch, use_conv=conv_resample, dims=dims))
+                    layers.append(('up_' + idx_str, Upsample(channels=ch, use_conv=conv_resample, dims=dims)))
                     downsample_ratio //= 2
-                self.output_blocks.append(TimestepEmbedSequential(*layers))
+                    feature_size *= 2
+                self.output_blocks.append(TimestepEmbedSequential(OrderedDict(layers)))
 
         self.out = nn.Sequential(
             normalization(ch),
@@ -446,6 +554,22 @@ class UNetModel(nn.Module):
         """
         return next(self.input_blocks.parameters()).dtype
 
+    def normalized_room_layout_bbox_position(self, bbox_position: th.Tensor):
+        b, c, bbox_dim = bbox_position.shape
+        room_layout_position = th.tensor([[0, 0, 0], [1, 1, 1], [-1, -1, -1]],
+                                         dtype=bbox_position.dtype,
+                                         device=bbox_position.device)
+        room_layout_position = room_layout_position.unsqueeze(0).repeat(b, 1, 1)
+        bbox_position[:, :3, :] = room_layout_position
+        return bbox_position
+
+    def normalized_room_layout_bbox_size(self, bbox_size: th.Tensor):
+        b, c, size_dim = bbox_size.shape
+        room_layout_size = th.tensor([[2, 2, 2], [2, 2, 2], [2, 2, 2]], dtype=bbox_size.dtype, device=bbox_size.device)
+        room_layout_size = room_layout_size.unsqueeze(0).repeat(b, 1, 1)
+        bbox_size[:, :3, :] = room_layout_size
+        return bbox_size
+
     def forward(self, x, timesteps, y=None):
         """
         Apply the model to an input batch.
@@ -470,21 +594,28 @@ class UNetModel(nn.Module):
             emb = emb + self.label_emb(y)
             logger.debug(f"UNetModel::forward: output y embedding shape: {emb.shape}")
 
+        bbox_pos = x[..., self.bbox_centroid_idx:self.bbox_centroid_idx + self.bbox_centroid_dim]
+        bbox_pos = self.normalized_room_layout_bbox_position(bbox_pos)
+        bbox_size = (x[..., self.bbox_size_idx:self.bbox_size_idx + self.bbox_size_dim] + 1)
+        bbox_size = self.normalized_room_layout_bbox_size(bbox_size)
+        bbox_pos = th.cat([bbox_pos, bbox_size], dim=-1) if self.use_centroid_and_size_pos_embedding else bbox_pos
+        logger.debug(f'bbox_pos: {bbox_pos.shape}')
 
         h = x.type(self.inner_dtype)
+
         for module in self.input_blocks:
-            h = module(h, emb)
+            h = module(h, emb, bbox_pos)
             logger.debug(f"UNetModel::forward: input_blocks hidden layer output shape: {h.shape}")
             hs.append(h)
 
-        h = self.middle_block(h, emb)
+        h = self.middle_block(h, emb, bbox_pos)
         logger.debug(f"UNetModel::forward: middle_block hidden layer output shape: {h.shape}")
 
         for module in self.output_blocks:
             h_in_input = hs.pop()
             # logger.debug(f"UNetModel::forward: output_blocks hs.pop output shape: {h_in_input.shape}")
             cat_in = th.cat([h, h_in_input], dim=1)
-            h = module(cat_in, emb)
+            h = module(cat_in, emb, bbox_pos)
             logger.debug(f"UNetModel::forward: output_blocks h output shape: {h.shape}")
 
         h = h.type(x.dtype)
