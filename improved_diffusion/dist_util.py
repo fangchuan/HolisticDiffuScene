@@ -59,7 +59,10 @@ def load_state_dict(path, **kwargs):
             data = f.read()
     else:
         data = None
-    data = MPI.COMM_WORLD.bcast(data)
+    # print(f'load model from {path}')
+    data = MPI.COMM_WORLD.bcast(data, root=0)
+    # print(f'broadcast model from {path}')
+
     return th.load(io.BytesIO(data), **kwargs)
 
 

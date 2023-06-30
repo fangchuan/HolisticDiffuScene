@@ -288,10 +288,11 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
         logger.debug(f'iou_3d: {iou_loss_lst.shape}')
         batch_pred_bbox_iou_loss_lst.append(iou_loss_lst)
 
-    # BxCx1024
+    # Bx1x169
     batch_pred_bbox_iou_loss = th.stack(batch_pred_bbox_iou_loss_lst, dim=0)
+    iou_loss_shape = batch_pred_bbox_iou_loss.shape[-1]
     logger.debug(f'batch_pred_bbox_iou_loss berfore weighting: {batch_pred_bbox_iou_loss}')
-    batch_iou_loss = batch_pred_bbox_iou_loss * iou_loss_weights
+    batch_iou_loss = batch_pred_bbox_iou_loss * iou_loss_weights[:, object_feat_idx, :iou_loss_shape]
     logger.debug(f'batch_pred_bbox_iou_loss after weighting: {batch_pred_bbox_iou_loss}')
 
     return batch_iou_loss
@@ -421,12 +422,11 @@ def pred_3d_iou_loss(x_gt, y, means, weights):
     assert y.shape[0] == B
 
     x_pred = means
-    pyhsical_violation_weight = 0.001
+    pyhsical_violation_weight = 0.01
     #  calculate iou loss
     batch_iou_loss = iou_among_predicted_3d_bbox(x_pred, y, weights)
+    # Bx169
     batch_iou_loss = batch_iou_loss.sum(dim=1) * pyhsical_violation_weight
-    logger.info(f'batch_iou_loss: {batch_iou_loss.shape}')
-    # batch_iou_loss = batch_iou_loss[:, batch_iou_loss > 0]
-    # logger.info(f'batch_iou_loss > 0: {batch_iou_loss.shape}')
+    logger.debug(f'batch_iou_loss: {batch_iou_loss.shape}')
 
     return batch_iou_loss
