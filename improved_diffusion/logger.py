@@ -24,24 +24,25 @@ DISABLED = 50
 
 
 class KVWriter(object):
+
     def writekvs(self, kvs):
         raise NotImplementedError
 
 
 class SeqWriter(object):
+
     def writeseq(self, seq):
         raise NotImplementedError
 
 
 class HumanOutputFormat(KVWriter, SeqWriter):
+
     def __init__(self, filename_or_file):
         if isinstance(filename_or_file, str):
             self.file = open(filename_or_file, "wt")
             self.own_file = True
         else:
-            assert hasattr(filename_or_file, "read"), (
-                "expected file or str, got %s" % filename_or_file
-            )
+            assert hasattr(filename_or_file, "read"), ("expected file or str, got %s" % filename_or_file)
             self.file = filename_or_file
             self.own_file = False
 
@@ -67,10 +68,7 @@ class HumanOutputFormat(KVWriter, SeqWriter):
         dashes = "-" * (keywidth + valwidth + 7)
         lines = [dashes]
         for (key, val) in sorted(key2str.items(), key=lambda kv: kv[0].lower()):
-            lines.append(
-                "| %s%s | %s%s |"
-                % (key, " " * (keywidth - len(key)), val, " " * (valwidth - len(val)))
-            )
+            lines.append("| %s%s | %s%s |" % (key, " " * (keywidth - len(key)), val, " " * (valwidth - len(val))))
         lines.append(dashes)
         self.file.write("\n".join(lines) + "\n")
 
@@ -79,7 +77,7 @@ class HumanOutputFormat(KVWriter, SeqWriter):
 
     def _truncate(self, s):
         maxlen = 30
-        return s[: maxlen - 3] + "..." if len(s) > maxlen else s
+        return s[:maxlen - 3] + "..." if len(s) > maxlen else s
 
     def writeseq(self, seq):
         seq = list(seq)
@@ -96,6 +94,7 @@ class HumanOutputFormat(KVWriter, SeqWriter):
 
 
 class JSONOutputFormat(KVWriter):
+
     def __init__(self, filename):
         self.file = open(filename, "wt")
 
@@ -111,6 +110,7 @@ class JSONOutputFormat(KVWriter):
 
 
 class CSVOutputFormat(KVWriter):
+
     def __init__(self, filename):
         self.file = open(filename, "w+t")
         self.keys = []
@@ -158,39 +158,33 @@ class TensorBoardOutputFormat(KVWriter):
         self.step = 1
         prefix = "events"
         path = osp.join(osp.abspath(dir), prefix)
-        import tensorflow as tf
-        from tensorflow.python import pywrap_tensorflow
-        from tensorflow.python.client import _pywrap_events_writer
-        from tensorflow.core.util import event_pb2
-        from tensorflow.python.util import compat
+        from torch.utils.tensorboard import SummaryWriter
 
-        self.tf = tf
-        self.event_pb2 = event_pb2
-        # self.pywrap_tensorflow = pywrap_tensorflow
-        # self.writer = _pywrap_events_writer.EventsWriter(compat.as_bytes(path))
-        self.writer = tf.summary.create_file_writer(path)
+        # import tensorflow as tf
+        # from tensorflow.python import pywrap_tensorflow
+        # from tensorflow.python.client import _pywrap_events_writer
+        # from tensorflow.core.util import event_pb2
+        # from tensorflow.python.util import compat
+
+        # self.tf = tf
+        self.writer = SummaryWriter(path)
 
     def writekvs(self, kvs):
-        def summary_val(k, v):
-            kwargs = {"tag": k, "simple_value": float(v)}
-            return self.tf.Summary.Value(**kwargs)
 
-        # summary = self.tf.Summary(value=[summary_val(k, v) for k, v in kvs.items()])
-        # event = self.event_pb2.Event(wall_time=time.time(), summary=summary)
-        # event.step = (self.step )  # is there any reason why you'd want to specify the step?
-        # self.writer.WriteEvent(event)
-        # self.writer.Flush()
-        with self.writer.as_default():
-            for k, v in kvs.items():
-                # other model code would go here
-                self.tf.summary.scalar(k, v, step=self.step)
-                self.writer.flush()
+        # with self.writer.as_default():
+        #     for k, v in kvs.items():
+        #         # other model code would go here
+        #         self.tf.summary.scalar(k, v, step=self.step)
+        #         self.writer.flush()
+        for k, v in kvs.items():
+            # other model code would go here
+            self.writer.add_scalar(k, v, global_step=self.step)
+            self.writer.flush()
         self.step += 1
-        
 
     def close(self):
         if self.writer:
-            self.writer.Close()
+            self.writer.close()
             self.writer = None
 
 
@@ -314,6 +308,7 @@ def profile(n):
     """
 
     def decorator_with_name(func):
+
         def func_wrapper(*args, **kwargs):
             with profile_kv(n):
                 return func(*args, **kwargs)
@@ -364,10 +359,7 @@ class Logger(object):
         else:
             d = mpi_weighted_mean(
                 self.comm,
-                {
-                    name: (val, self.name2cnt.get(name, 1))
-                    for (name, val) in self.name2val.items()
-                },
+                {name: (val, self.name2cnt.get(name, 1)) for (name, val) in self.name2val.items()},
             )
             if self.comm.rank != 0:
                 d["dummy"] = 1  # so we don't get a warning about empty dict
@@ -432,11 +424,7 @@ def mpi_weighted_mean(comm, local_name2valcount):
                     val = float(val)
                 except ValueError:
                     if comm.rank == 0:
-                        warnings.warn(
-                            "WARNING: tried to compute mean on non-float {}={}".format(
-                                name, val
-                            )
-                        )
+                        warnings.warn("WARNING: tried to compute mean on non-float {}={}".format(name, val))
                 else:
                     name2sum[name] += val * count
                     name2count[name] += count
@@ -498,4 +486,3 @@ def scoped_configure(dir=None, format_strs=None, comm=None):
     finally:
         Logger.CURRENT.close()
         Logger.CURRENT = prevlogger
-

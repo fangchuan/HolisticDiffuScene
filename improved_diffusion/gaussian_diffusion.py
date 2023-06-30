@@ -711,9 +711,9 @@ class GaussianDiffusion:
                     alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x_start.shape)
                     logger.debug(f"tms: {t}")
                     logger.debug(f"alpha_bar: {alpha_bar}")
-                    # Bx1024
+                    # Bx169
                     iou_loss = pred_3d_iou_loss(x_start, **model_kwargs, means=pred_x_start, weights=alpha_bar)
-                    terms["iou"] = iou_loss.sum(dim=1)
+                    terms["iou"] = mean_flat(iou_loss)
 
             target = {
                 ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(x_start=x_start, x_t=x_t, t=t)[0],
