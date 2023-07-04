@@ -1,6 +1,6 @@
 MODEL_FLAGS="--layout_size 1024 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond True"
 DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine"
-TRAIN_FLAGS="--lr 1e-4 --batch_size 32 --schedule_sampler loss-second-moment  --resume_checkpoint /codes/HolisticDiffuScene/log/openai-2023-06-28-12-29-42-231944/model130000.pt"
+TRAIN_FLAGS="--lr 1e-4 --batch_size 32 --schedule_sampler loss-second-moment  "
 NUM_GPUS=2
 
 # python scripts/st3d_room_layout_train.py --data_dir /data/dataset/Structured3D/preprocessed/st3d_train_full_raw_light/ $MODEL_FLAGS $DIFFUSION_FLAGS $TRAIN_FLAGS

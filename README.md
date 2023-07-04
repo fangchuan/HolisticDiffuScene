@@ -162,3 +162,7 @@ We would like to thank Kujiale.com for providing the database of house designs a
 7. openai-2023-06-22-11-42-17-175271: 加速iou_3d计算, 训练3.5W步, totoal_loss有下降, 但是iou_loss没有下降; ---- 训练20W步的生成结果: 碰撞没有减少, 物体orientation出现问题, 比如bed/cabinet不贴墙面； 
 8. openai-2023-06-26-18-25-34-618025: total_loss=kl_loss + mse_loss + iou_loss, 使用pred_xstart计算 iou_loss, iou_loss不使用1024平均, 采用1024 vec_sum操作, 8W步训练过程iou_loss有下降, 但是下降过程非常noisy; 结果太noisy, iou_loss权重太大;
 9. openai-2023-06-26-22-02-01-510271: total_loss=kl_loss + iou_loss, 使用pred_xstart计算iou_loss, iou_loss不使用1024平均, 采用1024 vec_sum操作, 7W步训练过程iou_loss有下降, 但是下降过程非常noisy; 结果太noisy, iou_loss权重太大;
+10. openai-2023-06-28-12-29-42-231944: 仍然存在碰撞, iou_loss下降到0.5优化不动了. 
+11. openai-2023-06-30-12-16-47-752194,openai-2023-07-03-16-59-45-622914： iou_loss计算方式由sum换成mean; 效果任然不明显;
+12. openai-2023-06-29-16-54-10-476220: test_pos_emb分支, 每层resblock后面都添加attnblock, 添加pe, 训练16W步模型不收敛, 生成结果不可用(roomlayout数据分布都没有学好);
+13. openai-2023-07-01-16-10-50-176856: test_pos_emb分支, 不使用pe, 训练19W步, 生成结果不可用(roomlayout数据分布都没有学好);
