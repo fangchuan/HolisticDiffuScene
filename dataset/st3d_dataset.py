@@ -19,7 +19,7 @@ import torch.utils.data as data
 from . import panostretch
 from .metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, \
 ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN,\
-ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS
+ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_ROOM_QUAD_WALL_MAX_LEN
 
 # room types
 ROOM_TYPE_DICT = {
@@ -639,9 +639,6 @@ def ClassLabelsEncode(room_type: int, obj_bbox_label: str) -> np.array:
     def one_hot_label(all_labels, current_label):
         return np.eye(len(all_labels))[all_labels.index(current_label)]
 
-    # Get the scene
-    # boxes = obj_bbox_lst
-    # L = len(boxes)  # sequence length
     C = len(classes)  # number of classes
     class_label = np.zeros(C, dtype=np.float32)
     class_label = one_hot_label(classes, obj_bbox_label)
@@ -667,6 +664,13 @@ def RotationEncode(obj_bbox_angle: np.array) -> np.array:
     # Make a local copy of the class labels
     box_a_angle_rad = obj_bbox_angle
     return box_a_angle_rad
+
+
+def NormalEncode(obj_bbox_normal: np.array) -> np.array:
+    """Implement the encoding for the object normal."""
+    # Make a local copy of the class labels
+    box_normal = obj_bbox_normal
+    return box_normal
 
 
 def ordered_bboxes_with_class_frequencies(room_type: int, object_bbox_lst: List[Dict]) -> List[Dict]:
@@ -711,12 +715,38 @@ def padding_and_reshape_object_bbox(room_type: int, object_bbox_lst: np.array, b
         object_bbox_lst = np.vstack([object_bbox_lst, np.tile(padding, [max_len - L, 1])])
     elif L >= max_len:
         object_bbox_lst = object_bbox_lst[:max_len]
-    object_bbox_lst = object_bbox_lst.flatten()
 
-    assert object_bbox_lst.shape[-1] == (max_len * bbox_dim) and object_bbox_lst.shape[-1] < 1024
-    ret_lst = np.zeros((1, 1024), dtype=np.float32)
-    ret_lst[:, :object_bbox_lst.shape[-1]] = object_bbox_lst
+    ret_lst = object_bbox_lst
     return ret_lst
+
+
+def padding_and_reshape_wall_bbox(room_type: int, wall_bbox_lst: np.array, bbox_dim: int) -> List:
+    """ Implement the padding for the quad wall boxes.
+    Args:
+        room_type (int): The room type.
+        wall_bbox_lst (np.array): The quadwall bounding box list.
+        bbox_dim (int): The dimension of the quadwallbounding box.
+    Returns:
+        _type_: _description_
+    """
+    L = len(wall_bbox_lst)
+    max_len = ST3D_ROOM_QUAD_WALL_MAX_LEN
+    if room_type == ROOM_TYPE_DICT['bedroom']:
+        class_num = len(ST3D_BEDROOM_FURNITURE)
+    elif room_type == ROOM_TYPE_DICT['living room']:
+        class_num = len(ST3D_LIVINGROOM_FURNITURE)
+    elif room_type == ROOM_TYPE_DICT['dining room']:
+        class_num = len(ST3D_DININGROOM_FURNITURE)
+
+    assert L <= max_len, 'The length of the wall bbox list should be less than 10.'
+
+    # Pad the end label in the end of each sequence, and convert the class labels to -1, 1
+    empty_label = np.eye(class_num)[-1]
+    padding = np.concatenate([empty_label, np.zeros(bbox_dim - class_num, dtype=np.float32)], axis=0)
+    wall_bbox_lst = np.vstack([wall_bbox_lst, np.tile(padding, [max_len - L, 1])])
+
+    # print(f'wall_bbox_lst: {wall_bbox_lst}')
+    return wall_bbox_lst
 
 
 class PanoCorBoundDataset(data.Dataset):
@@ -740,6 +770,7 @@ class PanoCorBoundDataset(data.Dataset):
             num_shards=1):
         self.img_dir = os.path.join(root_dir, 'img')
         self.cor_dir = os.path.join(root_dir, 'label_cor')
+        self.quad_wall_dir = os.path.join(root_dir, 'quad_walls')
         self.cam_pos_dir = os.path.join(root_dir, 'cam_pos')
         self.room_type_dir = os.path.join(root_dir, 'room_type')
         # object bbox folder
@@ -750,10 +781,12 @@ class PanoCorBoundDataset(data.Dataset):
             [fname for fname in os.listdir(self.img_dir) if fname.endswith('.jpg') or fname.endswith('.png')])
         self.txt_fnames = ['%s.txt' % fname[:-4] for fname in self.img_fnames]
         self.json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
+        self.wall_json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
         #  image file names and text file names on local_rank machine
         self.local_img_fnames = self.img_fnames[shard::num_shards]
         self.local_txt_fnames = self.txt_fnames[shard::num_shards]
         self.local_json_fnames = self.json_fnames[shard::num_shards]
+        self.local_wall_json_fnames = self.wall_json_fnames[shard::num_shards]
 
         self.flip = flip
         self.rotate = rotate
@@ -788,10 +821,10 @@ class PanoCorBoundDataset(data.Dataset):
             List: [Image, [boundary_x:1x1024, boundary_y:1x1024], boundary_wall_probability:1x-024]
         """
         # Read image
-        img_path = os.path.join(self.img_dir, self.local_img_fnames[idx])
-        img = Image.open(img_path).convert('RGB')
-        img = np.array(img, np.float32) / 255.
-        H, W = img.shape[:2]
+        # img_path = os.path.join(self.img_dir, self.local_img_fnames[idx])
+        # img = Image.open(img_path).convert('RGB')
+        # img = np.array(img, np.float32) / 255.
+        # H, W = img.shape[:2]
 
         # read camera position file
         cam_pos_lst = []
@@ -835,60 +868,82 @@ class PanoCorBoundDataset(data.Dataset):
                                                           object_bbox_lst=np.array(object_bbox_lst),
                                                           bbox_dim=bbox_property_encode_dim)
 
-        # Read ground truth corners
-        with open(os.path.join(self.cor_dir, self.local_txt_fnames[idx])) as f:
-            corners_lst = np.array([line.strip().split() for line in f if line.strip()], np.float32)
+        # # Read ground truth corners
+        # with open(os.path.join(self.cor_dir, self.local_txt_fnames[idx])) as f:
+        #     corners_lst = np.array([line.strip().split() for line in f if line.strip()], np.float32)
 
-            # Corner with minimum x should at the beginning
-            corners_lst = np.roll(corners_lst[:, :2], -2 * np.argmin(corners_lst[::2, 0]), 0)
+        #     # Corner with minimum x should at the beginning
+        #     corners_lst = np.roll(corners_lst[:, :2], -2 * np.argmin(corners_lst[::2, 0]), 0)
 
-            # Detect occlusion
-            occlusion = find_occlusion(corners_lst[::2].copy()).repeat(2)
-            # corners correspondenses' x coordinate should be identical
-            assert (np.abs(corners_lst[0::2, 0] - corners_lst[1::2, 0]) > W / 100).sum() == 0, img_path
-            # corners correspondenses' y coordinate should be y_floor < y_ceiling
-            assert (corners_lst[0::2, 1] > corners_lst[1::2, 1]).sum() == 0, img_path
+        #     # Detect occlusion
+        #     occlusion = find_occlusion(corners_lst[::2].copy()).repeat(2)
+        #     # corners correspondenses' x coordinate should be identical
+        #     assert (np.abs(corners_lst[0::2, 0] - corners_lst[1::2, 0]) > W / 100).sum() == 0, img_path
+        #     # corners correspondenses' y coordinate should be y_floor < y_ceiling
+        #     assert (corners_lst[0::2, 1] > corners_lst[1::2, 1]).sum() == 0, img_path
 
-        # Prepare 1d ceiling-wall/floor-wall boundary
-        boundary_lst = corners_to_1d_boundary(corners_lst, H, W)
+        # # Prepare 1d ceiling-wall/floor-wall boundary
+        # boundary_lst = corners_to_1d_boundary(corners_lst, H, W)
 
-        # Random flip
-        if self.flip and np.random.randint(2) == 0:
-            img = np.flip(img, axis=1)
-            boundary_lst = np.flip(boundary_lst, axis=1)
-            corners_lst[:, 0] = img.shape[1] - 1 - corners_lst[:, 0]
+        # # Random flip
+        # if self.flip and np.random.randint(2) == 0:
+        #     img = np.flip(img, axis=1)
+        #     boundary_lst = np.flip(boundary_lst, axis=1)
+        #     corners_lst[:, 0] = img.shape[1] - 1 - corners_lst[:, 0]
 
-        # Random horizontal rotate
-        if self.rotate:
-            delta_x = np.random.randint(img.shape[1])
-            img = np.roll(img, delta_x, axis=1)
-            boundary_lst = np.roll(boundary_lst, delta_x, axis=1)
-            corners_lst[:, 0] = (corners_lst[:, 0] + delta_x) % img.shape[1]
+        # # Random horizontal rotate
+        # if self.rotate:
+        #     delta_x = np.random.randint(img.shape[1])
+        #     img = np.roll(img, delta_x, axis=1)
+        #     boundary_lst = np.roll(boundary_lst, delta_x, axis=1)
+        #     corners_lst[:, 0] = (corners_lst[:, 0] + delta_x) % img.shape[1]
 
-        # Random gamma augmentation
-        if self.gamma:
-            p = np.random.uniform(1, 2)
-            if np.random.randint(2) == 0:
-                p = 1 / p
-            img = img**p
+        # # Random gamma augmentation
+        # if self.gamma:
+        #     p = np.random.uniform(1, 2)
+        #     if np.random.randint(2) == 0:
+        #         p = 1 / p
+        #     img = img**p
 
-        # Prepare 1d wall-wall probability
-        corner_x_lst = corners_lst[~occlusion, 0]
-        dist_o = cdist(corner_x_lst.reshape(-1, 1), np.arange(W).reshape(-1, 1), metric='euclidean', p=1)
-        dist_r = cdist(corner_x_lst.reshape(-1, 1), np.arange(W).reshape(-1, 1) + W, metric='euclidean', p=1)
-        dist_l = cdist(corner_x_lst.reshape(-1, 1), np.arange(W).reshape(-1, 1) - W, metric='euclidean', p=1)
-        dist = np.min([dist_o, dist_r, dist_l], axis=0)
-        nearest_dist = dist.min(0)
-        corner_y_prob_lst = (self.p_base**nearest_dist).reshape(1, -1)
+        # # Prepare 1d wall-wall probability
+        # corner_x_lst = corners_lst[~occlusion, 0]
+        # dist_o = cdist(corner_x_lst.reshape(-1, 1), np.arange(W).reshape(-1, 1), metric='euclidean', p=1)
+        # dist_r = cdist(corner_x_lst.reshape(-1, 1), np.arange(W).reshape(-1, 1) + W, metric='euclidean', p=1)
+        # dist_l = cdist(corner_x_lst.reshape(-1, 1), np.arange(W).reshape(-1, 1) - W, metric='euclidean', p=1)
+        # dist = np.min([dist_o, dist_r, dist_l], axis=0)
+        # nearest_dist = dist.min(0)
+        # corner_y_prob_lst = (self.p_base**nearest_dist).reshape(1, -1)
 
-        # normalize to [-1, 1]
-        boundary_lst = boundary_lst.copy().astype(np.float32)
-        boundary_lst = boundary_lst / (0.5 * np.pi)
-        # normalize to [-1, 1]
-        corner_y_prob_lst = corner_y_prob_lst.copy().astype(np.float32)
-        corner_y_prob_lst = corner_y_prob_lst * 2 - 1
+        # read wall bbox
+        wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_wall_json_fnames[idx])
+        wall_bbox_lst = []
+        with open(wall_bbox_filepath, 'r') as f:
+            wall_bbox_dicts = json.load(f)
+            wall_bbox_dicts = wall_bbox_dicts['walls']
+        for wall_bbox in wall_bbox_dicts:
+            wall_id = int(wall_bbox['ID'])
+            wall_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label='wall')
+            wall_centroid = np.array(wall_bbox['center'], np.float32)
+            wall_centroid = TranslationEncode(wall_centroid)
+            wall_normal = np.array(wall_bbox['normal'], np.float32)
+            wall_normal = NormalEncode(wall_normal)
+            wall_size = np.array([wall_bbox['width'], wall_bbox['height']])
+            wall_property_encode = np.concatenate([wall_class, wall_centroid, wall_normal, wall_size], axis=-1)
+            wall_property_encode_dim = wall_property_encode.shape[-1]
+            wall_bbox_lst.append(wall_property_encode)
+        wall_bbox_lst = padding_and_reshape_wall_bbox(room_type=room_type,
+                                                      wall_bbox_lst=np.array(wall_bbox_lst),
+                                                      bbox_dim=wall_property_encode_dim)
+        # # normalize to [-1, 1]
+        # boundary_lst = boundary_lst.copy().astype(np.float32)
+        # boundary_lst = boundary_lst / (0.5 * np.pi)
+        # # normalize to [-1, 1]
+        # corner_y_prob_lst = corner_y_prob_lst.copy().astype(np.float32)
+        # corner_y_prob_lst = corner_y_prob_lst * 2 - 1
 
-        out_lst = np.concatenate([boundary_lst, corner_y_prob_lst, object_bbox_lst], axis=0)
+        # out_lst = np.concatenate([boundary_lst, corner_y_prob_lst, object_bbox_lst], axis=0)
+        assert wall_bbox_lst.shape[-1] == object_bbox_lst.shape[-1]
+        out_lst = np.concatenate([wall_bbox_lst, object_bbox_lst], axis=0)
 
         class_dict = {}
         if room_type is not None:

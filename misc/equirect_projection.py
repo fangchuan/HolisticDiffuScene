@@ -306,7 +306,7 @@ def vis_objs3d(image,
         color = (np.random.random(3) * 255).astype(np.uint8).tolist()
         centroid = np.array(bdb3d['center'])
         sizes = np.array(bdb3d['size'])
-        rotation = np.array(bdb3d['angles'])
+        rotation = euler_angle_to_matrix(bdb3d['angles'])
 
         if b_show_axes:
             draw_objaxes(image, centroid, sizes, rotation, thickness=thickness)

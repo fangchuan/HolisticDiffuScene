@@ -21,6 +21,7 @@ from .nn import (
 
 from . import logger
 
+
 class TimestepBlock(nn.Module):
     """
     Any module where forward() takes timestep embeddings as a second argument.
@@ -350,7 +351,7 @@ class UNetModel(nn.Module):
                     ResBlock(
                         channels=ch,  # input channels
                         emb_channels=time_embed_dim,  # embedding channels
-                        dropout=dropout, # dropout probability
+                        dropout=dropout,  # dropout probability
                         out_channels=mult * model_channels,
                         dims=dims,
                         use_checkpoint=use_checkpoint,
@@ -366,7 +367,8 @@ class UNetModel(nn.Module):
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 input_block_chans.append(ch)
             if level != len(channel_mult) - 1:
-                self.input_blocks.append(TimestepEmbedSequential(Downsample(channels=ch, use_conv=conv_resample, dims=dims)))
+                self.input_blocks.append(
+                    TimestepEmbedSequential(Downsample(channels=ch, use_conv=conv_resample, dims=dims)))
                 input_block_chans.append(ch)
                 downsample_ratio *= 2
 
@@ -460,6 +462,7 @@ class UNetModel(nn.Module):
 
         hs = []
         logger.debug(f"UNetModel::forward: input x shape: {x.shape}")
+        logger.debug(f"UNetModel::forward: input x type: {x.type()}")
         logger.debug(f"UNetModel::forward: input timesteps shape: {timesteps.shape}")
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
         logger.debug(f"UNetModel::forward: output timesteps embedding shape: {emb.shape}")
@@ -469,7 +472,6 @@ class UNetModel(nn.Module):
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
             logger.debug(f"UNetModel::forward: output y embedding shape: {emb.shape}")
-
 
         h = x.type(self.inner_dtype)
         for module in self.input_blocks:

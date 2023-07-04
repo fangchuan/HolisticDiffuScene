@@ -18,13 +18,13 @@ def model_and_diffusion_defaults():
     return dict(
         # image_size=64,
         layout_size=1024,
-        layout_channels=4,
+        layout_channels=23,
         num_channels=128,
         num_res_blocks=2,
         num_heads=4,
         num_heads_upsample=-1,
         # attention_resolutions="16,8",
-        attention_resolutions="256, 128",
+        attention_resolutions="16, 8",
         dropout=0.0,
         b_learn_sigma=False,
         sigma_small=False,
@@ -36,7 +36,7 @@ def model_and_diffusion_defaults():
         predict_xstart=False,
         rescale_timesteps=True,
         rescale_learned_sigmas=True,
-        use_3d_iou=True,
+        use_3d_iou=False,
         use_checkpoint=False,
         use_scale_shift_norm=True,
     )
@@ -142,6 +142,9 @@ def create_model(
     layout_feature_size = layout_size
     if layout_feature_size == 1024:
         channel_mult = (1, 2, 3, 4)
+    elif layout_feature_size == 32:
+        channel_mult = (1, 2, 2, 2)
+        # channel_mult = (1, 2, 3, 4)
     else:
         raise ValueError(f"unsupported layout size: {layout_size}")
 

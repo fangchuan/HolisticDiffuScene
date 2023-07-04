@@ -174,7 +174,7 @@ class TrainLoop:
         zero_grad(self.model_params)
 
         for i in range(0, batch_data.shape[0], self.microbatch):
-            micro_batch_data = batch_data[i:i + self.microbatch].to(dist_util.dev())
+            micro_batch_data = batch_data[i:i + self.microbatch].to(dist_util.dev(), dtype=th.float32)
             micro_cond_data = {k: v[i:i + self.microbatch].to(dist_util.dev()) for k, v in cond_data.items()}
             last_batch = (i + self.microbatch) >= batch_data.shape[0]
             # timestep sampling

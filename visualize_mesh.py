@@ -10,6 +10,8 @@ from panda3d.core import Triangulator
 from misc.panorama import xyz_2_coorxy
 from visualize_3d import convert_lines_to_vertices
 
+from typing import List, Tuple, Dict, Any, Union
+
 
 def E2P(image, corner_i, corner_j, wall_height, camera_center, resolution=512, is_wall=True):
     """convert panorama to persepctive image
@@ -28,14 +30,25 @@ def E2P(image, corner_i, corner_j, wall_height, camera_center, resolution=512, i
 
     coorx, coory = xyz_2_coorxy(xs, ys, zs)
 
-    persp = cv2.remap(image, coorx.astype(np.float32), coory.astype(np.float32), 
-                      cv2.INTER_CUBIC, borderMode=cv2.BORDER_WRAP)
+    persp = cv2.remap(image,
+                      coorx.astype(np.float32),
+                      coory.astype(np.float32),
+                      cv2.INTER_CUBIC,
+                      borderMode=cv2.BORDER_WRAP)
 
     return persp
 
 
-def create_plane_mesh(vertices, vertices_floor, textures, texture_floor, texture_ceiling,
-    delta_height, ignore_ceiling=False):
+def create_plane_mesh(
+    vertices,
+    vertices_floor,
+    textures,
+    texture_floor,
+    texture_ceiling,
+    delta_height,
+    ignore_ceiling=False,
+    camera_center=None,
+):
     # create mesh for 3D floorplan visualization
     triangles = []
     triangle_uvs = []
@@ -51,15 +64,9 @@ def create_plane_mesh(vertices, vertices_floor, textures, texture_floor, texture
         triangles.append(triangle + num_vertices)
         num_vertices += 4
 
-        triangle_uv = np.array(
-            [
-                [i / (num_walls + 2), 0], 
-                [i / (num_walls + 2), 1], 
-                [(i+1) / (num_walls + 2), 1], 
-                [(i+1) / (num_walls + 2), 0]
-            ],
-            dtype=np.float32
-        )
+        triangle_uv = np.array([[i / (num_walls + 2), 0], [i / (num_walls + 2), 1], [(i + 1) / (num_walls + 2), 1],
+                                [(i + 1) / (num_walls + 2), 0]],
+                               dtype=np.float32)
         triangle_uvs.append(triangle_uv)
 
     # 2. floor and ceiling
@@ -88,10 +95,10 @@ def create_plane_mesh(vertices, vertices_floor, textures, texture_floor, texture
     # texture for floor and ceiling
     vertices_floor_min = np.min(vertices_floor[:, :2], axis=0)
     vertices_floor_max = np.max(vertices_floor[:, :2], axis=0)
-    
+
     # normalize to [0, 1]
     triangle_uv = (vertices_floor[:, :2] - vertices_floor_min) / (vertices_floor_max - vertices_floor_min)
-    triangle_uv[:, 0] = (triangle_uv[:, 0] + num_walls) / (num_walls + 2) 
+    triangle_uv[:, 0] = (triangle_uv[:, 0] + num_walls) / (num_walls + 2)
 
     triangle_uvs.append(triangle_uv)
 
@@ -114,13 +121,14 @@ def create_plane_mesh(vertices, vertices_floor, textures, texture_floor, texture
 
     triangle_uvs = np.concatenate(triangle_uvs, axis=0)
 
+    # 4. create mesh
+    vertices_in_cam = (vertices - camera_center) * 0.001 if camera_center is not None else vertices * 0.001
     mesh = open3d.geometry.TriangleMesh(
         # convert vertices from mm to m
-        vertices=open3d.utility.Vector3dVector(vertices * 0.001),
-        triangles=open3d.utility.Vector3iVector(triangles)
-    )
+        vertices=open3d.utility.Vector3dVector(vertices_in_cam),
+        triangles=open3d.utility.Vector3iVector(triangles))
     mesh.compute_vertex_normals()
-    # mesh.textures = [open3d.geometry.Image(textures)] 
+    # mesh.textures = [open3d.geometry.Image(textures)]
     # mesh.triangle_uvs = np.array(triangle_uvs[triangles.reshape(-1), :], dtype=np.float64)
     return mesh
 
@@ -133,28 +141,60 @@ def verify_normal(corner_i, corner_j, delta_height, plane_normal):
     normal /= np.linalg.norm(normal, ord=2)
 
     inner_product = normal.dot(plane_normal)
-    
+
     if inner_product > 1e-8:
         return False
     else:
         return True
-    
+
+
+def create_spatial_quad_polygen(quad_vertices: List, normal: np.array, camera_center: np.array):
+    """create a quad polygen for spatial mesh
+    """
+    quad_vertices = (quad_vertices - camera_center) * 0.001
+    quad_triangles = []
+    triangle = np.array([[0, 2, 1], [2, 0, 3]])
+    quad_triangles.append(triangle)
+
+    quad_triangles = np.concatenate(quad_triangles, axis=0)
+
+    mesh = open3d.geometry.TriangleMesh(
+        # convert vertices from mm to m
+        vertices=open3d.utility.Vector3dVector(quad_vertices),
+        triangles=open3d.utility.Vector3iVector(quad_triangles))
+    # mesh.compute_vertex_normals()
+    mesh.vertex_normals = open3d.utility.Vector3dVector(np.tile(normal, (4, 1)))
+
+    centroid = np.mean(quad_vertices, axis=0)
+    print(f'centroid: {centroid}')
+    normal_point = centroid + np.array(normal) * 0.5
+    print(f'normal_point: {normal_point}')
+
+    pcd = open3d.geometry.PointCloud()
+    pcd.points = open3d.utility.Vector3dVector(np.asarray(mesh.vertices))
+    pcd.points.append(normal_point)
+    pcd.points.append(centroid)
+    # pcd.estimate_normals()
+    return mesh, pcd
+
 
 def visualize_mesh(args):
     """visualize as water-tight mesh
     """
 
-    image = cv2.imread(os.path.join(args.path, f"scene_{args.scene:05d}", "2D_rendering", 
-                                    str(args.room), "panorama/full/rgb_rawlight.png"))
+    image = cv2.imread(
+        os.path.join(args.path, f"scene_{args.scene:05d}", "2D_rendering", str(args.room),
+                     "panorama/full/rgb_rawlight.png"))
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     # load room annotations
-    with open(os.path.join(args.path, f"scene_{args.scene:05d}" , "annotation_3d.json")) as f:
+    with open(os.path.join(args.path, f"scene_{args.scene:05d}", "annotation_3d.json")) as f:
         annos = json.load(f)
 
     # load camera info
-    camera_center = np.loadtxt(os.path.join(args.path, f"scene_{args.scene:05d}", "2D_rendering", 
-                                            str(args.room), "panorama", "camera_xyz.txt"))
+    camera_center = np.loadtxt(
+        os.path.join(args.path, f"scene_{args.scene:05d}", "2D_rendering", str(args.room), "panorama",
+                     "camera_xyz.txt"))
 
     # parse corners
     junctions = np.array([item['coordinate'] for item in annos['junctions']])
@@ -175,17 +215,19 @@ def visualize_mesh(args):
         if semantic['ID'] != int(args.room):
             continue
 
-        # find junctions of ceiling and floor 
+        # find junctions of ceiling and floor
         for planeID in semantic['planeID']:
             plane_anno = annos['planes'][planeID]
 
             if plane_anno['type'] != 'wall':
                 lineIDs = np.where(np.array(annos['planeLineMatrix'][planeID]))[0]
                 lineIDs = np.setdiff1d(lineIDs, lines_holes)
-                junction_pairs = [np.where(np.array(annos['lineJunctionMatrix'][lineID]))[0].tolist() for lineID in lineIDs]
+                junction_pairs = [
+                    np.where(np.array(annos['lineJunctionMatrix'][lineID]))[0].tolist() for lineID in lineIDs
+                ]
                 wall = convert_lines_to_vertices(junction_pairs)
                 walls[plane_anno['type']] = wall[0]
-        
+
         # save normal of the vertical walls
         for planeID in semantic['planeID']:
             plane_anno = annos['planes'][planeID]
@@ -193,7 +235,9 @@ def visualize_mesh(args):
             if plane_anno['type'] == 'wall':
                 lineIDs = np.where(np.array(annos['planeLineMatrix'][planeID]))[0]
                 lineIDs = np.setdiff1d(lineIDs, lines_holes)
-                junction_pairs = [np.where(np.array(annos['lineJunctionMatrix'][lineID]))[0].tolist() for lineID in lineIDs]
+                junction_pairs = [
+                    np.where(np.array(annos['lineJunctionMatrix'][lineID]))[0].tolist() for lineID in lineIDs
+                ]
                 wall = convert_lines_to_vertices(junction_pairs)
                 walls_normal[tuple(np.intersect1d(wall, walls['floor']))] = plane_anno['normal']
 
@@ -204,23 +248,27 @@ def visualize_mesh(args):
     # list of corner index
     wall_floor = walls['floor']
 
-    corners = []    # 3D coordinate for each wall
-    textures = []   # texture for each wall
+    corners = []  # 3D coordinate for each wall
+    textures = []  # texture for each wall
 
     # wall
+    quad_wall_lst = []
     for i, j in zip(wall_floor, np.roll(wall_floor, shift=-1)):
         corner_i, corner_j = junctions[i], junctions[j]
+        plane_normal = walls_normal[tuple(sorted([i, j]))]
+        flip = verify_normal(corner_i, corner_j, delta_height, plane_normal)
 
-        flip = verify_normal(corner_i, corner_j, delta_height, walls_normal[tuple(sorted([i, j]))])
-        
         if flip:
             corner_j, corner_i = corner_i, corner_j
 
         texture = E2P(image, corner_i, corner_j, wall_height, camera_center)
 
-        corner = np.array([corner_i, corner_i + delta_height, corner_j + delta_height, corner_j])
+        quad_corner = np.array([corner_i, corner_i + delta_height, corner_j + delta_height, corner_j])
+        print(f'plane normal: {plane_normal}')
+        quad_polygen_mesh, quad_polygen_pcd = create_spatial_quad_polygen(quad_corner, plane_normal, camera_center)
+        quad_wall_lst.append(quad_polygen_mesh)
 
-        corners.append(corner)
+        corners.append(quad_corner)
         textures.append(texture)
 
     # floor and ceiling
@@ -232,23 +280,34 @@ def visualize_mesh(args):
     texture_ceiling = E2P(image, corner_min, corner_max, wall_height, camera_center, is_wall=False)
 
     # create mesh
-    mesh = create_plane_mesh(corners, corner_floor, textures, texture_floor, texture_ceiling,
-        delta_height, ignore_ceiling=args.ignore_ceiling)
-    open3d.io.write_triangle_mesh("/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00000_485142_st3d.ply", mesh)
+    mesh = create_plane_mesh(corners,
+                             corner_floor,
+                             textures,
+                             texture_floor,
+                             texture_ceiling,
+                             delta_height,
+                             ignore_ceiling=args.ignore_ceiling,
+                             camera_center=camera_center)
+    open3d.io.write_triangle_mesh(
+        "/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00000_485142.ply", mesh)
+
+    quad_meshes = open3d.geometry.TriangleMesh()
+
+    for mesh in quad_wall_lst:
+        quad_meshes += mesh
+    open3d.io.write_triangle_mesh(
+        "/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00000_485142_quadwall.obj",
+        quad_meshes)
     # visualize mesh
-    open3d.visualization.draw_geometries([mesh])
+    open3d.visualization.draw_geometries(quad_wall_lst)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Structured3D 2D Layout Visualization")
-    parser.add_argument("--path", required=True,
-                        help="dataset path", metavar="DIR")
-    parser.add_argument("--scene", required=True,
-                        help="scene id", type=int)
-    parser.add_argument("--room", required=True,
-                        help="room id", type=int)
-    parser.add_argument("--ignore_ceiling", action='store_true',
-                        help="ignore ceiling for better visualization")
+    parser.add_argument("--path", required=True, help="dataset path", metavar="DIR")
+    parser.add_argument("--scene", required=True, help="scene id", type=int)
+    parser.add_argument("--room", required=True, help="room id", type=int)
+    parser.add_argument("--ignore_ceiling", action='store_true', help="ignore ceiling for better visualization")
     return parser.parse_args()
 
 
