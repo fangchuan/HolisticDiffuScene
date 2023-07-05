@@ -17,7 +17,7 @@ def model_and_diffusion_defaults():
     """
     return dict(
         # image_size=64,
-        layout_size=1024,
+        layout_size=32,
         layout_channels=23,
         num_channels=128,
         num_res_blocks=2,
@@ -155,6 +155,7 @@ def create_model(
     logger.info(f"attention downsaple ratios: {attention_downsample_ratio_lst}")
 
     return UNetModel(
+        in_feat_size=layout_feature_size,
         in_channels=layout_channels,
         model_channels=num_channels,
         out_channels=(layout_channels if not learn_sigma else 2 * layout_channels),

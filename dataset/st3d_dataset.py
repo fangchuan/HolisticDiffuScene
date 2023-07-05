@@ -928,7 +928,11 @@ class PanoCorBoundDataset(data.Dataset):
             wall_normal = np.array(wall_bbox['normal'], np.float32)
             wall_normal = NormalEncode(wall_normal)
             wall_size = np.array([wall_bbox['width'], wall_bbox['height']])
-            wall_property_encode = np.concatenate([wall_class, wall_centroid, wall_normal, wall_size], axis=-1)
+            # rerrange wall normal and size to be identical to object bbox encoding
+            rearrange_func = lambda normal, size: np.array([size[0], normal[2], size[1], normal[0], normal[1]])
+            wall_property_encode = np.concatenate(
+                [wall_class, wall_centroid, rearrange_func(wall_normal, wall_size)], axis=-1)
+            # print(f'wall_property_encode: {wall_property_encode}')
             wall_property_encode_dim = wall_property_encode.shape[-1]
             wall_bbox_lst.append(wall_property_encode)
         wall_bbox_lst = padding_and_reshape_wall_bbox(room_type=room_type,

@@ -10,11 +10,13 @@ import torch.nn as nn
 
 # PyTorch 1.7 has SiLU, but we support PyTorch 1.5.
 class SiLU(nn.Module):
+
     def forward(self, x):
         return x * th.sigmoid(x)
 
 
 class GroupNorm32(nn.GroupNorm):
+
     def forward(self, x):
         return super().forward(x.float()).type(x.dtype)
 
@@ -111,14 +113,43 @@ def timestep_embedding(timesteps, dim, max_period=10000):
     :return: an [N x dim] Tensor of positional embeddings.
     """
     half = dim // 2
-    freqs = th.exp(
-        -math.log(max_period) * th.arange(start=0, end=half, dtype=th.float32) / half
-    ).to(device=timesteps.device)
+    freqs = th.exp(-math.log(max_period) * th.arange(start=0, end=half, dtype=th.float32) /
+                   half).to(device=timesteps.device)
     args = timesteps[:, None].float() * freqs[None]
     embedding = th.cat([th.cos(args), th.sin(args)], dim=-1)
     if dim % 2:
         embedding = th.cat([embedding, th.zeros_like(embedding[:, :1])], dim=-1)
     return embedding
+
+
+class FixedPositionalEncoding(nn.Module):
+
+    def __init__(self, proj_dims, val=0.1):
+        super().__init__()
+        ll = proj_dims // 2
+        exb = 2 * th.linspace(0, ll - 1, ll) / proj_dims
+        self.sigma = 1.0 / th.pow(val, exb).view(1, -1)
+        self.sigma = 2 * th.pi * self.sigma
+
+    def forward(self, x):
+        return th.cat([th.sin(x * self.sigma.to(x.device)), th.cos(x * self.sigma.to(x.device))], dim=-1)
+
+
+class LearnedPositionEmbedding(nn.Module):
+    """
+    Absolute pos embedding, learned.
+    """
+
+    def __init__(self, input_channel, num_pos_feats=288):
+        super().__init__()
+        self.position_embedding_head = nn.Sequential(nn.Conv1d(input_channel, num_pos_feats, kernel_size=1),
+                                                     nn.BatchNorm1d(num_pos_feats), nn.ReLU(inplace=True),
+                                                     nn.Conv1d(num_pos_feats, num_pos_feats, kernel_size=1))
+
+    def forward(self, xyz):
+        xyz = xyz.transpose(1, 2).contiguous()
+        position_embedding = self.position_embedding_head(xyz)
+        return position_embedding
 
 
 def checkpoint(func, inputs, params, flag):
@@ -140,6 +171,7 @@ def checkpoint(func, inputs, params, flag):
 
 
 class CheckpointFunction(th.autograd.Function):
+
     @staticmethod
     def forward(ctx, run_function, length, *args):
         ctx.run_function = run_function
