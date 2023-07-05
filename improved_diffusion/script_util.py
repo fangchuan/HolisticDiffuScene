@@ -39,6 +39,7 @@ def model_and_diffusion_defaults():
         use_3d_iou=False,
         use_checkpoint=False,
         use_scale_shift_norm=True,
+        use_input_encoding=False,
     )
 
 
@@ -62,8 +63,9 @@ def create_model_and_diffusion(
     rescale_timesteps: bool,
     rescale_learned_sigmas: bool,
     use_3d_iou: bool,
-    use_checkpoint,
-    use_scale_shift_norm,
+    use_checkpoint: bool,
+    use_scale_shift_norm: bool,
+    use_input_encoding: bool,
 ):
     """ create UNet model and diffusion, according to the given parameters
 
@@ -107,6 +109,7 @@ def create_model_and_diffusion(
         num_heads_upsample=num_heads_upsample,
         use_scale_shift_norm=use_scale_shift_norm,
         dropout=dropout,
+        use_input_encoding=use_input_encoding,
     )
     # create diffusion process
     diffusion = create_gaussian_diffusion(
@@ -138,6 +141,7 @@ def create_model(
     num_heads_upsample,
     use_scale_shift_norm,
     dropout,
+    use_input_encoding,
 ):
     layout_feature_size = layout_size
     if layout_feature_size == 1024:
@@ -168,6 +172,7 @@ def create_model(
         num_heads=num_heads,
         num_heads_upsample=num_heads_upsample,
         use_scale_shift_norm=use_scale_shift_norm,
+        use_input_encoding=use_input_encoding,
     )
 
 
