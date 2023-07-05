@@ -174,8 +174,10 @@ def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
     v_object_meshes = create_oriented_bbox(obj_bbox_lst)
     if room_layout_bbox is not None:
         scene_mesh = trimesh.util.concatenate([room_layout_mesh, v_object_meshes, room_layout_bbox])
-    else:
+    elif room_layout_mesh is not None:
         scene_mesh = trimesh.util.concatenate([room_layout_mesh, v_object_meshes])
+    else:
+        scene_mesh = trimesh.util.concatenate([v_object_meshes])
     return scene_mesh
 
 

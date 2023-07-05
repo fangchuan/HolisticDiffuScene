@@ -1,4 +1,4 @@
-MODEL_FLAGS="--layout_size 1024 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond True"
+MODEL_FLAGS="--layout_channels 23 --layout_size 32 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond True"
 DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing 250"
 
 
