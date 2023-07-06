@@ -132,6 +132,7 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
     else:
         raise NotImplementedError
 
+    print(f' room_type: {room_type}, class_labels_lst: {len(class_labels_lst)}')
     class_idx = 0
     centroid_idx = len(class_labels_lst)
     size_idx = 3 + centroid_idx
@@ -152,10 +153,14 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
         quad_wall_dict['class'] = class_label
         wall_center = quad_wall_lst[i][centroid_idx:centroid_idx + 3] * room_layout_bbox_size
         quad_wall_dict['center'] = wall_center.tolist()
-        wall_normal = quad_wall_lst[i][size_idx:size_idx + 3]
-        wall_size = quad_wall_lst[i][angle_idx:angle_idx + 2]
+        wall_size = quad_wall_lst[i][size_idx:size_idx + 3]
+        wall_normal = quad_wall_lst[i][angle_idx:angle_idx + 2]
+        # rearrange_func = lambda normal, size: np.array([normal[0], normal[1], size[1]]), np.array([size[0], size[2]])
+        # wall_normal, wall_size = rearrange_func(wall_normal, wall_size)
+        wall_normal = [wall_normal[0], wall_normal[1], wall_size[1]]
+        wall_size = [wall_size[0], wall_size[2]]
         wall_size = [
-            wall_size[0] * max(room_layout_bbox_size[0], room_layout_bbox_size[1]), 0.05,
+            wall_size[0] * max(room_layout_bbox_size[0], room_layout_bbox_size[1]), 0.01,
             wall_size[1] * room_layout_bbox_size[2]
         ]
         # The direction of all camera is always along the negative y-axis.
@@ -165,7 +170,7 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
             angle = np.pi / 2 if wall_normal[0] > 0 else -np.pi / 2
         quad_wall_dict['size'] = wall_size
         quad_wall_dict['angles'] = [0, 0, angle]
-        print(f' wall {class_label} centroid: {wall_center} size: {wall_size} angle: {angle}')
+        print(f' wall {class_label} centroid: {wall_center} size: {wall_size} noraml: {wall_normal}')
         quad_wall_dict_list.append(quad_wall_dict)
 
     # recover object bbox
@@ -372,7 +377,6 @@ if __name__ == "__main__":
         # print('layout_ply_faces: ', layout_ply_faces.shape)
         # print('layout_corner_lst: ', layout_corner_lst.shape)
         # print('cam_pos_lst: ', cam_pos_lst)
-        print('obj_bbox_dict_lst: ', (obj_bbox_dict_lst))
 
         # save synthetic boundaries as image
         img_fname = f'{scene_sample_label}_{idx}.png'

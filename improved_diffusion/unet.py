@@ -541,10 +541,11 @@ class UNetModel(nn.Module):
             logger.debug(f"UNetModel::forward: output_blocks h output shape: {h.shape}")
 
         h = h.type(X.dtype)
-        h = self.out(h)
+        ret = self.out(h)
         logger.debug(f"UNetModel::forward: out layer output shape: {h.shape}")
-        ret = self.proj_out(h)
-        logger.debug(f"UNetModel::forward: proj_out layer output shape: {ret.shape}")
+        if self.use_input_encoding:
+            ret = self.proj_out(ret)
+            logger.debug(f"UNetModel::forward: proj_out layer output shape: {ret.shape}")
         return ret
 
     def get_feature_vectors(self, x, timesteps, y=None):
