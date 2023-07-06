@@ -24,7 +24,7 @@ def model_and_diffusion_defaults():
         num_heads=4,
         num_heads_upsample=-1,
         # attention_resolutions="16,8",
-        attention_resolutions="16, 8",
+        attention_resolutions="32, 16, 8, 4",
         dropout=0.0,
         b_learn_sigma=False,
         sigma_small=False,

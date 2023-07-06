@@ -925,13 +925,18 @@ class PanoCorBoundDataset(data.Dataset):
             wall_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label='wall')
             wall_centroid = np.array(wall_bbox['center'], np.float32)
             wall_centroid = TranslationEncode(wall_centroid)
-            wall_normal = np.array(wall_bbox['normal'], np.float32)
-            wall_normal = NormalEncode(wall_normal)
-            wall_size = np.array([wall_bbox['width'], wall_bbox['height']])
-            # rerrange wall normal and size to be identical to object bbox encoding
-            rearrange_func = lambda normal, size: np.array([size[0], normal[2], size[1], normal[0], normal[1]])
-            wall_property_encode = np.concatenate(
-                [wall_class, wall_centroid, rearrange_func(wall_normal, wall_size)], axis=-1)
+            # wall_normal = np.array(wall_bbox['normal'], np.float32)
+            # wall_normal = NormalEncode(wall_normal)
+            # wall_size = np.array([wall_bbox['width'], wall_bbox['height']])
+            # # rerrange wall normal and size to be identical to object bbox encoding
+            # rearrange_func = lambda normal, size: np.array([size[0], normal[2], size[1], normal[0], normal[1]])
+            # wall_property_encode = np.concatenate(
+            #     [wall_class, wall_centroid, rearrange_func(wall_normal, wall_size)], axis=-1)
+            wall_size = np.array([wall_bbox['width'], 0.01, wall_bbox['height']], np.float32)
+            wall_size = SizeEncode(wall_size)
+            wall_angle = np.array(wall_bbox['angles'], np.float32)
+            wall_angle = RotationEncode(wall_angle)
+            wall_property_encode = np.concatenate([wall_class, wall_centroid, wall_size, wall_angle], axis=-1)
             # print(f'wall_property_encode: {wall_property_encode}')
             wall_property_encode_dim = wall_property_encode.shape[-1]
             wall_bbox_lst.append(wall_property_encode)

@@ -163,8 +163,8 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
             wall_size[0] * max(room_layout_bbox_size[0], room_layout_bbox_size[1]), 0.01,
             wall_size[1] * room_layout_bbox_size[2]
         ]
-        # The direction of all camera is always along the negative y-axis.
-        cos_angle = np.array(wall_normal).dot(np.array([0, -1, 0]))
+        # The direction of all camera is always along the positive X-axis.
+        cos_angle = np.array(wall_normal).dot(np.array([1, 0, 0]))
         angle = np.arccos(cos_angle)
         if abs(cos_angle) < 1e-3:
             angle = np.pi / 2 if wall_normal[0] > 0 else -np.pi / 2

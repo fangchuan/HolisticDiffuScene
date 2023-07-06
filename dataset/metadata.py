@@ -1167,6 +1167,9 @@ ST3D_BEDROOM_FURNITURE_CNTS = {
     'sink': 1
 }
 
+# # mean room layout size
+# ST3D_BEDROOM_ROOMLAYOUT_MEAN_SIZE = [6.03346382 6.74477253 2.9053602 ]
+
 ROOM_WALLS_LARGER_THAN_10 = [
     'scene_00019_564', 'scene_00088_5879', 'scene_00107_834174', 'scene_00125_2562', 'scene_00231_11743',
     'scene_00248_367651', 'scene_00279_556308', 'scene_00288_4455', 'scene_00305_564', 'scene_00325_343315',

@@ -17,7 +17,7 @@ from panda3d.core import Triangulator
 
 from typing import List, Tuple, Dict, Any, Union
 
-from misc.utils import matrix_to_euler_angles
+from misc.utils import matrix_to_euler_angles, euler_angle_to_matrix
 from misc.equirect_projection import vis_objs3d
 from dataset.metadata import (INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS, COLOR_TO_LABEL,
                               ST3D_LIVINGROOM_MIN_LEN, ST3D_BEDROOM_MIN_LEN, ST3D_DININGROOM_MIN_LEN)
@@ -366,13 +366,18 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
             wall_dict['center'] = quad_wall['center']
             wall_dict['size'] = [quad_wall['width'], 0.05, quad_wall['height']]
             normal = quad_wall['normal']
+            # print(f'wall normal: {normal}')
             # The direction of all camera is always along the negative y-axis.
-            cos_angle = np.array(normal).dot(np.array([0, -1, 0]))
+            cos_angle = np.array(normal).dot(np.array([1, 0, 0]))
             angle = np.arccos(cos_angle)
             if abs(cos_angle) < 1e-6:
                 angle = np.pi / 2 if normal[0] > 0 else -np.pi / 2
 
             wall_dict['angles'] = [0, 0, angle]
+            rotation_matrix = euler_angle_to_matrix(wall_dict['angles'])
+            recovered_normal = rotation_matrix.dot(np.array([1, 0, 0]))
+            # print(f'recovered normal: {recovered_normal}')
+            # print(f' recovered normal is {np.allclose(np.array(normal), recovered_normal, atol=1e-3)}')
             wall_dict['class'] = 'wall'
             wall_lst.append(wall_dict)
         obj_bbox_lst.extend(wall_lst)
@@ -573,6 +578,11 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
         # wall center in camera frame, unit: meter
         wall_center_in_cam = (wall_center - cam_position) * 0.001
         wall_normal = np.array(plane_normal)
+        # The direction of all camera is always along the positive x-axis.
+        cos_angle = np.array(wall_normal).dot(np.array([1, 0, 0]))
+        angle = np.arccos(cos_angle)
+        if abs(cos_angle) < 1e-6:
+            angle = np.pi / 2 if wall_normal[0] > 0 else -np.pi / 2
         wall_width = np.linalg.norm(corner_i - corner_j) * 0.001
         wall_height = np.linalg.norm(delta_height) * 0.001
 
@@ -581,6 +591,7 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
         wall_dict['ID'] = len(quad_wall_lst)
         wall_dict['center'] = wall_center_in_cam.tolist()
         wall_dict['normal'] = wall_normal.tolist()
+        wall_dict['angles'] = [np.cos(angle), np.sin(angle)]
         wall_dict['width'] = wall_width.tolist()
         wall_dict['height'] = wall_height.tolist()
         wall_dict['corners'] = (quad_corners * 0.001).tolist()
@@ -597,11 +608,13 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
         wall_normal = np.array(wall_dict['normal'])
         wall_width = float(wall_dict['width'])
         wall_height = float(wall_dict['height'])
+        wall_angles = wall_dict['angles']
         # if layout_bbox_size is not None:
         wall_normalized_dict = {}
         wall_normalized_dict['ID'] = wall_dict['ID']
         wall_normalized_dict['center'] = (wall_center_in_cam / layout_bbox_size).tolist()
         wall_normalized_dict['normal'] = wall_normal.tolist()
+        wall_normalized_dict['angles'] = wall_angles
         wall_normalized_dict['width'] = (wall_width / max(layout_bbox_size[0], layout_bbox_size[1])).tolist()
         wall_normalized_dict['height'] = (wall_height / layout_bbox_size[2]).tolist()
         quad_wall_normalized_lst.append(wall_normalized_dict)

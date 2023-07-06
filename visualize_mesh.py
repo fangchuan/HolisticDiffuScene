@@ -266,6 +266,7 @@ def visualize_mesh(args):
         quad_corner = np.array([corner_i, corner_i + delta_height, corner_j + delta_height, corner_j])
         print(f'plane normal: {plane_normal}')
         quad_polygen_mesh, quad_polygen_pcd = create_spatial_quad_polygen(quad_corner, plane_normal, camera_center)
+        open3d.visualization.draw_geometries([quad_polygen_mesh, quad_polygen_pcd])
         quad_wall_lst.append(quad_polygen_mesh)
 
         corners.append(quad_corner)
@@ -289,14 +290,14 @@ def visualize_mesh(args):
                              ignore_ceiling=args.ignore_ceiling,
                              camera_center=camera_center)
     open3d.io.write_triangle_mesh(
-        "/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00000_485142.ply", mesh)
+        "/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00000_490854.ply", mesh)
 
     quad_meshes = open3d.geometry.TriangleMesh()
 
     for mesh in quad_wall_lst:
         quad_meshes += mesh
     open3d.io.write_triangle_mesh(
-        "/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00000_485142_quadwall.obj",
+        "/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00000_490854_quadwall.ply",
         quad_meshes)
     # visualize mesh
     open3d.visualization.draw_geometries(quad_wall_lst)

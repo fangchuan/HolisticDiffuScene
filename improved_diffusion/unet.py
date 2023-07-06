@@ -448,7 +448,8 @@ class UNetModel(nn.Module):
 
         # as we encode input data to encoding space, we need to project it back to input space
         if self.use_input_encoding:
-            self.proj_out = nn.Linear(self.object_emb_dim, self.in_feat_size)
+            self.proj_out = nn.Sequential(nn.ReLU(), nn.Linear(self.object_emb_dim, self.object_emb_dim), nn.ReLU(),
+                                          nn.Linear(self.object_emb_dim, self.in_feat_size))
 
     def convert_to_fp16(self):
         """

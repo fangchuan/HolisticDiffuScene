@@ -225,7 +225,7 @@ def vis_objs3d(image,
                b_show_info=False,
                thickness=2):
 
-    def draw_line3d(image, p1, p2, color, thickness, quality=30, frame='world'):
+    def draw_line3d(image, p1, p2, color, thickness, quality=30, frame='cam3d'):
         color = (np.ones(3, dtype=np.uint8) * color).tolist()
         if frame != 'cam3d':
             print('input points must be in camera frame')
