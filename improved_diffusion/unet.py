@@ -391,7 +391,7 @@ class UNetModel(nn.Module):
                     layers.append(('attnblock_' + idx_str,
                                    AttentionBlock(channels=ch, use_checkpoint=use_checkpoint, num_heads=num_heads)))
 
-                self.input_blocks.append(TimestepEmbedSequential(OrderedDict(*layers)))
+                self.input_blocks.append(TimestepEmbedSequential(OrderedDict(layers)))
                 input_block_chans.append(ch)
             if level != len(channel_mult) - 1:
                 self.input_blocks.append(
@@ -446,7 +446,7 @@ class UNetModel(nn.Module):
                 if level and i == num_res_blocks:
                     layers.append(('up_' + idx_str, Upsample(channels=ch, use_conv=conv_resample, dims=dims)))
                     downsample_ratio //= 2
-                self.output_blocks.append(TimestepEmbedSequential(OrderedDict(*layers)))
+                self.output_blocks.append(TimestepEmbedSequential(OrderedDict(layers)))
 
         self.out = nn.Sequential(
             normalization(ch),
@@ -463,11 +463,14 @@ class UNetModel(nn.Module):
     def _proj_out_hook_func(self, module, input, output):
         """ hook function of proj_out layer, visualize the output of proj_out layer """
         data = output.clone().detach()
-        logger.info(f"_proj_out_hook_func: {data.shape}")
-        data = data.permute(1, 0, 2, 3)
-        img_name = "proj_out_tensor.png"
-        vutil.save_image(data, img_name, pad_value=0.5)
-        grid_img = vutil.make_grid(data, nrow=1, normalize=True, scale_each=True, pad_value=0.5)
+        logger.debug(f"_proj_out_hook_func: {data.shape}")
+        # data = data.unsqueeze(0)
+        # data = data.permute(1, 0, 2, 3)
+        # logger.debug(f"_proj_out_hook_func: {data.shape}")
+        # img_name = "proj_out_tensor.png"
+        # vutil.save_image(data, img_name, pad_value=0.5)
+        # grid_img = vutil.make_grid(data, nrow=1, normalize=True, scale_each=True, pad_value=0.5)
+        # vutil.save_image(grid_img, img_name, pad_value=0.5)
 
     def convert_to_fp16(self):
         """
