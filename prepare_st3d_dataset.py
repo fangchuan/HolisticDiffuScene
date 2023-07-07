@@ -368,14 +368,14 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
             normal = quad_wall['normal']
             # print(f'wall normal: {normal}')
             # The direction of all camera is always along the negative y-axis.
-            cos_angle = np.array(normal).dot(np.array([1, 0, 0]))
+            cos_angle = np.array(normal).dot(np.array([0, -1, 0]))
             angle = np.arccos(cos_angle)
             if abs(cos_angle) < 1e-6:
                 angle = np.pi / 2 if normal[0] > 0 else -np.pi / 2
 
             wall_dict['angles'] = [0, 0, angle]
             rotation_matrix = euler_angle_to_matrix(wall_dict['angles'])
-            recovered_normal = rotation_matrix.dot(np.array([1, 0, 0]))
+            recovered_normal = rotation_matrix.dot(np.array([0, -1, 0]))
             # print(f'recovered normal: {recovered_normal}')
             # print(f' recovered normal is {np.allclose(np.array(normal), recovered_normal, atol=1e-3)}')
             wall_dict['class'] = 'wall'
@@ -578,8 +578,8 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
         # wall center in camera frame, unit: meter
         wall_center_in_cam = (wall_center - cam_position) * 0.001
         wall_normal = np.array(plane_normal)
-        # The direction of all camera is always along the positive x-axis.
-        cos_angle = np.array(wall_normal).dot(np.array([1, 0, 0]))
+        # The direction of all camera is always along the positive y-axis.
+        cos_angle = np.array(wall_normal).dot(np.array([0, -1, 0]))
         angle = np.arccos(cos_angle)
         if abs(cos_angle) < 1e-6:
             angle = np.pi / 2 if wall_normal[0] > 0 else -np.pi / 2
