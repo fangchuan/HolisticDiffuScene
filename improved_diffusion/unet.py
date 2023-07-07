@@ -6,12 +6,14 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.utils as vutil
 
 from .fp16_util import convert_module_to_f16, convert_module_to_f32
 from .nn import (SiLU, conv_nd, linear, avg_pool_nd, zero_module, normalization, timestep_embedding, checkpoint,
                  FixedPositionalEncoding, LearnedPositionEmbedding)
 
 from . import logger
+from collections import OrderedDict
 
 
 class TimestepBlock(nn.Module):
@@ -360,15 +362,19 @@ class UNetModel(nn.Module):
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
 
         # input block
-        self.input_blocks = nn.ModuleList(
-            [TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))])
+        self.input_blocks = nn.ModuleList([
+            TimestepEmbedSequential(
+                OrderedDict([('input_conv', conv_nd(dims, in_channels, model_channels, 3, padding=1))]))
+        ])
         input_block_chans = [model_channels]
         ch = model_channels
         # downsample rates for the attention layers
         downsample_ratio = 1
         for level, mult in enumerate(channel_mult):
-            for _ in range(num_res_blocks):
-                layers = [
+            for idx in range(num_res_blocks):
+                idx_str = f'{level}_{idx}'
+                layers = [(
+                    'resblock_' + idx_str,
                     ResBlock(
                         channels=ch,  # input channels
                         emb_channels=time_embed_dim,  # embedding channels
@@ -377,19 +383,20 @@ class UNetModel(nn.Module):
                         dims=dims,
                         use_checkpoint=use_checkpoint,
                         use_scale_shift_norm=use_scale_shift_norm,
-                    )
-                ]
+                    ))]
                 # increase minput channels for next resblock
                 ch = mult * model_channels
                 # insert attention block if needed
                 if downsample_ratio in attention_resolutions:
-                    layers.append(AttentionBlock(channels=ch, use_checkpoint=use_checkpoint, num_heads=num_heads))
+                    layers.append(('attnblock_' + idx_str,
+                                   AttentionBlock(channels=ch, use_checkpoint=use_checkpoint, num_heads=num_heads)))
 
-                self.input_blocks.append(TimestepEmbedSequential(*layers))
+                self.input_blocks.append(TimestepEmbedSequential(OrderedDict(*layers)))
                 input_block_chans.append(ch)
             if level != len(channel_mult) - 1:
                 self.input_blocks.append(
-                    TimestepEmbedSequential(Downsample(channels=ch, use_conv=conv_resample, dims=dims)))
+                    TimestepEmbedSequential(
+                        OrderedDict([('down_' + idx_str, Downsample(channels=ch, use_conv=conv_resample, dims=dims))])))
                 input_block_chans.append(ch)
                 downsample_ratio *= 2
 
@@ -417,28 +424,29 @@ class UNetModel(nn.Module):
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks + 1):
-                layers = [
-                    ResBlock(
-                        ch + input_block_chans.pop(),
-                        time_embed_dim,
-                        dropout,
-                        out_channels=model_channels * mult,
-                        dims=dims,
-                        use_checkpoint=use_checkpoint,
-                        use_scale_shift_norm=use_scale_shift_norm,
-                    )
-                ]
+                idx_str = f'{level}_{i}'
+                layers = [('resblock_' + idx_str,
+                           ResBlock(
+                               ch + input_block_chans.pop(),
+                               time_embed_dim,
+                               dropout,
+                               out_channels=model_channels * mult,
+                               dims=dims,
+                               use_checkpoint=use_checkpoint,
+                               use_scale_shift_norm=use_scale_shift_norm,
+                           ))]
                 ch = model_channels * mult
                 if downsample_ratio in attention_resolutions:
-                    layers.append(AttentionBlock(
-                        ch,
-                        use_checkpoint=use_checkpoint,
-                        num_heads=num_heads_upsample,
-                    ))
+                    layers.append(('attnblock_' + idx_str,
+                                   AttentionBlock(
+                                       ch,
+                                       use_checkpoint=use_checkpoint,
+                                       num_heads=num_heads_upsample,
+                                   )))
                 if level and i == num_res_blocks:
-                    layers.append(Upsample(channels=ch, use_conv=conv_resample, dims=dims))
+                    layers.append(('up_' + idx_str, Upsample(channels=ch, use_conv=conv_resample, dims=dims)))
                     downsample_ratio //= 2
-                self.output_blocks.append(TimestepEmbedSequential(*layers))
+                self.output_blocks.append(TimestepEmbedSequential(OrderedDict(*layers)))
 
         self.out = nn.Sequential(
             normalization(ch),
@@ -448,8 +456,18 @@ class UNetModel(nn.Module):
 
         # as we encode input data to encoding space, we need to project it back to input space
         if self.use_input_encoding:
-            self.proj_out = nn.Sequential(nn.ReLU(), nn.Linear(self.object_emb_dim, self.object_emb_dim), nn.ReLU(),
-                                          nn.Linear(self.object_emb_dim, self.in_feat_size))
+            self.proj_out = nn.Sequential(
+                OrderedDict([('project_out', nn.Linear(self.object_emb_dim, self.in_feat_size))]))
+            self.proj_out.register_forward_hook(self._proj_out_hook_func)
+
+    def _proj_out_hook_func(self, module, input, output):
+        """ hook function of proj_out layer, visualize the output of proj_out layer """
+        data = output.clone().detach()
+        logger.info(f"_proj_out_hook_func: {data.shape}")
+        data = data.permute(1, 0, 2, 3)
+        img_name = "proj_out_tensor.png"
+        vutil.save_image(data, img_name, pad_value=0.5)
+        grid_img = vutil.make_grid(data, nrow=1, normalize=True, scale_each=True, pad_value=0.5)
 
     def convert_to_fp16(self):
         """

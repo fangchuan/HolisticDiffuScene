@@ -856,7 +856,7 @@ class PanoCorBoundDataset(data.Dataset):
             bbox_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=bbox_class_label)
             bbox_centroid = np.array(obj_bbox['center'], np.float32)
             bbox_centroid = TranslationEncode(bbox_centroid)
-            bbox_size = np.array(obj_bbox['size'], np.float32)
+            bbox_size = (np.array(obj_bbox['size'], np.float32) + 1) * 0.5
             bbox_size = SizeEncode(bbox_size)
             # only use Z angle
             bbox_angle = np.array(obj_bbox['angles'], np.float32)
