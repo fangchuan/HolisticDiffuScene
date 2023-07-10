@@ -709,8 +709,8 @@ class GaussianDiffusion:
                     terms["vb"] *= self.num_timesteps / 1000.0
 
                     alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x_start.shape)
-                    logger.debug(f"tms: {t}")
-                    logger.debug(f"alpha_bar: {alpha_bar}")
+                    # logger.debug(f"tms: {t}")
+                    # logger.debug(f"alpha_bar: {alpha_bar}")
                     # Bx169
                     iou_loss = pred_3d_iou_loss(x_start, **model_kwargs, means=pred_x_start, weights=alpha_bar)
                     terms["iou"] = mean_flat(iou_loss)

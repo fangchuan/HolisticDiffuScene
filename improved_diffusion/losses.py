@@ -199,14 +199,24 @@ def bbox_corners(bbox_centroids: th.Tensor, bbox_sizes: th.Tensor, bbox_angles: 
 
 def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
 
-    # only use x[0][3,:] to calculate iou among objects
+    # quad_walls: x_pred[:, :10, :]
+    # object_bbox: x_pred[:, 10:, :]
     B, C, feat_size = x_pred.shape
-    object_feat_idx = C - 1
-    assert C == 4, "The input x_pred should be (B, 4, 1024)"
-    assert iou_loss_weights.shape == (B, C, feat_size), "The loss weights tensor should be (B, 4, 1024)"
+    object_chann_idx = 10
+    assert th.all(room_type_lst == room_type_lst[0]), "The input room types should be equal"
+    assert iou_loss_weights.shape == (B, C, feat_size), "The loss weights tensor should be (B, 23, 32)"
 
-    class_labels_lst = ST3D_BEDROOM_FURNITURE
-    obj_feat_num, obj_feat_dim = 13, 30
+    if get_room_type(room_type_lst[0]) == 'bedroom':
+        class_labels_lst = ST3D_BEDROOM_FURNITURE
+        obj_feat_num, obj_feat_dim = 13, 32
+    elif get_room_type(room_type_lst[0]) == 'living room':
+        class_labels_lst = ST3D_LIVINGROOM_FURNITURE
+        obj_feat_num, obj_feat_dim = 23, 32
+    elif get_room_type(room_type_lst[0]) == 'dining room':
+        class_labels_lst = ST3D_DININGROOM_FURNITURE
+        obj_feat_num, obj_feat_dim = 23, 32
+    else:
+        raise NotImplementedError
 
     class_idx = 0
     centroid_idx = class_idx + len(class_labels_lst)
@@ -214,13 +224,13 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     angle_idx = 3 + size_idx
 
     # Bx13x30
-    pred_object_bbox = x_pred[:, object_feat_idx, :(obj_feat_num * obj_feat_dim)].reshape(B, obj_feat_num, obj_feat_dim)
+    pred_object_bbox = x_pred[:, object_chann_idx:, :].reshape(B, obj_feat_num, obj_feat_dim)
     pred_object_class_prob = th.where(pred_object_bbox[:, :, :centroid_idx] > 0.5, 1, 0)
-    logger.debug(f'pred_object_class_prob: {pred_object_class_prob.shape}')
+    # logger.debug(f'pred_object_class_prob: {pred_object_class_prob.shape}')
     # skip probability of empty object
     no_object_mask = th.all(pred_object_class_prob == 0, dim=2, keepdim=True)
     pred_object_class = th.argmax(pred_object_class_prob, dim=2, keepdim=True)
-    logger.debug(f'pred_object_class: {pred_object_class.shape}')
+    # logger.debug(f'pred_object_class: {pred_object_class.shape}')
     # skip empty object
     no_object_mask = th.logical_or(no_object_mask,
                                    th.all(pred_object_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
@@ -233,34 +243,34 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     pillow_mask = th.all(pred_object_class == class_labels_lst.index('pillow'), dim=2, keepdim=True)
 
     # BxCx1
-    logger.debug(f'no_object_mask: {no_object_mask.shape}')
+    # logger.debug(f'no_object_mask[0,...]: {no_object_mask[0, ...]}')
 
     pred_object_centroid = pred_object_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
     pred_object_centroid = th.where(pred_object_centroid.isnan(), 0.0, pred_object_centroid)
-    logger.debug(f'pred_object_centroid: {pred_object_centroid.shape}')
+    # logger.debug(f'pred_object_centroid: {pred_object_centroid.shape}')
 
-    pred_object_size = ((pred_object_bbox[:, :, size_idx:angle_idx] + 1) * 0.5).clamp(min=1e-4, max=1.0)
+    # pred_object_size = ((pred_object_bbox[:, :, size_idx:angle_idx] + 1) * 0.5).clamp(min=1e-4, max=1.0)
+    pred_object_size = (pred_object_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
     pred_object_size = th.where(pred_object_size.isnan(), 0.0, pred_object_size)
-    logger.debug(f'pred_object_size: {pred_object_size.shape}')
+    # logger.debug(f'pred_object_size: {pred_object_size.shape}')
 
-    pred_object_angle_0 = th.arccos(pred_object_bbox[:, :, angle_idx].clamp(min=-0.999999, max=0.999999))
-    pred_object_angle = th.where(th.isnan(pred_object_angle_0), 0, pred_object_angle_0)
-    pred_object_angle = pred_object_angle.unsqueeze(2)
-    logger.debug(f'pred_object_angle: {pred_object_angle.shape}')
+    pred_object_cos_angle = pred_object_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
+    pred_object_sin_angle = pred_object_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
+    pred_object_angle = th.where(
+        th.abs(pred_object_cos_angle) < 1e-3, th.arcsin(pred_object_sin_angle), th.arccos(pred_object_cos_angle))
+    # logger.debug(f'pred_object_angle: {pred_object_angle.shape}')
 
     # Bx13x7
     pred_object_bboxes = th.cat((pred_object_centroid, pred_object_size, pred_object_angle), dim=2)
-    logger.debug(f'pred_object_bboxes: {pred_object_bboxes.shape}')
-
-    # # Bx13x8x3
-    # pred_object_bbox_corners = bbox_corners(pred_object_centroid, pred_object_size, pred_object_angle)
-    # logger.info(f'pred_object_bbox_corners: {pred_object_bbox_corners.shape}')
+    # logger.debug(f'pred_object_bboxes: {pred_object_bboxes.shape}')
 
     is_object_mask = (~no_object_mask).float()
-    # logger.info(f'pred_object_bbox_corners[no_object_mask].shape: {pred_object_bbox_corners[is_object_mask].shape}')
+    # logger.info(f'pred_object_bbox[no_object_mask].shape: {pred_object_bbox[no_object_mask].shape}')
     batch_pred_bbox_iou_loss_lst = []
-    for batch_idx in range(B):
 
+    self_intersect_mask = th.eye(obj_feat_num, device=x_pred.device)
+    self_intersect_mask = 1 - self_intersect_mask
+    for batch_idx in range(B):
         # 13x7
         object_bbox_arr = pred_object_bboxes[batch_idx, ...]
         # 13x13
@@ -278,22 +288,17 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
             iou_3d = (1 - bed_pillow_mask) * iou_3d
 
         # ignore self-intersection
-        mask = th.eye(object_bbox_arr.shape[0], device=x_pred.device)
-        iou_3d = (1 - mask) * iou_3d
-        # iou_3d /2
+        iou_3d = self_intersect_mask * iou_3d
+        # iou_3d /2, 1x169
         iou_loss_lst = (iou_3d * 0.5).contiguous().view(1, -1)
-        # iou_loss_lst = th.zeros((1, feat_size), dtype=th.float32, device=x_pred.device)
-        # iou_loss_lst[object_feat_idx, :iou_3d.shape[0]] = iou_3d
-        # iou_loss_lst = l1_critertion(iou_loss_lst, th.zeros_like(iou_loss_lst))
-        logger.debug(f'iou_3d: {iou_loss_lst.shape}')
         batch_pred_bbox_iou_loss_lst.append(iou_loss_lst)
 
     # Bx1x169
     batch_pred_bbox_iou_loss = th.stack(batch_pred_bbox_iou_loss_lst, dim=0)
     iou_loss_shape = batch_pred_bbox_iou_loss.shape[-1]
-    logger.debug(f'batch_pred_bbox_iou_loss berfore weighting: {batch_pred_bbox_iou_loss}')
-    batch_iou_loss = batch_pred_bbox_iou_loss * iou_loss_weights[:, object_feat_idx, :iou_loss_shape]
-    logger.debug(f'batch_pred_bbox_iou_loss after weighting: {batch_pred_bbox_iou_loss}')
+    # logger.debug(f'batch_pred_bbox_iou_loss berfore weighting: {batch_pred_bbox_iou_loss}')
+    batch_iou_loss = batch_pred_bbox_iou_loss * iou_loss_weights.reshape(B, 1, -1)[..., :iou_loss_shape]
+    # logger.debug(f'batch_pred_bbox_iou_loss after weighting: {batch_pred_bbox_iou_loss}')
 
     return batch_iou_loss
 
@@ -316,7 +321,7 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     #     centroid_idx = len(class_labels_lst)
     #     size_idx = 3 + centroid_idx
     #     angle_idx = 3 + size_idx
-    #     pred_obj_bbox_lst = x_pred[batch_idx, object_feat_idx, :(obj_feat_num * obj_feat_dim)].reshape(
+    #     pred_obj_bbox_lst = x_pred[batch_idx, object_chann_idx, :(obj_feat_num * obj_feat_dim)].reshape(
     #         (obj_feat_num, obj_feat_dim))
 
     #     # set room layout bbox size as 5m x 5m x 5m
@@ -391,8 +396,8 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     #     # logger.info(f'iou_loss: {iou_loss}')
     #     # iou_loss_lst: Bx4x1024
     #     iou_loss_lst = th.zeros((C, feat_size), dtype=th.float32, device=x_pred.device)
-    #     iou_loss_lst[object_feat_idx, :(obj_feat_num * obj_feat_dim)] = iou_loss.contiguous().view(-1)
-    #     # logger.info(f'iou_loss_lst: {iou_loss_lst[object_feat_idx, :(obj_feat_num * obj_feat_dim)]}')
+    #     iou_loss_lst[object_chann_idx, :(obj_feat_num * obj_feat_dim)] = iou_loss.contiguous().view(-1)
+    #     # logger.info(f'iou_loss_lst: {iou_loss_lst[object_chann_idx, :(obj_feat_num * obj_feat_dim)]}')
     #     batch_pred_bbox_iou_loss_lst.append(iou_loss_lst)
 
     # # batch_pred_bbox_iou_loss_lst: Bx4x1024

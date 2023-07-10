@@ -142,6 +142,7 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
     # recover quad wall bbox of room layout
     quad_wall_dict_list = []
     for i in range(len(quad_wall_lst)):
+        # print(f'quad wall: {quad_wall_lst[i]}')
         quad_wall_dict = {}
         # recover class label
         class_label_prob = quad_wall_lst[i][:centroid_idx]
@@ -159,9 +160,13 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
 
         angle_0 = np.arccos(wall_normal_angle[0])
         angle_1 = np.arcsin(wall_normal_angle[1])
-        # assert np.abs(angle_0 - angle_1) < 1e-3
+        angle = 0
+        if abs(wall_normal_angle[0]) < 5e-3 and abs(wall_normal_angle[1]) > 5e-3:
+            angle = angle_1
+        elif abs(wall_normal_angle[0]) > 5e-3 and abs(wall_normal_angle[1]) < 5e-3:
+            angle = angle_0
 
-        quad_wall_dict['angles'] = [0, 0, angle_0]
+        quad_wall_dict['angles'] = [0, 0, angle]
         # The direction of all camera is always along the negative y-axis.
         rotation_matrix = euler_angle_to_matrix(quad_wall_dict['angles'])
         wall_normal = rotation_matrix.dot(np.array([0, -1, 0]))
