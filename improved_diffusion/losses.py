@@ -325,13 +325,8 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     # Bx13x8x3
     pred_object_box_corners_3d = bbox_corners(pred_object_centroid.unsqueeze(2), pred_object_size.unsqueeze(2),
                                               pred_object_eulers)
-    pred_wall_box_corners_3d = bbox_corners(pred_quad_wall_centroid.unsqueeze(2), pred_quad_wall_size.unsqueeze(2),
-                                            pred_quad_wall_eulers)
-    logger.debug(f'pred_wall_box_corners_3d: {pred_wall_box_corners_3d.shape}')
     # get x-y plane box corners
     pred_object_bbox_corners_2d = pred_object_box_corners_3d[:, :, 0:4, 0:2]
-    pred_wall_bbox_corners_2d = pred_wall_box_corners_3d[:, :, 0:4, 0:2]
-    logger.debug(f'pred_wall_bbox_corners_2d: {pred_wall_bbox_corners_2d.shape}')
 
     batch_physical_constraint_loss = []
     for batch_idx in range(B):
@@ -492,8 +487,8 @@ def pred_3d_iou_loss(x_gt, y, means, weights):
 
     x_pred = means
     pyhsical_violation_weight = 0.01
-    #  calculate object iou loss
-    batch_object_iou_loss = iou_among_predicted_3d_bbox(x_pred, y, weights)
+    # #  calculate object iou loss
+    # batch_object_iou_loss = iou_among_predicted_3d_bbox(x_pred, y, weights)
     # calculate object-layout iou
     batch_layout_iou_loss = iou_among_layout_and_predicted_3d_bbox(x_pred, y, weights)
     # Bx169

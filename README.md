@@ -166,3 +166,5 @@ We would like to thank Kujiale.com for providing the database of house designs a
 11. openai-2023-06-30-12-16-47-752194,openai-2023-07-03-16-59-45-622914： iou_loss计算方式由sum换成mean; 效果任然不明显;
 12. openai-2023-06-29-16-54-10-476220: test_pos_emb分支, 每层resblock后面都添加attnblock, 添加pe, 训练16W步模型不收敛, 生成结果不可用(roomlayout数据分布都没有学好);
 13. openai-2023-07-01-16-10-50-176856: test_pos_emb分支, 不使用pe, 训练19W步, 生成结果不可用(roomlayout数据分布都没有学好);
+14. openai-2023-07-07-19-13-25-077423: test_quad_walls分支, 确定quad_wall编码形式: class+centroid+size+angle, 使用input_encoding, mse+kl loss, 生成结果表明已经可以学习一些相对关系: 如nightstand-lamp, cabinet-tv, bed-nightstand;
+15. openai-2023-07-07-19-15-49-470102: test_quad_walls分支, 使用input_encoding, kl loss, 生成结果不可用, kl loss对其没有帮助;
