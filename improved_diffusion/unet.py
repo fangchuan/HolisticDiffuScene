@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from typing import Optional
 
 import math
 
@@ -10,7 +11,7 @@ import torchvision.utils as vutil
 
 from .fp16_util import convert_module_to_f16, convert_module_to_f32
 from .nn import (SiLU, conv_nd, linear, avg_pool_nd, zero_module, normalization, timestep_embedding, checkpoint,
-                 FixedPositionalEncoding, LearnedPositionEmbedding)
+                 get_activation_fn, FixedPositionalEncoding, LearnedPositionEmbedding)
 
 from . import logger
 from collections import OrderedDict
@@ -28,16 +29,30 @@ class TimestepBlock(nn.Module):
         """
 
 
-class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
+class PositionEmbeddingBlock(nn.Module):
+    """
+    Any module where forward() takes position embeddings as a second argument.
+    """
+
+    @abstractmethod
+    def forward(self, x, pos_emb):
+        """
+        Apply the module to `x` given `pos_emb` position embeddings.
+        """
+
+
+class TimestepEmbedSequential(nn.Sequential, TimestepBlock, PositionEmbeddingBlock):
     """
     A sequential module that passes timestep embeddings to the children that
     support it as an extra input.
     """
 
-    def forward(self, x, emb):
+    def forward(self, x, ts_emb, pos_emb=None):
         for layer in self:
             if isinstance(layer, TimestepBlock):
-                x = layer(x, emb)
+                x = layer(x, ts_emb)
+            elif isinstance(layer, PositionEmbeddingBlock):
+                x = layer(x, pos_emb)
             else:
                 x = layer(x)
         return x
@@ -183,6 +198,74 @@ class ResBlock(TimestepBlock):
             h = h + emb_out
             h = self.out_layers(h)
         return self.skip_connection(x) + h
+
+
+class SelfAttnBlock(PositionEmbeddingBlock):
+
+    def __init__(self,
+                 in_dim,
+                 nhead=8,
+                 emb_dim=512,
+                 dropout=0.1,
+                 activation="relu",
+                 use_checkpoint=False,
+                 normalize_before=False):
+        super().__init__()
+        self.self_attn = nn.MultiheadAttention(in_dim, nhead, dropout=dropout)
+        # Implementation of Feedforward model
+        self.linear1 = nn.Linear(in_dim, emb_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(emb_dim, in_dim)
+
+        self.norm1 = nn.LayerNorm(in_dim)
+        self.norm2 = nn.LayerNorm(in_dim)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+
+        self.activation = get_activation_fn(activation)
+        self.use_checkpoint = use_checkpoint
+        self.normalize_before = normalize_before
+
+    def with_pos_embed(self, tensor, pos: Optional[th.Tensor]):
+        return tensor if pos is None else tensor + pos
+
+    def forward_post(self,
+                     src,
+                     src_mask: Optional[th.Tensor] = None,
+                     src_key_padding_mask: Optional[th.Tensor] = None,
+                     pos: Optional[th.Tensor] = None):
+        q = k = self.with_pos_embed(src, pos)
+        logger.debug(f"SelfAttnBlock::forward_post: q.shape: {q.shape}")
+        logger.debug(f"SelfAttnBlock::forward_post: k.shape: {k.shape}")
+        src2 = self.self_attn(q, k, value=src, attn_mask=src_mask, key_padding_mask=src_key_padding_mask)[0]
+        logger.debug(f"SelfAttnBlock::forward_post: MHSA.shape: {src2.shape}")
+        src = src + self.dropout1(src2)
+        src = self.norm1(src)
+        src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
+        src = src + self.dropout2(src2)
+        src = self.norm2(src)
+        return src
+
+    def forward_pre(self,
+                    src,
+                    src_mask: Optional[th.Tensor] = None,
+                    src_key_padding_mask: Optional[th.Tensor] = None,
+                    pos: Optional[th.Tensor] = None):
+        src2 = self.norm1(src)
+        q = k = self.with_pos_embed(src2, pos)
+        src2 = self.self_attn(q, k, value=src2, attn_mask=src_mask, key_padding_mask=src_key_padding_mask)[0]
+        src = src + self.dropout1(src2)
+        src2 = self.norm2(src)
+        src2 = self.linear2(self.dropout(self.activation(self.linear1(src2))))
+        src = src + self.dropout2(src2)
+        return src
+
+    def forward(self, x, pos_emb: Optional[th.Tensor] = None):
+        src_mask = None
+        src_key_padding_mask = None
+        if self.normalize_before:
+            return self.forward_pre(x, src_mask, src_key_padding_mask, pos_emb)
+        return self.forward_post(x, src_mask, src_key_padding_mask, pos_emb)
 
 
 class AttentionBlock(nn.Module):
@@ -388,8 +471,12 @@ class UNetModel(nn.Module):
                 ch = mult * model_channels
                 # insert attention block if needed
                 if downsample_ratio in attention_resolutions:
+                    # layers.append(('attnblock_' + idx_str,
+                    #                AttentionBlock(channels=ch, use_checkpoint=use_checkpoint, num_heads=num_heads)))
                     layers.append(('attnblock_' + idx_str,
-                                   AttentionBlock(channels=ch, use_checkpoint=use_checkpoint, num_heads=num_heads)))
+                                   SelfAttnBlock(in_dim=(self.in_feat_size // downsample_ratio),
+                                                 use_checkpoint=use_checkpoint,
+                                                 nhead=num_heads)))
 
                 self.input_blocks.append(TimestepEmbedSequential(OrderedDict(layers)))
                 input_block_chans.append(ch)
@@ -410,7 +497,10 @@ class UNetModel(nn.Module):
                 use_checkpoint=use_checkpoint,
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
-            AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads),
+            # AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads),
+            SelfAttnBlock(in_dim=(self.in_feat_size // downsample_ratio),
+                          use_checkpoint=use_checkpoint,
+                          nhead=num_heads),
             ResBlock(
                 ch,
                 time_embed_dim,
@@ -437,11 +527,17 @@ class UNetModel(nn.Module):
                            ))]
                 ch = model_channels * mult
                 if downsample_ratio in attention_resolutions:
+                    # layers.append(('attnblock_' + idx_str,
+                    #                AttentionBlock(
+                    #                    ch,
+                    #                    use_checkpoint=use_checkpoint,
+                    #                    num_heads=num_heads_upsample,
+                    #                )))
                     layers.append(('attnblock_' + idx_str,
-                                   AttentionBlock(
-                                       ch,
+                                   SelfAttnBlock(
+                                       in_dim=(self.in_feat_size // downsample_ratio),
                                        use_checkpoint=use_checkpoint,
-                                       num_heads=num_heads_upsample,
+                                       nhead=num_heads_upsample,
                                    )))
                 if level and i == num_res_blocks:
                     layers.append(('up_' + idx_str, Upsample(channels=ch, use_conv=conv_resample, dims=dims)))
@@ -508,7 +604,7 @@ class UNetModel(nn.Module):
                                    is not None), "must specify y if and only if the model is class-conditional"
 
         hs = []
-        logger.debug(f"UNetModel::forward: input x shape: {x.shape}")
+        logger.debug(f"UNetModel::forward: input x: {x.shape}")
         logger.debug(f"UNetModel::forward: input timesteps shape: {timesteps.shape}")
         time_emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
         logger.debug(f"UNetModel::forward: output timesteps embedding shape: {time_emb.shape}")

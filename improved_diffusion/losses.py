@@ -265,13 +265,13 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     pred_object_bbox = x_pred[:, object_chann_idx:, :].reshape(B, obj_feat_num, obj_feat_dim)
     pred_quad_wall_class_prob = th.where(pred_quad_wall_bbox[:, :, 0:centroid_idx] > 0.5, 1, 0)
     pred_object_class_prob = th.where(pred_object_bbox[:, :, 0:centroid_idx] > 0.5, 1, 0)
-    logger.debug(f'pred_quad_wall_class_prob: {pred_quad_wall_class_prob.shape}')
+    # logger.debug(f'pred_quad_wall_class_prob: {pred_quad_wall_class_prob.shape}')
     # skip probability of empty object
     no_wall_mask = th.all(pred_quad_wall_class_prob == 0, dim=2, keepdim=True)
     no_object_mask = th.all(pred_object_class_prob == 0, dim=2, keepdim=True)
     pred_quad_wall_class = th.argmax(pred_quad_wall_class_prob, dim=2, keepdim=True)
     pred_object_class = th.argmax(pred_object_class_prob, dim=2, keepdim=True)
-    logger.debug(f'pred_quad_wall_class: {pred_quad_wall_class.shape}')
+    # logger.debug(f'pred_quad_wall_class: {pred_quad_wall_class.shape}')
     # skip empty object
     no_wall_mask = th.logical_or(no_wall_mask,
                                  th.all(pred_quad_wall_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
@@ -289,14 +289,14 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     pred_object_centroid = th.where(pred_object_centroid.isnan(), 0.0, pred_object_centroid)
     pred_quad_wall_centroid = pred_quad_wall_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
     pred_quad_wall_centroid = th.where(pred_quad_wall_centroid.isnan(), 0.0, pred_quad_wall_centroid)
-    logger.debug(f'pred_object_centroid: {pred_object_centroid.shape}')
+    # logger.debug(f'pred_object_centroid: {pred_object_centroid.shape}')
 
     # pred_object_size = ((pred_object_bbox[:, :, size_idx:angle_idx] + 1) * 0.5).clamp(min=1e-4, max=1.0)
     pred_object_size = (pred_object_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
     pred_object_size = th.where(pred_object_size.isnan(), 0.0, pred_object_size)
     pred_quad_wall_size = (pred_quad_wall_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
     pred_quad_wall_size = th.where(pred_quad_wall_size.isnan(), 0.0, pred_quad_wall_size)
-    logger.debug(f'pred_object_size: {pred_object_size.shape}')
+    # logger.debug(f'pred_object_size: {pred_object_size.shape}')
 
     pred_object_cos_angle = pred_object_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
     pred_object_sin_angle = pred_object_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
@@ -305,7 +305,7 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
         th.abs(pred_object_cos_angle) < 5e-3, th.arcsin(pred_object_sin_angle), th.arccos(pred_object_cos_angle))
     pred_object_eulers = th.concat(
         (th.zeros_like(pred_object_angle), th.zeros_like(pred_object_angle), pred_object_angle), dim=2)
-    logger.debug(f'pred_object_eulers: {pred_object_eulers.shape}')
+    # logger.debug(f'pred_object_eulers: {pred_object_eulers.shape}')
 
     pred_quad_wall_cos_angle = pred_quad_wall_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
     pred_quad_wall_sin_angle = pred_quad_wall_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
@@ -314,13 +314,13 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
         th.arccos(pred_quad_wall_cos_angle))
     pred_quad_wall_eulers = th.concat(
         (th.zeros_like(pred_quad_wall_angle), th.zeros_like(pred_quad_wall_angle), pred_quad_wall_angle), dim=2)
-    logger.debug(f'pred_quad_wall_eulers: {pred_quad_wall_eulers.shape}')
+    # logger.debug(f'pred_quad_wall_eulers: {pred_quad_wall_eulers.shape}')
     camera_orientation = th.tensor([0.0, -1.0, 0.0], device=x_pred.device).reshape(1, 1, 1, 3).repeat(B, wall_num, 1, 1)
-    logger.debug(f'camera_orientation: {camera_orientation.shape}')
+    # logger.debug(f'camera_orientation: {camera_orientation.shape}')
     pred_quad_wall_normal = (
         euler_angle_to_matrix(pred_quad_wall_eulers) @ camera_orientation.transpose(2, 3)).transpose(2, 3)
     pred_quad_wall_normal = pred_quad_wall_normal.squeeze(2)
-    logger.debug(f'pred_quad_wall_normal: {pred_quad_wall_normal.shape}')
+    # logger.debug(f'pred_quad_wall_normal: {pred_quad_wall_normal.shape}')
 
     # Bx13x8x3
     pred_object_box_corners_3d = bbox_corners(pred_object_centroid.unsqueeze(2), pred_object_size.unsqueeze(2),
@@ -343,7 +343,7 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
             continue
         # (num_objx4)x2
         obj_2d_corner_points = th.cat(tuple(batch_pred_obj_box_corners_2d), 0)
-        logger.debug(f'obj_2d_corner_points: {obj_2d_corner_points.shape}')
+        # logger.debug(f'obj_2d_corner_points: {obj_2d_corner_points.shape}')
 
         # 2d box corners of predicted quad walls in x-y plane
         for wall_idx in range(wall_num):
@@ -359,9 +359,14 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
 
     # Bx1x1
     batch_pred_physical_constraint_loss = th.stack(batch_physical_constraint_loss, dim=0)
-    iou_loss_shape = batch_pred_physical_constraint_loss.shape[-1]
+    # sometimes loss_batch_size is smaller than B, so we need to pad it to B
+    loss_batch_size = batch_pred_physical_constraint_loss.shape[0]
+    if loss_batch_size < B:
+        batch_pred_physical_constraint_loss = th.cat(
+            (batch_pred_physical_constraint_loss, th.zeros(B - loss_batch_size, 1, 1, device=x_pred.device)), dim=0)
+    _, _, iou_loss_size = batch_pred_physical_constraint_loss.shape
     # logger.debug(f'batch_pred_bbox_iou_loss berfore weighting: {batch_pred_bbox_iou_loss}')
-    batch_iou_loss = batch_pred_physical_constraint_loss * iou_loss_weights.reshape(B, 1, -1)[..., :iou_loss_shape]
+    batch_iou_loss = batch_pred_physical_constraint_loss * iou_loss_weights.reshape(B, 1, -1)[..., :iou_loss_size]
     return batch_iou_loss
 
 

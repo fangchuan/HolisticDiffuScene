@@ -6,6 +6,9 @@ import math
 
 import torch as th
 import torch.nn as nn
+import torch.nn.functional as F
+
+from typing import Optional
 
 
 # PyTorch 1.7 has SiLU, but we support PyTorch 1.5.
@@ -200,3 +203,14 @@ class CheckpointFunction(th.autograd.Function):
         del ctx.input_params
         del output_tensors
         return (None, None) + input_grads
+
+
+def get_activation_fn(activation):
+    """Return an activation function given a string"""
+    if activation == "relu":
+        return F.relu
+    if activation == "gelu":
+        return F.gelu
+    if activation == "glu":
+        return F.glu
+    raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
