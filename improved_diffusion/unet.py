@@ -398,6 +398,7 @@ class UNetModel(nn.Module):
 
         self.use_input_encoding = use_input_encoding
         self.in_feat_size = in_feat_size
+        self.object_emb_dim = in_feat_size
 
         # encode input data to encoding space,
         if self.use_input_encoding:
@@ -474,7 +475,7 @@ class UNetModel(nn.Module):
                     # layers.append(('attnblock_' + idx_str,
                     #                AttentionBlock(channels=ch, use_checkpoint=use_checkpoint, num_heads=num_heads)))
                     layers.append(('attnblock_' + idx_str,
-                                   SelfAttnBlock(in_dim=(self.in_feat_size // downsample_ratio),
+                                   SelfAttnBlock(in_dim=(self.object_emb_dim // downsample_ratio),
                                                  use_checkpoint=use_checkpoint,
                                                  nhead=num_heads)))
 
@@ -498,7 +499,7 @@ class UNetModel(nn.Module):
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
             # AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads),
-            SelfAttnBlock(in_dim=(self.in_feat_size // downsample_ratio),
+            SelfAttnBlock(in_dim=(self.object_emb_dim // downsample_ratio),
                           use_checkpoint=use_checkpoint,
                           nhead=num_heads),
             ResBlock(
@@ -535,7 +536,7 @@ class UNetModel(nn.Module):
                     #                )))
                     layers.append(('attnblock_' + idx_str,
                                    SelfAttnBlock(
-                                       in_dim=(self.in_feat_size // downsample_ratio),
+                                       in_dim=(self.object_emb_dim // downsample_ratio),
                                        use_checkpoint=use_checkpoint,
                                        nhead=num_heads_upsample,
                                    )))
