@@ -205,7 +205,7 @@ class GaussianDiffusion:
                 x_start.shape[0])
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
-    def p_mean_variance(self, model, x, t, clip_denoised=True, denoised_fn=None, model_kwargs=None):
+    def p_mean_variance(self, model, x, t, clip_denoised=True, denoised_fn=None, model_kwargs=None, invalid_masks=None):
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
         the initial x, x_0.
@@ -231,8 +231,10 @@ class GaussianDiffusion:
         logger.debug(f'GaussianDiffusion::p_mean_variance: input tensor shape: {x.shape}')
         logger.debug(f'GaussianDiffusion::p_mean_variance: input timestep shape: {t.shape}')
         B, C = x.shape[:2]
+        # timestep shape: (B,)
         assert t.shape == (B,)
-        model_output = model(x, self._scale_timesteps(t), **model_kwargs)
+        # invalid_masks shape: (B, C)
+        model_output = model(x, self._scale_timesteps(t), invalid_masks=invalid_masks, **model_kwargs)
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
             logger.debug(f'GaussianDiffusion::p_mean_variance: model_output shape: {model_output.shape}')
@@ -584,7 +586,7 @@ class GaussianDiffusion:
                 yield out
                 img = out["sample"]
 
-    def _vb_terms_bpd(self, model, x_start, x_t, t, clip_denoised=True, model_kwargs=None):
+    def _vb_terms_bpd(self, model, x_start, x_t, t, clip_denoised=True, model_kwargs=None, invalid_masks=None):
         """
         需要优化的KL散度, Eq(5,6)
         Get a term for the variational lower-bound.
@@ -599,7 +601,12 @@ class GaussianDiffusion:
         # forward
         true_mean, _, true_log_variance_clipped = self.q_posterior_mean_variance(x_start=x_start, x_t=x_t, t=t)
         # model prediction
-        out = self.p_mean_variance(model, x_t, t, clip_denoised=clip_denoised, model_kwargs=model_kwargs)
+        out = self.p_mean_variance(model,
+                                   x_t,
+                                   t,
+                                   clip_denoised=clip_denoised,
+                                   model_kwargs=model_kwargs,
+                                   invalid_masks=invalid_masks)
 
         # compute KL(q(x_{t-1}|x_t,x_0) || p(x_{t-1}|x_t))
         kl = normal_kl(true_mean, true_log_variance_clipped, out["mean"], out["log_variance"])
@@ -647,6 +654,12 @@ class GaussianDiffusion:
             noise = th.randn_like(x_start)
         x_t = self.q_sample(x_start, t, noise=noise)
 
+        # valid mask for x
+        in_feature_size = x_start.shape[-1]
+        invalid_stat_idx = in_feature_size - 3 - 3 - 2
+        invalid_masks = th.all(x_start[:, :, invalid_stat_idx - 1:invalid_stat_idx] == 1, dim=2, keepdim=True)
+        logger.debug(f"invalid_masks.shape: {invalid_masks.shape}")
+        logger.debug(f"invalid_masks: {invalid_masks}")
         terms = {}
 
         if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL or self.loss_type == LossType.RESCALED_KL_IOU:
@@ -657,6 +670,7 @@ class GaussianDiffusion:
                 t=t,
                 clip_denoised=False,
                 model_kwargs=model_kwargs,
+                invalid_masks=invalid_masks,
             )
             terms["vb"] = out["output"]
             if self.loss_type == LossType.RESCALED_KL:
@@ -678,7 +692,7 @@ class GaussianDiffusion:
                 # logger.info(f"total loss: {terms['loss']}")
 
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE or self.loss_type == LossType.RESCALED_MSE_IOU:
-            model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
+            model_output = model(x_t, self._scale_timesteps(t), invalid_masks=invalid_masks, **model_kwargs)
 
             if self.model_var_type in [
                     ModelVarType.LEARNED,
@@ -696,6 +710,7 @@ class GaussianDiffusion:
                     x_t=x_t,
                     t=t,
                     clip_denoised=False,
+                    invalid_masks=invalid_masks,
                 )
 
                 pred_x_start = out["pred_xstart"]
