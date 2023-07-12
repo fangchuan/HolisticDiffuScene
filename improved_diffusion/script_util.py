@@ -147,7 +147,7 @@ def create_model(
     if layout_feature_size == 1024:
         channel_mult = (1, 2, 3, 4)
     elif layout_feature_size == 32:
-        channel_mult = (1, 1, 1, 1)
+        channel_mult = (1, 2, 2, 2)
         # channel_mult = (1, 2, 3, 4)
     else:
         raise ValueError(f"unsupported layout size: {layout_size}")
