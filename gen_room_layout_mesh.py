@@ -117,11 +117,6 @@ def save_layout_mesh(save_filepath: str, points: np.array, faces: np.array):
 
 
 def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, object_bbox_lst: np.ndarray):
-    # room_layout_mesh = trimesh.Trimesh(vertices=points[:, :3], faces=faces)
-    # room_layout_bbox_min = trimesh.bounds.corners(room_layout_mesh.bounding_box_oriented.bounds).min(axis=0)
-    # room_layout_bbox_max = trimesh.bounds.corners(room_layout_mesh.bounding_box_oriented.bounds).max(axis=0)
-    # room_layout_bbox_size = room_layout_bbox_max - room_layout_bbox_min
-    # print(f'room_layout_bbox_size: {room_layout_bbox_size}')
     room_layout_bbox_size = np.array([1.0, 1.0, 1.0])
 
     if room_type == 'bedroom':
@@ -160,11 +155,7 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
 
         angle_0 = np.arccos(wall_normal_angle[0])
         angle_1 = np.arcsin(wall_normal_angle[1])
-        angle = 0
-        if abs(wall_normal_angle[0]) < 5e-3 and abs(wall_normal_angle[1]) > 5e-3:
-            angle = angle_1
-        elif abs(wall_normal_angle[0]) > 5e-3 and abs(wall_normal_angle[1]) < 5e-3:
-            angle = angle_0
+        angle = angle_1 if abs(wall_normal_angle[0]) < 5e-3 else angle_0
 
         quad_wall_dict['angles'] = [0, 0, angle]
         # The direction of all camera is always along the negative y-axis.
@@ -175,11 +166,6 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
             wall_size[0] * max(room_layout_bbox_size[0], room_layout_bbox_size[1]), 0.01,
             wall_size[1] * room_layout_bbox_size[2]
         ]
-        # # The direction of all camera is always along the positive X-axis.
-        # cos_angle = np.array(wall_normal).dot(np.array([1, 0, 0]))
-        # angle = np.arccos(cos_angle)
-        # if abs(cos_angle) < 1e-3:
-        #     angle = np.pi / 2 if wall_normal[0] > 0 else -np.pi / 2
         quad_wall_dict['size'] = wall_size
         # print(f' wall {class_label} centroid: {wall_center} size: {wall_size} noraml: {wall_normal}')
         quad_wall_dict_list.append(quad_wall_dict)
@@ -216,7 +202,8 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
         angle = object_bbox_lst[i][angle_idx:]
         angle_0 = np.arccos(angle[0])
         angle_1 = np.arcsin(angle[1])
-        obj_bbox_dict['angles'] = [0, 0, angle_0]
+        angle = angle_1 if abs(angle[0]) < 5e-3 else angle_0
+        obj_bbox_dict['angles'] = [0, 0, angle]
         # print(f' object {class_label} centroid: {centroid} size: {size} angle: {angle_0}')
         obj_bbox_dict_list.append(obj_bbox_dict)
     print(f'object num: {len(obj_bbox_dict_list)}')
@@ -326,25 +313,12 @@ if __name__ == "__main__":
         # # convert sample into real range
         # boundary_lst = scene_sample_result[:2, :] * 0.5 * np.pi
         # wall_prob_lst = (scene_sample_result[2, :] + 1) * 0.5
+
         # quad walls
         quad_wall_lst = scene_sample_result[:10, :]
+        # objects
+        obj_bbox_lst = scene_sample_result[10:, :]
 
-        def recover_real_range(quad_wall_lst):
-            ret = []
-            for quad_wall in quad_wall_lst:
-                ret_quad_wall = np.zeros_like(quad_wall)
-                # class label
-                ret_quad_wall[:24] = quad_wall[:24]
-                # translation
-                ret_quad_wall[24:24 + 3] = quad_wall[24:24 + 3]
-                # normal
-                ret_quad_wall[24 + 3:24 + 3 + 3] = quad_wall[24 + 3:24 + 3 + 3]
-                # size
-                ret_quad_wall[24 + 3 + 3:24 + 3 + 3 + 2] = quad_wall[24 + 3 + 3:24 + 3 + 3 + 2]
-                ret.append(ret_quad_wall)
-            return np.array(ret)
-
-        quad_wall_lst = recover_real_range(quad_wall_lst)
         # if args.room_type == 'bedroom':
         #     obj_feat_num, obj_feat_dim = 13, 32
         # elif args.room_type == 'living_room':
@@ -353,24 +327,6 @@ if __name__ == "__main__":
         #     obj_feat_num, obj_feat_dim = 24, 32
 
         # obj_bbox_lst = scene_sample_result[3, :(obj_feat_num * obj_feat_dim)].reshape((obj_feat_num, obj_feat_dim))
-        obj_bbox_lst = scene_sample_result[10:, :]
-
-        def recover_object_bbox_real_range(obj_bbox_lst):
-            ret = []
-            for bbox in obj_bbox_lst:
-                ret_obj_bbox = np.zeros_like(bbox)
-                # class label
-                ret_obj_bbox[:24] = bbox[:24]
-                # translation
-                ret_obj_bbox[24:24 + 3] = bbox[24:24 + 3]
-                # size
-                ret_obj_bbox[24 + 3:24 + 3 + 3] = bbox[24 + 3:24 + 3 + 3]
-                # angles
-                ret_obj_bbox[24 + 3 + 3:24 + 3 + 3 + 2] = bbox[24 + 3 + 3:24 + 3 + 3 + 2]
-                ret.append(ret_obj_bbox)
-            return np.array(ret)
-
-        obj_bbox_lst = recover_object_bbox_real_range(obj_bbox_lst)
 
         if b_vis_mesh_from_corners:
             layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_gt_layout_mesh(idx)

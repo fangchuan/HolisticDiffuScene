@@ -953,6 +953,7 @@ class PanoCorBoundDataset(data.Dataset):
         # out_lst = np.concatenate([boundary_lst, corner_y_prob_lst, object_bbox_lst], axis=0)
         assert wall_bbox_lst.shape[-1] == object_bbox_lst.shape[-1]
         out_lst = np.concatenate([wall_bbox_lst, object_bbox_lst], axis=0)
+        out_lst = out_lst.transpose(1, 0)
 
         class_dict = {}
         if room_type is not None:

@@ -21,7 +21,7 @@ def model_and_diffusion_defaults():
         layout_channels=23,
         num_channels=128,
         num_res_blocks=2,
-        num_heads=4,
+        num_heads=8,
         num_heads_upsample=-1,
         # attention_resolutions="16,8",
         attention_resolutions="32, 16, 8, 4",
@@ -51,7 +51,7 @@ def create_model_and_diffusion(
     sigma_small,
     num_channels: int,
     num_res_blocks: int,
-    num_heads,
+    num_heads: int,
     num_heads_upsample,
     attention_resolutions,
     dropout: float,
@@ -77,7 +77,7 @@ def create_model_and_diffusion(
         sigma_small (_type_): _description_
         num_channels (int): UNet channel size
         num_res_blocks (int): number of residual blocks per downsample.
-        num_heads (_type_): _description_
+        num_heads (int): number of attention heads
         num_heads_upsample (_type_): _description_
         attention_resolutions (_type_):  which resnet will use attention
         dropout (float): dropout probability
@@ -143,7 +143,7 @@ def create_model(
     dropout,
     use_input_encoding,
 ):
-    layout_feature_size = layout_size
+    layout_feature_size = layout_channels
     if layout_feature_size == 1024:
         channel_mult = (1, 2, 3, 4)
     elif layout_feature_size == 32:
@@ -159,7 +159,6 @@ def create_model(
     logger.info(f"attention downsaple ratios: {attention_downsample_ratio_lst}")
 
     return UNetModel(
-        in_feat_size=layout_feature_size,
         in_channels=layout_channels,
         model_channels=num_channels,
         out_channels=(layout_channels if not learn_sigma else 2 * layout_channels),

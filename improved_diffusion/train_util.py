@@ -145,7 +145,7 @@ class TrainLoop:
         while (not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps):
             # get next batch
             batch_data, cond_data = next(self.data)
-            logger.debug(f"batch_data:  {batch_data.shape}")  # BxCxL_in
+            logger.debug(f"batch_data.shape:  {batch_data.shape}")  # BxCxT
             logger.debug(f"cond_data:  {cond_data}")  # 'y': 1xB
 
             self.run_step(batch_data, cond_data)
