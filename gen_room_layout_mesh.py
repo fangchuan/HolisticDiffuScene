@@ -202,7 +202,7 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
         angle = object_bbox_lst[i][angle_idx:]
         angle_0 = np.arccos(angle[0])
         angle_1 = np.arcsin(angle[1])
-        angle = angle_1 if abs(angle[0]) < 5e-3 else angle_0
+        angle = angle_0
         obj_bbox_dict['angles'] = [0, 0, angle]
         # print(f' object {class_label} centroid: {centroid} size: {size} angle: {angle_0}')
         obj_bbox_dict_list.append(obj_bbox_dict)

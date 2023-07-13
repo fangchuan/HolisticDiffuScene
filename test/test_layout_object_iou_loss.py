@@ -61,13 +61,13 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
 
     if get_room_type(room_type_lst[0]) == 'bedroom':
         class_labels_lst = ST3D_BEDROOM_FURNITURE
-        wall_num, obj_feat_num, obj_feat_dim = 10, 13, 32
+        max_wall_num, max_obj_num, obj_feat_dim = 10, 13, 32
     elif get_room_type(room_type_lst[0]) == 'living room':
         class_labels_lst = ST3D_LIVINGROOM_FURNITURE
-        wall_num, obj_feat_num, obj_feat_dim = 10, 23, 32
+        max_wall_num, max_obj_num, obj_feat_dim = 10, 23, 32
     elif get_room_type(room_type_lst[0]) == 'dining room':
         class_labels_lst = ST3D_DININGROOM_FURNITURE
-        wall_num, obj_feat_num, obj_feat_dim = 10, 23, 32
+        max_wall_num, max_obj_num, obj_feat_dim = 10, 23, 32
     else:
         raise NotImplementedError
 
@@ -76,9 +76,14 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     size_idx = 3 + centroid_idx
     angle_idx = 3 + size_idx
 
-    # Bx10x32
-    pred_quad_wall_bbox = x_pred[:, 0:object_chann_idx, :].reshape(B, wall_num, obj_feat_dim)
-    pred_object_bbox = x_pred[:, object_chann_idx:, :].reshape(B, obj_feat_num, obj_feat_dim)
+    # get valid quad wall bbox
+    pred_quad_wall_bbox = x_pred[:, 0:object_chann_idx, :].reshape(B, max_wall_num, obj_feat_dim)
+    # pred_quad_wall_bbox = pred_quad_wall_bbox[invalid_masks[:, 0:object_chann_idx, :] == False]
+
+    # get valid object bbox
+    pred_object_bbox = x_pred[:, object_chann_idx:, :].reshape(B, max_obj_num, obj_feat_dim)
+    # pred_object_bbox = pred_object_bbox[invalid_masks[:, object_chann_idx:, :] == False]
+
     pred_quad_wall_class_prob = th.where(pred_quad_wall_bbox[:, :, 0:centroid_idx] > 0.5, 1, 0)
     pred_object_class_prob = th.where(pred_object_bbox[:, :, 0:centroid_idx] > 0.5, 1, 0)
     logger.debug(f'pred_quad_wall_class_prob: {pred_quad_wall_class_prob.shape}')
@@ -88,11 +93,23 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     pred_quad_wall_class = th.argmax(pred_quad_wall_class_prob, dim=2, keepdim=True)
     pred_object_class = th.argmax(pred_object_class_prob, dim=2, keepdim=True)
     logger.debug(f'pred_quad_wall_class: {pred_quad_wall_class.shape}')
-    # skip empty object
+    # skip empty object, door, window, curtain
     no_wall_mask = th.logical_or(no_wall_mask,
                                  th.all(pred_quad_wall_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
     no_object_mask = th.logical_or(no_object_mask,
                                    th.all(pred_object_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(no_object_mask,
+                                   th.all(pred_object_class == class_labels_lst.index('door'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(no_object_mask,
+                                   th.all(pred_object_class == class_labels_lst.index('window'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(no_object_mask,
+                                   th.all(pred_object_class == class_labels_lst.index('curtain'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(no_object_mask,
+                                   th.all(pred_object_class == class_labels_lst.index('picture'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(
+        no_object_mask, th.all(pred_object_class == class_labels_lst.index('television'), dim=2, keepdim=True))
+    valid_wall_masks = ~no_wall_mask
+    valid_object_masks = ~no_object_mask
 
     def not_door_or_window(obj_sem_cls, all_cls_labels):
         return obj_sem_cls != all_cls_labels.index('door') and \
@@ -116,22 +133,28 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
 
     pred_object_cos_angle = pred_object_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
     pred_object_sin_angle = pred_object_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
-    pred_object_angle = th.where(
-        th.abs(pred_object_cos_angle) < 5e-3, th.arcsin(pred_object_sin_angle), th.arccos(pred_object_cos_angle))
+    # TODO: here we choose 5e-3 as threshold, but it is not a good choice, try to add it into hyper-parameters
+    # pred_object_angle = th.where(
+    #     th.abs(pred_object_cos_angle) < 5e-3, th.arcsin(pred_object_sin_angle), th.arccos(pred_object_cos_angle))
+    pred_object_angle = th.arccos(pred_object_cos_angle)
     pred_object_eulers = th.concat(
         (th.zeros_like(pred_object_angle), th.zeros_like(pred_object_angle), pred_object_angle), dim=2)
     logger.debug(f'pred_object_eulers: {pred_object_eulers.shape}')
 
+    # recover wall normal
     pred_quad_wall_cos_angle = pred_quad_wall_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
     pred_quad_wall_sin_angle = pred_quad_wall_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
     pred_quad_wall_angle = th.where(
         th.abs(pred_quad_wall_cos_angle) < 5e-3, th.arcsin(pred_quad_wall_sin_angle),
         th.arccos(pred_quad_wall_cos_angle))
+    # B x wall_num x 3
     pred_quad_wall_eulers = th.concat(
         (th.zeros_like(pred_quad_wall_angle), th.zeros_like(pred_quad_wall_angle), pred_quad_wall_angle), dim=2)
     logger.debug(f'pred_quad_wall_eulers: {pred_quad_wall_eulers.shape}')
-    camera_orientation = th.tensor([0.0, -1.0, 0.0], device=x_pred.device).reshape(1, 1, 1, 3).repeat(B, wall_num, 1, 1)
-    logger.debug(f'camera_orientation: {camera_orientation.shape}')
+    # B x wall_num x 1 x 3
+    camera_orientation = th.tensor([0.0, -1.0, 0.0], device=x_pred.device).reshape(1, 1, 1,
+                                                                                   3).repeat(B, max_wall_num, 1, 1)
+    # logger.debug(f'camera_orientation: {camera_orientation.shape}')
     pred_quad_wall_normal = (
         euler_angle_to_matrix(pred_quad_wall_eulers) @ camera_orientation.transpose(2, 3)).transpose(2, 3)
     pred_quad_wall_normal = pred_quad_wall_normal.squeeze(2)
@@ -140,49 +163,47 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     # Bx13x8x3
     pred_object_box_corners_3d = bbox_corners(pred_object_centroid.unsqueeze(2), pred_object_size.unsqueeze(2),
                                               pred_object_eulers)
-    pred_wall_box_corners_3d = bbox_corners(pred_quad_wall_centroid.unsqueeze(2), pred_quad_wall_size.unsqueeze(2),
-                                            pred_quad_wall_eulers)
-    logger.debug(f'pred_wall_box_corners_3d: {pred_wall_box_corners_3d.shape}')
+    pred_quad_wall_box_corners_3d = bbox_corners(pred_quad_wall_centroid.unsqueeze(2), pred_quad_wall_size.unsqueeze(2),
+                                                 pred_quad_wall_eulers)
     # get x-y plane box corners
     pred_object_bbox_corners_2d = pred_object_box_corners_3d[:, :, 0:4, 0:2]
-    pred_wall_bbox_corners_2d = pred_wall_box_corners_3d[:, :, 0:4, 0:2]
-    logger.debug(f'pred_wall_bbox_corners_2d: {pred_wall_bbox_corners_2d.shape}')
+    pred_wall_bbox_corners_2d = pred_quad_wall_box_corners_3d[:, :, 0:4, 0:2]
 
     batch_physical_constraint_loss = []
     for batch_idx in range(B):
         phy_cons_loss = 0.0
-        num_obj_box = 0
-        # 2d box corners of predicted objects in x-y plane
-        batch_pred_obj_box_corners_2d = []
-        for obj_idx in range(0, obj_feat_num):
-            if (not no_object_mask[batch_idx, obj_idx]) and not_door_or_window(pred_object_class[batch_idx, obj_idx],
-                                                                               class_labels_lst):
-                num_obj_box = num_obj_box + 1
-                batch_pred_obj_box_corners_2d.append(pred_object_bbox_corners_2d[batch_idx, obj_idx, :, :])
-        if len(batch_pred_obj_box_corners_2d) == 0:
-            continue
-        # (num_objx4)x2
-        obj_2d_corner_points = th.cat(tuple(batch_pred_obj_box_corners_2d), 0)
+
+        valid_object = valid_object_masks[batch_idx, :, 0].reshape(-1)
+        valid_object_bbox_corners2d = pred_object_bbox_corners_2d[batch_idx, valid_object, :, :]
+        obj_num = valid_object_bbox_corners2d.shape[0]
+        obj_2d_corner_points = valid_object_bbox_corners2d.reshape(-1, 2)
         logger.debug(f'obj_2d_corner_points: {obj_2d_corner_points.shape}')
+
+        valid_wall = valid_wall_masks[batch_idx, :, 0].reshape(-1)
+        valid_quad_wall_bbox_corners2d = pred_wall_bbox_corners_2d[batch_idx, valid_wall, :, :]
+        valid_quad_wall_centroid = pred_quad_wall_centroid[batch_idx, valid_wall, :]
+        valid_quad_wall_normal = pred_quad_wall_normal[batch_idx, valid_wall, :]
+        valid_quad_wall_size = pred_quad_wall_size[batch_idx, valid_wall, :]
+        wall_num = valid_quad_wall_centroid.shape[0]
 
         # 2d box corners of predicted quad walls in x-y plane
         batch_pred_wall_corners_2d = []
         for wall_idx in range(wall_num):
 
-            if not no_wall_mask[batch_idx, wall_idx]:
-                phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corner_points,
-                                                                     pred_quad_wall_centroid[batch_idx, wall_idx],
-                                                                     pred_quad_wall_normal[batch_idx, wall_idx],
-                                                                     pred_quad_wall_size[batch_idx, wall_idx])
-                logger.debug(f'wall {wall_idx} centroid: {pred_quad_wall_centroid[batch_idx, wall_idx]}')
-                logger.debug(f'wall {wall_idx} cos angle: {pred_quad_wall_cos_angle[batch_idx, wall_idx]}')
-                logger.debug(f'wall {wall_idx} sin angle: {pred_quad_wall_sin_angle[batch_idx, wall_idx]}')
-                logger.debug(f'wall {wall_idx} angle: {pred_quad_wall_angle[batch_idx, wall_idx]}')
-                logger.debug(f'wall {wall_idx} normal: {pred_quad_wall_normal[batch_idx, wall_idx]}')
-                logger.debug(f'wall {wall_idx} physical violation loss: {phy_cons_loss}')
-                phy_cons_loss = phy_cons_loss + phy_cons_loss / num_obj_box
+            phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corner_points,
+                                                                 valid_quad_wall_centroid[wall_idx],
+                                                                 valid_quad_wall_normal[wall_idx],
+                                                                 valid_quad_wall_size[wall_idx])
 
-                batch_pred_wall_corners_2d.append(pred_wall_bbox_corners_2d[batch_idx, wall_idx, :, :])
+            logger.debug(f'wall {wall_idx} centroid: {valid_quad_wall_centroid[wall_idx]}')
+            # logger.debug(f'wall {wall_idx} cos angle: {pred_quad_wall_cos_angle[batch_idx, wall_idx]}')
+            # logger.debug(f'wall {wall_idx} sin angle: {pred_quad_wall_sin_angle[batch_idx, wall_idx]}')
+            # logger.debug(f'wall {wall_idx} angle: {pred_quad_wall_angle[batch_idx, wall_idx]}')
+            logger.debug(f'wall {wall_idx} normal: {valid_quad_wall_normal[wall_idx]}')
+            logger.debug(f'wall {wall_idx} physical violation loss: {phy_cons_loss}')
+            phy_cons_loss = phy_cons_loss + phy_cons_loss / obj_num
+
+            batch_pred_wall_corners_2d.append(valid_quad_wall_bbox_corners2d[wall_idx, :, :])
         wall_2d_corner_points = th.cat(tuple(batch_pred_wall_corners_2d), 0)
         logger.debug(f'wall_2d_corner_points: {wall_2d_corner_points.shape}')
         # visualize collision

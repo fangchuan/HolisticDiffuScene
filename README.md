@@ -170,3 +170,7 @@ We would like to thank Kujiale.com for providing the database of house designs a
 15. openai-2023-07-07-19-15-49-470102: test_quad_walls分支, 使用input_encoding, kl loss, 生成结果不可用, kl loss对其没有帮助;
 16. layout_iou_loss实验: openai-2023-07-11-09-06-48-605853: test_quad_walls分支, 不使用input_encoding, mse+kl+layoutiou_loss,
 18. 修改self_attn实验: openai-2023-07-11-14-04-30-909981: test_quad_walls分支, 不使用input_encoding, mse+kl loss;
+19. 修改unet网络结构, 去掉downsample/upsample层, 房间数据格式调整为BxCxN: 
+      * openai-2023-07-13-12-09-20-131075: test_attn_mask分支, 使用input_encoding, attn_mask;
+      * openai-2023-07-13-13-58-44-732475: test_attn_mask分支, 使用attn_mask, 不使用input_encoding;
+      * openai-2023-07-13-19-27-25-938973: test_attn_mask分支, 使用input_encoding, attn_mask, 加速layout-iou loss计算;
