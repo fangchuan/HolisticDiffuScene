@@ -24,9 +24,12 @@ from dataset.metadata import (INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABE
 from dataset.metadata import ROOM_WALLS_LARGER_THAN_10
 
 from dataset.st3d_dataset import get_mesh_from_corners, np_coorx2u, np_coory2v
+from dataset.gen_scene_text import get_scene_description
 
 from visualize_mesh import verify_normal, create_spatial_quad_polygen
 from visualize_3d import convert_lines_to_vertices
+
+# import torchtext
 '''
 Assume datas is extracted by `misc/structured3d_extract_zip.py`.
 That is to said, assuming following structure:
@@ -357,6 +360,11 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
     # normalize bbox size to [-1, 1]
     # obj_bbox_normal_lst = normalize_bbox_size(obj_bbox_normal_lst)
 
+    obj_bbox_dicts = {}
+    obj_bbox_dicts['objects'] = obj_bbox_lst
+    obj_bbox_normal_dicts = {}
+    obj_bbox_normal_dicts['objects'] = obj_bbox_normal_lst
+
     # visualize quad wall if exists
     if quad_walls_dict is not None:
         wall_lst = []
@@ -393,10 +401,6 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
 
     scene_mesh = vis_scene_mesh(room_layout_mesh, obj_bbox_lst, room_layout_bbox=None)
 
-    obj_bbox_dicts = {}
-    obj_bbox_dicts['objects'] = obj_bbox_lst
-    obj_bbox_normal_dicts = {}
-    obj_bbox_normal_dicts['objects'] = obj_bbox_normal_lst
     return obj_bbox_dicts, obj_bbox_normal_dicts, anno_img, scene_mesh
 
 
@@ -629,6 +633,10 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
     furniture_counts = []
 
     room_layout_size_lst = []
+
+    # clip model
+    # glove_model = torchtext.vocab.GloVe(name="6B", dim=50, cache='.vector_cache')
+    glove_model = None
     for scene_id in tqdm(scene_ids):
 
         if scene_id in INVALID_SCENES_LST:
@@ -689,18 +697,29 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
                 INVALID_ROOMS_LST.append(room_str)
                 continue
 
+            # generate scene description
+            scene_desc_text = get_scene_description(
+                room_type=room_type_str,
+                wall_dict=quad_walls_dict,
+                object_dict=obj_bbox_3d_dict,
+                glove_model=glove_model,
+            )
+            print(f'room {room_str} scene_desc_text: {scene_desc_text}')
+
             out_img_dir = os.path.join(out_dir, room_type_str, 'img')
             out_cord_dir = os.path.join(out_dir, room_type_str, 'label_cor')
             out_cam_pos_dir = os.path.join(out_dir, room_type_str, 'cam_pos')
             out_room_type_dir = os.path.join(out_dir, room_type_str, 'room_type')
             out_bbox_3d_dir = os.path.join(out_dir, room_type_str, 'bbox_3d')
             out_quad_wall_dir = os.path.join(out_dir, room_type_str, 'quad_walls')
+            out_text_desc_dir = os.path.join(out_dir, room_type_str, 'text_desc')
             os.makedirs(out_img_dir, exist_ok=True)
             os.makedirs(out_cord_dir, exist_ok=True)
             os.makedirs(out_cam_pos_dir, exist_ok=True)
             os.makedirs(out_room_type_dir, exist_ok=True)
             os.makedirs(out_bbox_3d_dir, exist_ok=True)
             os.makedirs(out_quad_wall_dir, exist_ok=True)
+            os.makedirs(out_text_desc_dir, exist_ok=True)
             target_img_path = os.path.join(out_img_dir, '%s_%s.png' % (scene_id, room_id))
             target_cor_path = os.path.join(out_cord_dir, '%s_%s.txt' % (scene_id, room_id))
             target_cam_pos_path = os.path.join(out_cam_pos_dir, '%s_%s.txt' % (scene_id, room_id))
@@ -712,6 +731,7 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
             target_quad_wall_path = os.path.join(out_quad_wall_dir, '%s_%s.json' % (scene_id, room_id))
             target_quad_wall_normalized_path = os.path.join(out_quad_wall_dir,
                                                             '%s_%s_normalized.json' % (scene_id, room_id))
+            target_text_desc_path = os.path.join(out_text_desc_dir, '%s_%s.txt' % (scene_id, room_id))
 
             # skip rooms without bed
             if target_room_type == 'bedroom':
@@ -746,6 +766,10 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
                 # write normalized quad walls
                 with open(target_quad_wall_normalized_path, 'w') as f:
                     json.dump(quad_walls_normalized_dict, f, indent=4)
+
+                # write text description
+                with open(target_text_desc_path, 'w') as f:
+                    f.write(scene_desc_text)
 
                 if b_save_debug_files:
                     # visualize debug bbox img
