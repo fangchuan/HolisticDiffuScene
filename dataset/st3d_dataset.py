@@ -749,6 +749,13 @@ def padding_and_reshape_wall_bbox(room_type: int, wall_bbox_lst: np.array, bbox_
     return wall_bbox_lst
 
 
+def complete_stop_in_sentence(sentence: str) -> str:
+    """Implement the stop in the end of the sentence."""
+    if sentence[-1] != '.':
+        sentence += '.'
+    return sentence
+
+
 class PanoCorBoundDataset(data.Dataset):
     '''
     dataset for layout: PanoCoordinatesBoundary
@@ -763,10 +770,9 @@ class PanoCorBoundDataset(data.Dataset):
             p_base=0.96,
             max_stretch=2.0,
             normcor=False,
-            return_corners=False,
-            return_path=False,
+            max_text_sentences=4,  #  max number of text_prompt sentences
             #  support parallel training
-            shard=0,
+        shard=0,
             num_shards=1):
         self.img_dir = os.path.join(root_dir, 'img')
         self.cor_dir = os.path.join(root_dir, 'label_cor')
@@ -775,6 +781,8 @@ class PanoCorBoundDataset(data.Dataset):
         self.room_type_dir = os.path.join(root_dir, 'room_type')
         # object bbox folder
         self.bbox_3d_dir = os.path.join(root_dir, 'bbox_3d')
+        # text descritpion folder
+        self.text_desc_dir = os.path.join(root_dir, 'text_desc')
 
         # total image file names and text file names
         self.img_fnames = sorted(
@@ -794,8 +802,7 @@ class PanoCorBoundDataset(data.Dataset):
         self.p_base = p_base
         self.max_stretch = max_stretch
         self.normcor = normcor
-        self.return_corners = return_corners
-        self.return_path = return_path
+        self.max_text_sentences = max_text_sentences
         self.local_classes = None
 
         # The direction of all camera is always along the negative y-axis.
@@ -840,6 +847,14 @@ class PanoCorBoundDataset(data.Dataset):
             room_type = f.readline().strip()
             assert room_type in ROOM_TYPE_DICT.keys(), room_type_filepath
             room_type = ROOM_TYPE_DICT[room_type]
+        # read room textual description file
+        text_desc_lst = []
+        text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx])
+        with open(text_desc_filepath) as f:
+            text_desc = f.readline()
+            text_desc_lst = text_desc.strip().split('. ')
+            text_desc_lst = [complete_stop_in_sentence(sen) for sen in text_desc_lst if len(sen)]
+        # print(text_desc_lst)
 
         # read object bbox file
         object_bbox_filepath = os.path.join(self.bbox_3d_dir, self.local_json_fnames[idx])
@@ -868,52 +883,6 @@ class PanoCorBoundDataset(data.Dataset):
                                                           object_bbox_lst=np.array(object_bbox_lst),
                                                           bbox_dim=bbox_property_encode_dim)
 
-        # # Read ground truth corners
-        # with open(os.path.join(self.cor_dir, self.local_txt_fnames[idx])) as f:
-        #     corners_lst = np.array([line.strip().split() for line in f if line.strip()], np.float32)
-
-        #     # Corner with minimum x should at the beginning
-        #     corners_lst = np.roll(corners_lst[:, :2], -2 * np.argmin(corners_lst[::2, 0]), 0)
-
-        #     # Detect occlusion
-        #     occlusion = find_occlusion(corners_lst[::2].copy()).repeat(2)
-        #     # corners correspondenses' x coordinate should be identical
-        #     assert (np.abs(corners_lst[0::2, 0] - corners_lst[1::2, 0]) > W / 100).sum() == 0, img_path
-        #     # corners correspondenses' y coordinate should be y_floor < y_ceiling
-        #     assert (corners_lst[0::2, 1] > corners_lst[1::2, 1]).sum() == 0, img_path
-
-        # # Prepare 1d ceiling-wall/floor-wall boundary
-        # boundary_lst = corners_to_1d_boundary(corners_lst, H, W)
-
-        # # Random flip
-        # if self.flip and np.random.randint(2) == 0:
-        #     img = np.flip(img, axis=1)
-        #     boundary_lst = np.flip(boundary_lst, axis=1)
-        #     corners_lst[:, 0] = img.shape[1] - 1 - corners_lst[:, 0]
-
-        # # Random horizontal rotate
-        # if self.rotate:
-        #     delta_x = np.random.randint(img.shape[1])
-        #     img = np.roll(img, delta_x, axis=1)
-        #     boundary_lst = np.roll(boundary_lst, delta_x, axis=1)
-        #     corners_lst[:, 0] = (corners_lst[:, 0] + delta_x) % img.shape[1]
-
-        # # Random gamma augmentation
-        # if self.gamma:
-        #     p = np.random.uniform(1, 2)
-        #     if np.random.randint(2) == 0:
-        #         p = 1 / p
-        #     img = img**p
-
-        # # Prepare 1d wall-wall probability
-        # corner_x_lst = corners_lst[~occlusion, 0]
-        # dist_o = cdist(corner_x_lst.reshape(-1, 1), np.arange(W).reshape(-1, 1), metric='euclidean', p=1)
-        # dist_r = cdist(corner_x_lst.reshape(-1, 1), np.arange(W).reshape(-1, 1) + W, metric='euclidean', p=1)
-        # dist_l = cdist(corner_x_lst.reshape(-1, 1), np.arange(W).reshape(-1, 1) - W, metric='euclidean', p=1)
-        # dist = np.min([dist_o, dist_r, dist_l], axis=0)
-        # nearest_dist = dist.min(0)
-        # corner_y_prob_lst = (self.p_base**nearest_dist).reshape(1, -1)
-
         # read wall bbox
         wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_wall_json_fnames[idx])
         wall_bbox_lst = []
@@ -925,13 +894,6 @@ class PanoCorBoundDataset(data.Dataset):
             wall_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label='wall')
             wall_centroid = np.array(wall_bbox['center'], np.float32)
             wall_centroid = TranslationEncode(wall_centroid)
-            # wall_normal = np.array(wall_bbox['normal'], np.float32)
-            # wall_normal = NormalEncode(wall_normal)
-            # wall_size = np.array([wall_bbox['width'], wall_bbox['height']])
-            # # rerrange wall normal and size to be identical to object bbox encoding
-            # rearrange_func = lambda normal, size: np.array([size[0], normal[2], size[1], normal[0], normal[1]])
-            # wall_property_encode = np.concatenate(
-            #     [wall_class, wall_centroid, rearrange_func(wall_normal, wall_size)], axis=-1)
             wall_size = np.array([wall_bbox['width'], 0.01, wall_bbox['height']], np.float32)
             wall_size = SizeEncode(wall_size)
             wall_angle = np.array(wall_bbox['angles'], np.float32)
@@ -943,22 +905,22 @@ class PanoCorBoundDataset(data.Dataset):
         wall_bbox_lst = padding_and_reshape_wall_bbox(room_type=room_type,
                                                       wall_bbox_lst=np.array(wall_bbox_lst),
                                                       bbox_dim=wall_property_encode_dim)
-        # # normalize to [-1, 1]
-        # boundary_lst = boundary_lst.copy().astype(np.float32)
-        # boundary_lst = boundary_lst / (0.5 * np.pi)
-        # # normalize to [-1, 1]
-        # corner_y_prob_lst = corner_y_prob_lst.copy().astype(np.float32)
-        # corner_y_prob_lst = corner_y_prob_lst * 2 - 1
 
         # out_lst = np.concatenate([boundary_lst, corner_y_prob_lst, object_bbox_lst], axis=0)
         assert wall_bbox_lst.shape[-1] == object_bbox_lst.shape[-1]
         out_lst = np.concatenate([wall_bbox_lst, object_bbox_lst], axis=0)
         out_lst = out_lst.transpose(1, 0)
 
-        class_dict = {}
+        cond_dict = {}
         if room_type is not None:
-            class_dict["y"] = np.array(room_type, dtype=np.int64)
-        return out_lst, class_dict
+            cond_dict["y"] = np.array(room_type, dtype=np.int64)
+
+        text_desc_len = len(text_desc_lst)
+        if text_desc_len:
+            if text_desc_len > self.max_text_sentences:
+                text_desc_lst = text_desc_lst[:self.max_text_sentences]
+            cond_dict["context"] = ''.join(text_desc_lst)
+        return out_lst, cond_dict
 
     def get_gt_layout_mesh(self,
                            idx: int,

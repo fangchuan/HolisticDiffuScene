@@ -673,7 +673,7 @@ class GaussianDiffusion:
         in_feature_size = x_start.shape[-2]
         invalid_stat_idx = in_feature_size - 3 - 3 - 2
         invalid_masks = th.all(x_start[:, invalid_stat_idx - 1:invalid_stat_idx, :] == 1, dim=1, keepdim=True)
-        logger.debug(f"invalid_masks[0,:,-1]: {invalid_masks[0,:,-1]}")
+        # logger.debug(f"invalid_masks[0,:,-1]: {invalid_masks[0,:,-1]}")
         model_kwargs['invalid_masks'] = invalid_masks
         terms = {}
 
@@ -697,7 +697,11 @@ class GaussianDiffusion:
                 pred_x_start = out["pred_xstart"]
                 alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x_start.shape)
                 # Bx1024
-                iou_loss = pred_3d_iou_loss(x_start, **model_kwargs, means=pred_x_start, weights=alpha_bar)
+                iou_loss = pred_3d_iou_loss(x_start,
+                                            y=model_kwargs["y"],
+                                            invalid_masks=model_kwargs["invalid_masks"],
+                                            means=pred_x_start,
+                                            weights=alpha_bar)
                 terms["iou"] = mean_flat(iou_loss)
 
                 terms["loss"] = terms["vb"] + terms["iou"]
@@ -737,7 +741,11 @@ class GaussianDiffusion:
                     # logger.debug(f"tms: {t}")
                     # logger.debug(f"alpha_bar: {alpha_bar}")
                     # Bx169
-                    iou_loss = pred_3d_iou_loss(x_start, **model_kwargs, means=pred_x_start, weights=alpha_bar)
+                    iou_loss = pred_3d_iou_loss(x_start,
+                                                y=model_kwargs["y"],
+                                                invalid_masks=model_kwargs["invalid_masks"],
+                                                means=pred_x_start,
+                                                weights=alpha_bar)
                     terms["iou"] = mean_flat(iou_loss)
 
             target = {

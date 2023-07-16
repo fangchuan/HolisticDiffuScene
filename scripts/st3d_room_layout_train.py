@@ -48,7 +48,7 @@ def main():
 
     logger.log("creating data loader...")
     train_dataset = PanoCorBoundDataset(root_dir=args.data_dir,
-                                        return_path=False,
+                                        max_text_sentences=4,
                                         shard=MPI.COMM_WORLD.Get_rank(),
                                         num_shards=MPI.COMM_WORLD.Get_size())
     logger.info(f"train_dataset length: {len(train_dataset)}")

@@ -19,6 +19,7 @@ from .fp16_util import (
 )
 from .nn import update_ema
 from .resample import LossAwareSampler, UniformSampler
+from .clip_util import CLIP
 
 from typing import Dict
 
@@ -103,6 +104,10 @@ class TrainLoop:
             self.use_ddp = False
             self.ddp_model = self.model
 
+        self.text_encoder = CLIP(device=dist_util.dev())
+        for param in self.text_encoder.parameters():
+            param.requires_grad = False
+
     def _load_and_sync_parameters(self):
         resume_checkpoint = find_resume_checkpoint() or self.resume_checkpoint
 
@@ -146,7 +151,7 @@ class TrainLoop:
             # get next batch
             batch_data, cond_data = next(self.data)
             # logger.debug(f"batch_data.shape:  {batch_data.shape}")  # BxCxT
-            # logger.debug(f"cond_data:  {cond_data}")  # 'y': 1xB
+            # logger.debug(f"cond_data:  {cond_data}")  # 'y','context': B x max_sentence
 
             self.run_step(batch_data, cond_data)
             if self.step % self.log_interval == 0:
@@ -175,7 +180,15 @@ class TrainLoop:
 
         for i in range(0, batch_data.shape[0], self.microbatch):
             micro_batch_data = batch_data[i:i + self.microbatch].to(dist_util.dev(), dtype=th.float32)
-            micro_cond_data = {k: v[i:i + self.microbatch].to(dist_util.dev()) for k, v in cond_data.items()}
+            micro_cond_data = {}
+            for k, v in cond_data.items():
+                if k == "context":
+                    text_promt = v[i:i + self.microbatch]
+                    text_emb = self.text_encoder.get_text_embeds(text_promt).to(dist_util.dev(), dtype=th.float32)
+                    micro_cond_data[k] = text_emb
+                else:
+                    micro_cond_data[k] = v[i:i + self.microbatch].to(dist_util.dev())
+
             last_batch = (i + self.microbatch) >= batch_data.shape[0]
             # timestep sampling
             tms_indices, weights = self.schedule_sampler.sample(micro_batch_data.shape[0], dist_util.dev())

@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import Optional
 
 import math
+from collections import OrderedDict
 
 import numpy as np
 import torch as th
@@ -13,8 +14,8 @@ from .fp16_util import convert_module_to_f16, convert_module_to_f32
 from .nn import (SiLU, conv_nd, linear, avg_pool_nd, zero_module, normalization, timestep_embedding, checkpoint,
                  get_activation_fn, FixedPositionalEncoding, LearnedPositionEmbedding)
 
-from . import logger
-from collections import OrderedDict
+from . import dist_util, logger
+from .clip_util import CLIP
 
 
 class TimestepBlock(nn.Module):
@@ -422,7 +423,8 @@ class UNetModel(nn.Module):
         channel_mult=(1, 2, 4, 8),
         conv_resample=True,
         dims=1,
-        num_classes=None,
+        num_classes=None,  # number of classes, if None, then use text as condition
+        text_emb_dim=512,  # text embedding dimension
         use_checkpoint=False,
         num_heads=1,
         num_heads_upsample=-1,
@@ -471,6 +473,7 @@ class UNetModel(nn.Module):
         logger.debug(f"channel_mult: {channel_mult}")
         self.conv_resample = conv_resample
         self.num_classes = num_classes
+        self.text_emb_dim = text_emb_dim
         self.use_checkpoint = use_checkpoint
         self.num_heads = num_heads
         self.num_heads_upsample = num_heads_upsample
@@ -486,7 +489,14 @@ class UNetModel(nn.Module):
         # label embedding block
         if self.num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
-
+        elif self.text_emb_dim > 0:
+            self.label_emb = None
+            # self.text_encoder = CLIP(device=dist_util.dev())
+            self.text_emb = nn.Sequential(
+                linear(text_emb_dim, time_embed_dim),
+                SiLU(),
+                linear(time_embed_dim, time_embed_dim),
+            )
         # input block
         self.input_blocks = nn.ModuleList([
             TimestepEmbedSequential(
@@ -603,7 +613,6 @@ class UNetModel(nn.Module):
             SiLU(),
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
-        logger.debug(f"out: {out_channels}")
 
         # as we encode input data to encoding space, we need to project it back to input space
         # if self.use_input_encoding:
@@ -651,17 +660,19 @@ class UNetModel(nn.Module):
         timesteps,
         invalid_masks=None,
         y=None,
+        context=None,
     ):
         """
         Apply the model to an input batch.
 
         :param x: an [N x C x ...] Tensor of inputs.
         :param timesteps: a 1-D batch of timesteps.
-        :param y: an [N] Tensor of labels, if class-conditional.
+        :param y: an [N] Tensor of text prompts, if class-conditional.
+        :param context: an [N x ...] text prompt, if text-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        assert (y is not None) == (self.num_classes
-                                   is not None), "must specify y if and only if the model is class-conditional"
+        # assert (y is not None) == (self.num_classes
+        #                            is not None), "must specify y if and only if the model is class-conditional"
 
         hs = []
         logger.debug(f"UNetModel::forward: input x: {x.shape}")
@@ -702,15 +713,21 @@ class UNetModel(nn.Module):
             # logger.debug(f"UNetModel::forward: input y shape: {y.shape}")
             assert y.shape == (X.shape[0],)
             time_emb = time_emb + self.label_emb(y)
-            # logger.debug(f"UNetModel::forward: output y embedding shape: {time_emb.shape}")
+        elif context is not None:
+            logger.debug(f"UNetModel::forward: input context shape: {context.shape}")
+            assert context.shape == (
+                X.shape[0], self.text_emb_dim
+            ), f"context.shape: {context.shape}, expected context.shape: {(X.shape[0], self.text_emb_dim)}"
+            time_emb = time_emb + self.text_emb(context)
 
         h = X.type(self.inner_dtype)
         pos_emb = None
         # convert invalid_masks(Bx1xT) to attn_masks(BxTxT)
-        attn_masks = invalid_masks
-        attn_masks = (~attn_masks).to(dtype=h.dtype)
-        attn_masks = th.matmul(attn_masks.transpose(1, 2), attn_masks).to(dtype=th.bool)
-        attn_masks = ~attn_masks
+        attn_masks = None
+        if attn_masks is not None:
+            attn_masks = (~attn_masks).to(dtype=h.dtype)
+            attn_masks = th.matmul(attn_masks.transpose(1, 2), attn_masks).to(dtype=th.bool)
+            attn_masks = ~attn_masks
         for module in self.input_blocks:
             h = module(h, time_emb, pos_emb, attn_masks)
             # logger.debug(f"UNetModel::forward: input_blocks hidden layer output shape: {h.shape}")

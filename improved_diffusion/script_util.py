@@ -9,6 +9,7 @@ from .unet import SuperResModel, UNetModel
 from . import logger
 
 NUM_CLASSES = 16
+NUM_TEXT_EMBEDDING_DIM = 512
 
 
 def model_and_diffusion_defaults():
@@ -29,6 +30,7 @@ def model_and_diffusion_defaults():
         b_learn_sigma=False,
         sigma_small=False,
         b_class_cond=True,
+        b_text_cond=False,
         diffusion_steps=1000,
         noise_schedule="cosine",
         timestep_respacing="",
@@ -47,6 +49,7 @@ def create_model_and_diffusion(
     layout_size: int,
     layout_channels: int,
     b_class_cond: bool,
+    b_text_cond: bool,
     b_learn_sigma: bool,
     sigma_small,
     num_channels: int,
@@ -73,6 +76,7 @@ def create_model_and_diffusion(
         layout_size (int): Layout feature size
         layout_channels (int): Layout feature channel size
         b_class_cond (bool): whther use class labels as conditions
+        b_text_cond (bool): whether use text as conditions
         b_learn_sigma (bool): whether to sigma
         sigma_small (_type_): _description_
         num_channels (int): UNet channel size
@@ -103,6 +107,7 @@ def create_model_and_diffusion(
         num_res_blocks=num_res_blocks,
         learn_sigma=b_learn_sigma,
         class_cond=b_class_cond,
+        text_cond=b_text_cond,
         use_checkpoint=use_checkpoint,
         attention_resolutions=attention_resolutions,
         num_heads=num_heads,
@@ -135,6 +140,7 @@ def create_model(
     num_res_blocks,
     learn_sigma,
     class_cond,
+    text_cond,
     use_checkpoint,
     attention_resolutions,
     num_heads,
@@ -167,6 +173,7 @@ def create_model(
         dropout=dropout,
         channel_mult=channel_mult,
         num_classes=(NUM_CLASSES if class_cond else None),
+        text_emb_dim=(NUM_TEXT_EMBEDDING_DIM if text_cond else None),
         use_checkpoint=use_checkpoint,
         num_heads=num_heads,
         num_heads_upsample=num_heads_upsample,
