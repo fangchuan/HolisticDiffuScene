@@ -323,7 +323,7 @@ class AttentionBlock(PositionEmbeddingBlock):
         x = x.reshape(b, c, -1)
         qkv = self.qkv(self.norm(x))
         qkv = qkv.reshape(b * self.num_heads, -1, qkv.shape[2])
-        logger.debug(f"AttentionBlock::forward: qkv.shape: {qkv.shape}")
+        # logger.debug(f"AttentionBlock::forward: qkv.shape: {qkv.shape}")
         if mask is not None:
             # get masks for each head
             mask = mask.repeat(self.num_heads, 1, 1)
@@ -677,32 +677,32 @@ class UNetModel(nn.Module):
             object_bbox_sizes = x[:, :, self.num_object_classes + 3:self.num_object_classes + 6]
             object_bbox_angles = x[:, :, self.num_object_classes + 6:self.num_object_classes + 8]
             object_class_feat = self.object_class_emb_layer(object_class_labels)
-            logger.debug(f"UNetModel::forward: output object class embedding shape: {object_class_feat.shape}")
+            # logger.debug(f"UNetModel::forward: output object class embedding shape: {object_class_feat.shape}")
             object_pos_x_feat = self.object_pe_pos_x(object_bbox_poses[:, :, 0:1])
             object_pos_y_feat = self.object_pe_pos_y(object_bbox_poses[:, :, 1:2])
             object_pos_z_feat = self.object_pe_pos_z(object_bbox_poses[:, :, 2:3])
             object_pos_feat = th.cat([object_pos_x_feat, object_pos_y_feat, object_pos_z_feat], dim=-1)
-            logger.debug(f"UNetModel::forward: output object position embedding shape: {object_pos_feat.shape}")
+            # logger.debug(f"UNetModel::forward: output object position embedding shape: {object_pos_feat.shape}")
             object_size_x_feat = self.object_pe_size_x(object_bbox_sizes[:, :, 0:1])
             object_size_y_feat = self.object_pe_size_y(object_bbox_sizes[:, :, 1:2])
             object_size_z_feat = self.object_pe_size_z(object_bbox_sizes[:, :, 2:3])
             object_size_feat = th.cat([object_size_x_feat, object_size_y_feat, object_size_z_feat], dim=-1)
-            logger.debug(f"UNetModel::forward: output object size embedding shape: {object_size_feat.shape}")
+            # logger.debug(f"UNetModel::forward: output object size embedding shape: {object_size_feat.shape}")
             object_angle_x_feat = self.object_pe_angle_cz(object_bbox_angles[:, :, 0:1])
             object_angle_y_feat = self.object_pe_angle_sz(object_bbox_angles[:, :, 1:2])
             object_angle_feat = th.cat([object_angle_x_feat, object_angle_y_feat], dim=-1)
-            logger.debug(f"UNetModel::forward: output object angle embedding shape: {object_angle_feat.shape}")
+            # logger.debug(f"UNetModel::forward: output object angle embedding shape: {object_angle_feat.shape}")
 
             X = th.cat([object_class_feat, object_pos_feat, object_size_feat, object_angle_feat], dim=-1)
             X = X.transpose(1, 2)
 
-        logger.debug(f"UNetModel::forward: output X shape: {X.shape}")
+        # logger.debug(f"UNetModel::forward: output X shape: {X.shape}")
 
         if self.num_classes is not None:
-            logger.debug(f"UNetModel::forward: input y shape: {y.shape}")
+            # logger.debug(f"UNetModel::forward: input y shape: {y.shape}")
             assert y.shape == (X.shape[0],)
             time_emb = time_emb + self.label_emb(y)
-            logger.debug(f"UNetModel::forward: output y embedding shape: {time_emb.shape}")
+            # logger.debug(f"UNetModel::forward: output y embedding shape: {time_emb.shape}")
 
         h = X.type(self.inner_dtype)
         pos_emb = None
@@ -713,18 +713,18 @@ class UNetModel(nn.Module):
         attn_masks = ~attn_masks
         for module in self.input_blocks:
             h = module(h, time_emb, pos_emb, attn_masks)
-            logger.debug(f"UNetModel::forward: input_blocks hidden layer output shape: {h.shape}")
+            # logger.debug(f"UNetModel::forward: input_blocks hidden layer output shape: {h.shape}")
             hs.append(h)
 
         h = self.middle_block(h, time_emb, pos_emb, attn_masks)
-        logger.debug(f"UNetModel::forward: middle_block hidden layer output shape: {h.shape}")
+        # logger.debug(f"UNetModel::forward: middle_block hidden layer output shape: {h.shape}")
 
         for module in self.output_blocks:
             h_in_input = hs.pop()
             # logger.debug(f"UNetModel::forward: output_blocks hs.pop output shape: {h_in_input.shape}")
             cat_in = th.cat([h, h_in_input], dim=1)
             h = module(cat_in, time_emb, pos_emb, attn_masks)
-            logger.debug(f"UNetModel::forward: output_blocks h output shape: {h.shape}")
+            # logger.debug(f"UNetModel::forward: output_blocks h output shape: {h.shape}")
 
         h = h.type(X.dtype)
         ret = self.out(h)

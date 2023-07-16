@@ -171,6 +171,9 @@ We would like to thank Kujiale.com for providing the database of house designs a
 16. layout_iou_loss实验: openai-2023-07-11-09-06-48-605853: test_quad_walls分支, 不使用input_encoding, mse+kl+layoutiou_loss,
 18. 修改self_attn实验: openai-2023-07-11-14-04-30-909981: test_quad_walls分支, 不使用input_encoding, mse+kl loss;
 19. 修改unet网络结构, 去掉downsample/upsample层, 房间数据格式调整为BxCxN: 
-      * openai-2023-07-13-12-09-20-131075: test_attn_mask分支, 使用input_encoding, attn_mask;
-      * openai-2023-07-13-13-58-44-732475: test_attn_mask分支, 使用attn_mask, 不使用input_encoding;
-      * openai-2023-07-13-19-27-25-938973: test_attn_mask分支, 使用input_encoding, attn_mask, 加速layout-iou loss计算;
+      * openai-2023-07-13-12-09-20-131075: test_attn_mask分支, 使用input_encoding, attn_mask; 14W步训练结果良好, 需处理碰撞; 28W步结果无明显差异;
+      * openai-2023-07-13-13-58-44-732475: test_attn_mask分支, 使用attn_mask, 不使用input_encoding; 废弃;
+      * openai-2023-07-13-19-27-25-938973: test_attn_mask分支, 使用input_encoding, attn_mask, 加速layout-iou loss计算; 废弃;
+20. 添加layout-iou loss: openai-2023-07-14-16-10-17-785586: test_attn_mask分支, 加速layout-iou计算, 24h 8W步;
+21. 去掉attn_mask: openai-2023-07-14-22-58-18-238119: test_attn_mask分支, 20W步训练结果良好, 与有attn_mask的openai-2023-07-13-12-09-20-131075无显著区别;
+22. 评估无attn_mask的当前网络生成效果: openai-2023-07-16-11-47-16-866264, CKL:

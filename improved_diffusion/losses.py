@@ -199,6 +199,7 @@ def bbox_corners(bbox_centroids: th.Tensor, bbox_sizes: th.Tensor, bbox_angles: 
 
 def verify_object_box_on_wall(points: th.Tensor, wall_center: th.Tensor, wall_normal: th.Tensor, wall_size: th.Tensor):
     """verify if object 2d box is on wall plane, and calculate points to plane distance in 3D space
+    wall plane: nx * x + ny * y + nz * z + d = 0
 
     Args:
         points (th.Tensor): 2d box corners of observed objects
@@ -210,31 +211,74 @@ def verify_object_box_on_wall(points: th.Tensor, wall_center: th.Tensor, wall_no
         physical constriant loss: object box intersect with wall plane
         physical collision number: how many times object box intersect with wall plane
     """
-    # (Nx4)x2
-    P = points.shape[0]
-    a = wall_normal[0]
-    b = wall_normal[1]
-    d = -(a * wall_center[0] + b * wall_center[1])
+    # wall_num, obj_numx4, 2
+    wall_n, corner_n, _ = points.shape
+    nx = wall_normal[:, 0]
+    ny = wall_normal[:, 1]
+    nz = wall_normal[:, 2]
 
-    # project points to 2D plane
-    # point to line distance
-    k = -(a * points[:, 0] + b * points[:, 1] + d)
-    # construct projected points
-    x = points[:, 0] + a * k
-    y = points[:, 1] + b * k
-    t = th.cat((x.reshape(P, 1), y.reshape(P, 1)), dim=-1)
-    # calculate distance between projected points and wall center
-    w = th.norm(t - wall_center[0:2], dim=1)
+    # (wall_n,1)
+    d = -(nx * wall_center[:, 0] + ny * wall_center[:, 1])
+    # logger.debug(f'd.shape: {d.shape}')
 
-    point_mask = th.zeros(P).to(points.device)
-    collision = th.zeros(P).to(points.device)
+    # point to plane distance, (wall_n, obj_numx4)
+    k = -(nx[:, None] * points[:, :, 0] + ny[:, None] * points[:, :, 1] + d[:, None])
+    # logger.debug(f'k.shape: {k.shape}')
 
-    point_mask[w < wall_size[0] / 2] = 1
-    quad = th.cat((a.view([1]), b.view([1])))
-    delta = points.matmul(quad) + d
+    # projected points t, (wall_n, obj_numx4, 2)
+    tx = points[:, :, 0] + nx[:, None] * k
+    ty = points[:, :, 1] + ny[:, None] * k
+    t = th.cat((tx[:, :, None], ty[:, :, None]), dim=-1)
+    # logger.debug(f't.shape: {t.shape}')
+    # distance between projected points and wall center, (wall_n, obj_numx4)
+    w = th.norm(t - wall_center[:, None, 0:2], dim=-1)
+    # logger.debug(f'w.shape: {w.shape}')
+
+    point_mask = th.zeros(wall_n, corner_n).to(points.device)
+    collision = th.zeros(wall_n, corner_n).to(points.device)
+
+    point_mask[w < wall_size[:, None, 0] / 2] = 1
+
+    quad_wall = th.cat((nx[:, None], ny[:, None]), dim=-1)
+    quad_wall = quad_wall[:, :, None]
+    # logger.debug(f'quad_wall.shape: {quad_wall.shape}')
+    delta = points.matmul(quad_wall) + d[:, None, None]
+    # logger.debug(f'delta.shape: {delta.shape}')
+
+    point_mask = point_mask[:, :, None]
+    collision = collision[:, :, None]
     physical_constraint_loss = th.relu(-delta) * point_mask
     collision[physical_constraint_loss > 1e-4] = 1
-    return physical_constraint_loss.sum(), collision.sum()
+    # logger.debug(f'physical_constraint_loss.shape: {physical_constraint_loss.shape}')
+    phy_loss = physical_constraint_loss.sum(dim=1)
+    collision = collision.sum(dim=1)
+    # logger.debug(f'phy_loss.shape: {phy_loss.shape}')
+    return phy_loss, collision
+
+    # P = points.shape[0]
+    # a = wall_normal[0]
+    # b = wall_normal[1]
+    # d = -(a * wall_center[0] + b * wall_center[1])
+
+    # # project points to 2D plane
+    # # point to line distance
+    # k = -(a * points[:, 0] + b * points[:, 1] + d)
+    # # construct projected points
+    # x = points[:, 0] + a * k
+    # y = points[:, 1] + b * k
+    # t = th.cat((x.reshape(P, 1), y.reshape(P, 1)), dim=-1)
+    # # calculate distance between projected points and wall center
+    # w = th.norm(t - wall_center[0:2], dim=1)
+
+    # point_mask = th.zeros(P).to(points.device)
+    # collision = th.zeros(P).to(points.device)
+
+    # point_mask[w < wall_size[0] / 2] = 1
+    # quad = th.cat((a.view([1]), b.view([1])))
+    # delta = points.matmul(quad) + d
+    # physical_constraint_loss = th.relu(-delta) * point_mask
+    # collision[physical_constraint_loss > 1e-4] = 1
+    # return physical_constraint_loss.sum(), collision.sum()
 
 
 def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.Tensor, invalid_masks: th.Tensor,
@@ -365,24 +409,30 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
         valid_quad_wall_normal = pred_quad_wall_normal[batch_idx, valid_wall, :]
         valid_quad_wall_size = pred_quad_wall_size[batch_idx, valid_wall, :]
         wall_num = valid_quad_wall_centroid.shape[0]
+        if wall_num == 0:
+            continue
         # logger.debug(f'valid wall number: {wall_num}')
 
+        obj_2d_corners = obj_2d_corner_points.reshape(1, obj_num * 4, 2).repeat(wall_num, 1, 1)
+        phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corners, valid_quad_wall_centroid,
+                                                             valid_quad_wall_normal, valid_quad_wall_size)
+        phy_cons_loss = phy_cons_loss.sum(dim=0) / obj_num
         # 2d box corners of predicted quad walls in x-y plane
-        for wall_idx in range(wall_num):
+        # for wall_idx in range(wall_num):
 
-            phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corner_points,
-                                                                 valid_quad_wall_centroid[wall_idx],
-                                                                 valid_quad_wall_normal[wall_idx],
-                                                                 valid_quad_wall_size[wall_idx])
-            phy_cons_loss = phy_cons_loss + phy_cons_loss / obj_num
-            if phy_cons_loss.isnan():
-                logger.debug(f'phy_cons_loss is nan')
-                logger.debug(f'obj_2d_corner_points: {obj_2d_corner_points}')
-                logger.debug(f'valid_quad_wall_centroid: {valid_quad_wall_centroid[wall_idx]}')
-                logger.debug(f'valid_quad_wall_normal: {valid_quad_wall_normal[wall_idx]}')
-                logger.debug(f'valid_quad_wall_size: {valid_quad_wall_size[wall_idx]}')
-                logger.debug(f'collision: {collision}')
-                phy_cons_loss = 0.0
+        #     phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corner_points,
+        #                                                          valid_quad_wall_centroid[wall_idx],
+        #                                                          valid_quad_wall_normal[wall_idx],
+        #                                                          valid_quad_wall_size[wall_idx])
+        #     phy_cons_loss = phy_cons_loss + phy_cons_loss / obj_num
+        #     if phy_cons_loss.isnan():
+        #         logger.debug(f'phy_cons_loss is nan')
+        #         logger.debug(f'obj_2d_corner_points: {obj_2d_corner_points}')
+        #         logger.debug(f'valid_quad_wall_centroid: {valid_quad_wall_centroid[wall_idx]}')
+        #         logger.debug(f'valid_quad_wall_normal: {valid_quad_wall_normal[wall_idx]}')
+        #         logger.debug(f'valid_quad_wall_size: {valid_quad_wall_size[wall_idx]}')
+        #         logger.debug(f'collision: {collision}')
+        #         phy_cons_loss = 0.0
 
         batch_physical_constraint_loss.append(phy_cons_loss.reshape(1, 1))
 

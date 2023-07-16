@@ -186,24 +186,29 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
         valid_quad_wall_size = pred_quad_wall_size[batch_idx, valid_wall, :]
         wall_num = valid_quad_wall_centroid.shape[0]
 
+        obj_2d_corners = obj_2d_corner_points.reshape(1, obj_num * 4, 2).repeat(wall_num, 1, 1)
+        phy_cons_loss, _ = verify_object_box_on_wall(obj_2d_corners, valid_quad_wall_centroid, valid_quad_wall_normal,
+                                                     valid_quad_wall_size)
         # 2d box corners of predicted quad walls in x-y plane
         batch_pred_wall_corners_2d = []
         for wall_idx in range(wall_num):
 
-            phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corner_points,
-                                                                 valid_quad_wall_centroid[wall_idx],
-                                                                 valid_quad_wall_normal[wall_idx],
-                                                                 valid_quad_wall_size[wall_idx])
+            # phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corner_points,
+            #                                                      valid_quad_wall_centroid[wall_idx],
+            #                                                      valid_quad_wall_normal[wall_idx],
+            #                                                      valid_quad_wall_size[wall_idx])
 
             logger.debug(f'wall {wall_idx} centroid: {valid_quad_wall_centroid[wall_idx]}')
             # logger.debug(f'wall {wall_idx} cos angle: {pred_quad_wall_cos_angle[batch_idx, wall_idx]}')
             # logger.debug(f'wall {wall_idx} sin angle: {pred_quad_wall_sin_angle[batch_idx, wall_idx]}')
             # logger.debug(f'wall {wall_idx} angle: {pred_quad_wall_angle[batch_idx, wall_idx]}')
             logger.debug(f'wall {wall_idx} normal: {valid_quad_wall_normal[wall_idx]}')
-            logger.debug(f'wall {wall_idx} physical violation loss: {phy_cons_loss}')
-            phy_cons_loss = phy_cons_loss + phy_cons_loss / obj_num
+            logger.debug(f'wall {wall_idx} physical violation loss: {phy_cons_loss[wall_idx]}')
+            # phy_cons_loss = phy_cons_loss + phy_cons_loss / obj_num
 
             batch_pred_wall_corners_2d.append(valid_quad_wall_bbox_corners2d[wall_idx, :, :])
+
+        phy_cons_loss = phy_cons_loss.sum(dim=0) / obj_num
         wall_2d_corner_points = th.cat(tuple(batch_pred_wall_corners_2d), 0)
         logger.debug(f'wall_2d_corner_points: {wall_2d_corner_points.shape}')
         # visualize collision
