@@ -783,6 +783,7 @@ class PanoCorBoundDataset(data.Dataset):
         self.bbox_3d_dir = os.path.join(root_dir, 'bbox_3d')
         # text descritpion folder
         self.text_desc_dir = os.path.join(root_dir, 'text_desc')
+        self.text_emb_dir = os.path.join(root_dir, 'text_desc_emb')
 
         # total image file names and text file names
         self.img_fnames = sorted(
@@ -790,11 +791,13 @@ class PanoCorBoundDataset(data.Dataset):
         self.txt_fnames = ['%s.txt' % fname[:-4] for fname in self.img_fnames]
         self.json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
         self.wall_json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
+        self.npy_fnames = ['%s.npy' % fname[:-4] for fname in self.img_fnames]
         #  image file names and text file names on local_rank machine
         self.local_img_fnames = self.img_fnames[shard::num_shards]
         self.local_txt_fnames = self.txt_fnames[shard::num_shards]
         self.local_json_fnames = self.json_fnames[shard::num_shards]
         self.local_wall_json_fnames = self.wall_json_fnames[shard::num_shards]
+        self.local_npy_fnames = self.npy_fnames[shard::num_shards]
 
         self.flip = flip
         self.rotate = rotate
@@ -855,6 +858,11 @@ class PanoCorBoundDataset(data.Dataset):
             text_desc_lst = text_desc.strip().split('. ')
             text_desc_lst = [complete_stop_in_sentence(sen) for sen in text_desc_lst if len(sen)]
         # print(text_desc_lst)
+        # read text embedding file
+        text_emb = np.array([])
+        text_emb_filepath = os.path.join(self.text_emb_dir, self.local_npy_fnames[idx])
+        text_emb = np.load(text_emb_filepath).astype(np.float32)
+        # print(f'text_emb.shape: {text_emb.shape}')
 
         # read object bbox file
         object_bbox_filepath = os.path.join(self.bbox_3d_dir, self.local_json_fnames[idx])
@@ -919,7 +927,8 @@ class PanoCorBoundDataset(data.Dataset):
         if text_desc_len:
             if text_desc_len > self.max_text_sentences:
                 text_desc_lst = text_desc_lst[:self.max_text_sentences]
-            cond_dict["context"] = ''.join(text_desc_lst)
+            cond_dict["text"] = ''.join(text_desc_lst)
+        cond_dict["context"] = np.squeeze(text_emb, axis=0)
         return out_lst, cond_dict
 
     def get_gt_layout_mesh(self,

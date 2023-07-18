@@ -212,16 +212,17 @@ def add_description(room_type: str, object_dict: Dict, eval=False):
     return object_dict
 
 
-def add_glove_embeddings(glove_mode, object_dicts: Dict, max_sentences=3, max_token_length=50):
-    sentence = ''.join(object_dicts['description'][:max_sentences])
-    object_dicts['description'] = sentence
-    tokens = list(word_tokenize(sentence))
-    # pad to maximum length
-    tokens += ['<pad>'] * (max_token_length - len(tokens))
+def add_glove_embeddings(glove_mode, object_dicts: Dict, max_sentences=3, max_token_length=77):
+
+    sentence = object_dicts['description']
+    # tokens = list(word_tokenize(sentence))
+    # # pad to maximum length
+    # tokens += ['<pad>'] * (max_token_length - len(tokens))
 
     # embed words
-    object_dicts['desc_emb'] = torch.cat([glove_mode[token].unsqueeze(0) for token in tokens]).numpy()
-
+    # object_dicts['desc_emb'] = torch.cat([glove_mode[token].unsqueeze(0) for token in tokens]).numpy()
+    object_dicts['desc_emb'] = glove_mode.get_text_embeds(sentence).cpu().numpy()
+    print(f'desc_emb.shape: {object_dicts["desc_emb"].shape}')
     return object_dicts
 
 
@@ -245,12 +246,19 @@ def get_scene_description(room_type: str,
     # generate a description of objects
     object_dict = add_relation(object_dict)
     object_dict = add_description(room_type, object_dict, eval=eval)
+    sentence = ''.join(object_dict['description'][:max_sentences])
+    scene_desc += sentence
+    object_dict['description'] = scene_desc
+
     if glove_model is not None:
         object_dict = add_glove_embeddings(glove_model,
                                            object_dict,
                                            max_sentences=max_sentences,
                                            max_token_length=max_token_length)
-    scene_desc += ' '.join(object_dict['description'])
     del object_dict['description']
-    scene_desc = scene_desc.replace('  ', ' ')
-    return scene_desc
+
+    text_emb = None
+    if 'desc_emb' in object_dict:
+        text_emb = object_dict['desc_emb']
+        del object_dict['desc_emb']
+    return scene_desc, text_emb

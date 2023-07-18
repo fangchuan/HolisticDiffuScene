@@ -9,7 +9,7 @@ from .unet import SuperResModel, UNetModel
 from . import logger
 
 NUM_CLASSES = 16
-NUM_TEXT_EMBEDDING_DIM = 512
+NUM_TEXT_EMBEDDING_DIM = 768
 
 
 def model_and_diffusion_defaults():
@@ -157,6 +157,8 @@ def create_model(
         # channel_mult = (1, 2, 3, 4)
     else:
         raise ValueError(f"unsupported layout size: {layout_size}")
+
+    assert class_cond != text_cond, "only one of class_cond and text_cond can be True"
 
     # downsample ratio at attention layers
     attention_downsample_ratio_lst = []

@@ -176,7 +176,8 @@ We would like to thank Kujiale.com for providing the database of house designs a
       * openai-2023-07-13-19-27-25-938973: test_attn_mask分支, 使用input_encoding, attn_mask, 加速layout-iou loss计算; 废弃;
 20. 添加layout-iou loss: openai-2023-07-14-16-10-17-785586: test_attn_mask分支, 加速layout-iou计算, 24h 8W步;
 21. 去掉attn_mask: openai-2023-07-14-22-58-18-238119: test_attn_mask分支, 20W步训练结果良好, 与有attn_mask的openai-2023-07-13-12-09-20-131075无显著区别;
-22. 评估无attn_mask的网络生成效果: openai-2023-07-16-11-47-16-866264, CKL: 0.0066;
-    评估有attn_mask的网络生成效果: openai-2023-07-16-14-38-49-759043, CKL: 0.016; 
-23. 无input_encoding,无attn_mask训练: openai-2023-07-16-17-10-51-562054
-24. 加入text_prompt, 无input_encoding,无attn_mask训练: openai-2023-07-16-21-06-58-942027
+22. 评估无attn_mask, 有input_encoding的网络生成效果: openai-2023-07-16-11-47-16-866264, CKL: 0.0066;
+    评估有attn_mask, 有input_encoding的网络生成效果: openai-2023-07-16-14-38-49-759043, CKL: 0.016; 
+23. 无input_encoding,无attn_mask训练: openai-2023-07-16-17-10-51-562054: 训练26h 20W步, 生成效果与无input_encoding没有显著区别
+24. 加入text_prompt, 无input_encoding,无attn_mask训练: openai-2023-07-16-21-06-58-942027: 只在与训练数据text prompt相似的文本上有一定控制能力, 但是在随机输入的文本对生成结果几乎看不出来影响, 缺乏CLIP-Score;
+25. 无input_encoding, 有attn_mask训练: openai-2023-07-18-00-57-10-419951

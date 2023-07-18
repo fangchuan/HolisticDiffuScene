@@ -60,76 +60,11 @@ The reorganized structure as follow:
 '''
 ALL_SCENE = ['scene_%05d' % i for i in range(0, 3500)]
 TRAIN_SCENE = ['scene_%05d' % i for i in range(0, 3000)]
-VALID_SCENE = ['scene_%05d' % i for i in range(3000, 3250)]
-TEST_SCENE = ['scene_%05d' % i for i in range(3250, 3500)]
+TEST_SCENE = ['scene_%05d' % i for i in range(3000, 3500)]
 
 ST3D_BEDROOM_FURNITURES_SET = set()
 ST3D_LIVINGROOM_FURNITURES_SET = set()
 ST3D_DININGROOM_FURNITURES_SET = set()
-
-
-class ST3DQuadRoomLayout(List):
-
-    class QuadWall(object):
-
-        def __init__(self, wall_corners: np.ndarray, wall_normal: np.ndarray, wall_center: np.ndarray, wall_sx: float,
-                     wall_sy: float):
-            """ Construct a wall as quad polygen
-
-            Args:
-                wall_corners (np.ndarray): 4 corners' coordinate of wall
-                wall_normal (np.ndarray): normalized plane normal of wall
-                wall_center (np.ndarray): center coordinate of wall
-                wall_sx (float): wall size in x axis
-                wall_sy (float): wall size in y axis
-            """
-            self.wall_corners = wall_corners
-            self.wall_normal = wall_normal
-            self.wall_center = wall_center
-            self.wall_sx = wall_sx
-            self.wall_sy = wall_sy
-
-        @property
-        def wall_corners(self):
-            return self.wall_corners
-
-        @property
-        def wall_normal(self):
-            return self.wall_normal
-
-        @property
-        def wall_center(self):
-            return self.wall_center
-
-        @property
-        def wall_sx(self):
-            return self.wall_sx
-
-        @property
-        def wall_sy(self):
-            return self.wall_sy
-
-    def __init__(self, quad_wall_lst: List[QuadWall]):
-        super().__init__()
-        self.quad_wall_lst = quad_wall_lst
-
-    def __getitem__(self, id):
-        return self.quad_wall_lst[id]
-
-    def append(self, quadwall: QuadWall):
-        return self.quad_wall_lst.append(quadwall)
-
-    def __len__(self):
-        return len(self.quad_wall_lst)
-
-    def __iter__(self):
-        return iter(self.quad_wall_lst)
-
-    def __setitem__(self, id, quadwall: QuadWall):
-        self.quad_wall_lst[id] = quadwall
-
-    def __delitem__(self, id):
-        del self.quad_wall_lst[id]
 
 
 def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
@@ -365,6 +300,7 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
     obj_bbox_normal_dicts = {}
     obj_bbox_normal_dicts['objects'] = obj_bbox_normal_lst
 
+    debug_lst = obj_bbox_lst.copy()
     # visualize quad wall if exists
     if quad_walls_dict is not None:
         wall_lst = []
@@ -388,10 +324,10 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
             # print(f' recovered normal is {np.allclose(np.array(normal), recovered_normal, atol=1e-3)}')
             wall_dict['class'] = 'wall'
             wall_lst.append(wall_dict)
-        obj_bbox_lst.extend(wall_lst)
+        debug_lst.extend(wall_lst)
 
     anno_img = vis_objs3d(image=rgb_img,
-                          v_bbox3d=obj_bbox_lst,
+                          v_bbox3d=debug_lst,
                           camera_position=cam_position,
                           b_show_axes=False,
                           b_show_centroid=False,
@@ -399,7 +335,7 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
                           b_show_info=True,
                           thickness=2)
 
-    scene_mesh = vis_scene_mesh(room_layout_mesh, obj_bbox_lst, room_layout_bbox=None)
+    scene_mesh = vis_scene_mesh(room_layout_mesh, debug_lst, room_layout_bbox=None)
 
     return obj_bbox_dicts, obj_bbox_normal_dicts, anno_img, scene_mesh
 
@@ -628,6 +564,9 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
     return quad_wall_dict, quad_wall_normalized_dict, layout_bbox_size
 
 
+from improved_diffusion.clip_util import CLIP, FrozenCLIPEmbedder
+
+
 def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_save_debug_files=False):
 
     furniture_counts = []
@@ -635,8 +574,8 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
     room_layout_size_lst = []
 
     # clip model
+    glove_model = FrozenCLIPEmbedder(device='cuda')
     # glove_model = torchtext.vocab.GloVe(name="6B", dim=50, cache='.vector_cache')
-    glove_model = None
     for scene_id in tqdm(scene_ids):
 
         if scene_id in INVALID_SCENES_LST:
@@ -698,7 +637,7 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
                 continue
 
             # generate scene description
-            scene_desc_text = get_scene_description(
+            scene_desc_text, scene_desc_emb = get_scene_description(
                 room_type=room_type_str,
                 wall_dict=quad_walls_dict,
                 object_dict=obj_bbox_3d_dict,
@@ -713,6 +652,7 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
             out_bbox_3d_dir = os.path.join(out_dir, room_type_str, 'bbox_3d')
             out_quad_wall_dir = os.path.join(out_dir, room_type_str, 'quad_walls')
             out_text_desc_dir = os.path.join(out_dir, room_type_str, 'text_desc')
+            out_text_emb_dir = os.path.join(out_dir, room_type_str, 'text_desc_emb')
             os.makedirs(out_img_dir, exist_ok=True)
             os.makedirs(out_cord_dir, exist_ok=True)
             os.makedirs(out_cam_pos_dir, exist_ok=True)
@@ -720,6 +660,7 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
             os.makedirs(out_bbox_3d_dir, exist_ok=True)
             os.makedirs(out_quad_wall_dir, exist_ok=True)
             os.makedirs(out_text_desc_dir, exist_ok=True)
+            os.makedirs(out_text_emb_dir, exist_ok=True)
             target_img_path = os.path.join(out_img_dir, '%s_%s.png' % (scene_id, room_id))
             target_cor_path = os.path.join(out_cord_dir, '%s_%s.txt' % (scene_id, room_id))
             target_cam_pos_path = os.path.join(out_cam_pos_dir, '%s_%s.txt' % (scene_id, room_id))
@@ -732,6 +673,7 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
             target_quad_wall_normalized_path = os.path.join(out_quad_wall_dir,
                                                             '%s_%s_normalized.json' % (scene_id, room_id))
             target_text_desc_path = os.path.join(out_text_desc_dir, '%s_%s.txt' % (scene_id, room_id))
+            target_text_emb_path = os.path.join(out_text_emb_dir, '%s_%s.npy' % (scene_id, room_id))
 
             # skip rooms without bed
             if target_room_type == 'bedroom':
@@ -770,6 +712,8 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
                 # write text description
                 with open(target_text_desc_path, 'w') as f:
                     f.write(scene_desc_text)
+                # write text embedding
+                np.save(target_text_emb_path, scene_desc_emb)
 
                 if b_save_debug_files:
                     # visualize debug bbox img
@@ -807,13 +751,12 @@ def parse_args():
                         default="st3d_livingroom",
                         choices=["st3d_bedroom", "st3d_livingroom", "st3d_diningroom", "st3d_study"],
                         help="structured3d room type")
-    parser.add_argument('--out_all_path', default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/all_raw_light')
+    parser.add_argument('--out_all_path',
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/debug_text_emb/all')
     parser.add_argument('--out_train_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/st3d_train_full_raw_light')
-    parser.add_argument('--out_valid_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/st3d_valid_full_raw_light')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/debug_text_emb/train')
     parser.add_argument('--out_test_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/st3d_test_full_raw_light')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/debug_text_emb/test')
     return parser.parse_args()
 
 
@@ -833,10 +776,9 @@ def main():
     # with mp.Pool() as pool:
     #     pool.imap(prepare_dataset, args_lst)
 
-    prepare_dataset(args.dataset_path, room_type_str, ALL_SCENE, args.out_all_path, b_save_debug_files=True)
-    # prepare_dataset(args.dataset_path, TRAIN_SCENE, args.out_train_path)
-    # prepare_dataset(args.dataset_path, VALID_SCENE, args.out_valid_path)
-    # prepare_dataset(args.dataset_path, TEST_SCENE, args.out_test_path)
+    # prepare_dataset(args.dataset_path, room_type_str, ALL_SCENE, args.out_all_path, b_save_debug_files=True)
+    prepare_dataset(args.dataset_path, room_type_str, TRAIN_SCENE, args.out_train_path, b_save_debug_files=True)
+    prepare_dataset(args.dataset_path, room_type_str, TEST_SCENE, args.out_test_path, b_save_debug_files=True)
     print('*' * 20 + ' invalid rooms ids: ' + '*' * 20)
     print(INVALID_ROOMS_LST)
 

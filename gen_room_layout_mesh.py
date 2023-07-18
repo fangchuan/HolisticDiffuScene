@@ -222,11 +222,7 @@ if __name__ == "__main__":
     for key, val in vars(args).items():
         print('    {:16} {}'.format(key, val))
 
-    dataset = PanoCorBoundDataset(root_dir=args.root_dir,
-                                  flip=args.flip,
-                                  rotate=args.rotate,
-                                  gamma=args.gamma,
-                                  return_path=True)
+    dataset = PanoCorBoundDataset(root_dir=args.root_dir, flip=args.flip, rotate=args.rotate, gamma=args.gamma)
 
     # Showing some information about dataset
     print('len(dataset): {}'.format(len(dataset)))
@@ -305,8 +301,9 @@ if __name__ == "__main__":
     for idx in range(len(sample_result_lst['arr_0'])):
         scene_sample_result = sample_result_lst['arr_0'][idx]
         # print(f'scene_sample_result: {scene_sample_result.shape}')
-        scene_sample_label = sample_result_lst['arr_1'][idx]
-        scene_sample_label = [key for key in ROOM_TYPE_DICT.keys() if ROOM_TYPE_DICT[key] == scene_sample_label][0]
+        # scene_sample_label = sample_result_lst['arr_1'][idx]
+        # scene_sample_label = [key for key in ROOM_TYPE_DICT.keys() if ROOM_TYPE_DICT[key] == scene_sample_label][0]
+        scene_sample_label = 'bedroom'
         scene_sample_label = scene_sample_label.replace(' ', '_')
         print(f'scene_sample_label: {scene_sample_label}')
 

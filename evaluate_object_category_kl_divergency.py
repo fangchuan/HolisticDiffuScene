@@ -42,7 +42,7 @@ def main():
     model.to(dist_util.dev())
     model.eval()
 
-    dataset = PanoCorBoundDataset(root_dir=args.dataset_dir, flip=False, rotate=False, gamma=False, return_path=True)
+    dataset = PanoCorBoundDataset(root_dir=args.dataset_dir, flip=False, rotate=False, gamma=False)
 
     # Generate synthetic rooms with the pre-trained model
     layout_channel_size = args.layout_channels

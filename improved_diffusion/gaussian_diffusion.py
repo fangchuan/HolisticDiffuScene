@@ -710,6 +710,7 @@ class GaussianDiffusion:
 
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE or self.loss_type == LossType.RESCALED_MSE_IOU:
             model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
+            logger.debug(f"training_losses: model_output.shape: {model_output.shape}")
 
             if self.model_var_type in [
                     ModelVarType.LEARNED,

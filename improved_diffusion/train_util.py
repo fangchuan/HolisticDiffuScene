@@ -104,9 +104,9 @@ class TrainLoop:
             self.use_ddp = False
             self.ddp_model = self.model
 
-        self.text_encoder = CLIP(device=dist_util.dev())
-        for param in self.text_encoder.parameters():
-            param.requires_grad = False
+        # self.text_encoder = CLIP(device=dist_util.dev())
+        # for param in self.text_encoder.parameters():
+        #     param.requires_grad = False
 
     def _load_and_sync_parameters(self):
         resume_checkpoint = find_resume_checkpoint() or self.resume_checkpoint
@@ -180,14 +180,9 @@ class TrainLoop:
 
         for i in range(0, batch_data.shape[0], self.microbatch):
             micro_batch_data = batch_data[i:i + self.microbatch].to(dist_util.dev(), dtype=th.float32)
-            micro_cond_data = {}
-            for k, v in cond_data.items():
-                if k == "context":
-                    text_promt = v[i:i + self.microbatch]
-                    text_emb = self.text_encoder.get_text_embeds(text_promt).to(dist_util.dev(), dtype=th.float32)
-                    micro_cond_data[k] = text_emb
-                else:
-                    micro_cond_data[k] = v[i:i + self.microbatch].to(dist_util.dev())
+            micro_cond_data = {
+                k: v[i:i + self.microbatch].to(dist_util.dev()) for k, v in cond_data.items() if k != 'text'
+            }
 
             last_batch = (i + self.microbatch) >= batch_data.shape[0]
             # timestep sampling
@@ -250,6 +245,11 @@ class TrainLoop:
         sqsum = 0.0
         for p in self.master_params:
             sqsum += (p.grad**2).sum().item()
+        # debug if there is nan grad
+        # for i, (name, value) in enumerate(self.model.named_parameters()):
+        #     # if value.grad is not None:
+        #     logger.debug(f"grad_norm {name} : {value.grad}")
+        #     sqsum += (value.grad**2).sum().item()
         logger.logkv_mean("grad_norm", np.sqrt(sqsum))
 
     def _anneal_lr(self):
