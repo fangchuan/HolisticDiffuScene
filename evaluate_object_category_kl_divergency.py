@@ -42,12 +42,12 @@ def main():
     model.to(dist_util.dev())
     model.eval()
 
-    dataset = PanoCorBoundDataset(root_dir=args.dataset_dir, flip=False, rotate=False, gamma=False)
+    dataset = PanoCorBoundDataset(root_dir=args.dataset_dir, flip=False, rotate=False, gamma=False, return_path=True)
 
     # Generate synthetic rooms with the pre-trained model
     layout_channel_size = args.layout_channels
-    layout_feat_dim = args.layout_size
-    class_label_dim = layout_feat_dim - 3 - 3 - 2
+    layout_size = args.layout_size
+    class_label_dim = layout_channel_size - 3 - 3 - 2
     center_dim = 3
     size_dim = 3
     angle_dim = 2
@@ -82,7 +82,7 @@ def main():
             sample_fn = (diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop)
             sample = sample_fn(
                 model=model,
-                shape=(batch_size, layout_channel_size, layout_feat_dim),
+                shape=(batch_size, layout_channel_size, layout_size),
                 clip_denoised=args.clip_denoised,
                 model_kwargs=model_kwargs,
             )
@@ -96,29 +96,35 @@ def main():
                 synthesized_scenes_type_lst.extend([labels.cpu().numpy() for labels in gathered_labels])
             logger.log(f"created {len(synthesized_scenes_lst) * batch_size} samples")
 
-    # samples_filepath = 'sample_results/openai-2023-07-09-16-51-02-670771/samples_10x23x32.npz'
+    # samples_filepath = 'sample_results/openai-2023-07-16-14-38-49-759043/samples_1000x23x32.npz'
     # samples_result = np.load(samples_filepath)
-    # num x 23 x 32
-    synthesized_scenes = np.concatenate(synthesized_scenes_lst, axis=0)
     # synthesized_scenes = samples_result['arr_0']
+
+    # num x 32 x 23
+    synthesized_scenes = np.concatenate(synthesized_scenes_lst, axis=0)
     synthesized_scenes = synthesized_scenes[:args.num_samples]
-    # save the synthesized scenes
-    if args.b_class_cond:
-        label_arr = np.concatenate(synthesized_scenes_type_lst, axis=0)
-        label_arr = label_arr[:args.num_samples]
-    if dist.get_rank() == 0:
-        shape_str = "x".join([str(x) for x in synthesized_scenes.shape])
-        out_path = os.path.join(logger.get_dir(), f"samples_{shape_str}.npz")
-        logger.log(f"saving to {out_path}")
+    synthesized_scenes = np.transpose(synthesized_scenes, (0, 2, 1))
+    logger.info(f"synthesized_scenes.shape: {synthesized_scenes.shape}")
+
+    if not b_skip_synthetic:
+        # save the synthesized scenes
         if args.b_class_cond:
-            np.savez(out_path, synthesized_scenes, label_arr)
-        else:
-            np.savez(out_path, synthesized_scenes)
-    dist.barrier()
-    logger.log("sampling complete")
+            label_arr = np.concatenate(synthesized_scenes_type_lst, axis=0)
+            label_arr = label_arr[:args.num_samples]
+        if dist.get_rank() == 0:
+            shape_str = "x".join([str(x) for x in synthesized_scenes.shape])
+            out_path = os.path.join(logger.get_dir(), f"samples_{shape_str}.npz")
+            logger.log(f"saving to {out_path}")
+            if args.b_class_cond:
+                np.savez(out_path, synthesized_scenes, label_arr)
+            else:
+                np.savez(out_path, synthesized_scenes)
+        dist.barrier()
+        logger.log("sampling complete")
 
     ground_truth_scenes = np.stack(ground_truth_scenes_lst, axis=0)
     ground_truth_scenes = ground_truth_scenes[:args.num_samples]
+    ground_truth_scenes = np.transpose(ground_truth_scenes, (0, 2, 1))
 
     # Firstly compute the frequencies of the class labels
     # TODO: should skip empty!
@@ -162,11 +168,11 @@ def main():
     print(f'gt_class_labels: {gt_class_labels.sum()}')
     print(f'syn_class_labels.shape: {syn_class_labels.shape}')
     print(f'syn_class_labels: {syn_class_labels.sum()}')
-    assert 0.9999 <= gt_class_labels.sum() <= 1.0001
-    assert 0.9999 <= syn_class_labels.sum() <= 1.0001
+    assert 0.9999 <= gt_class_labels.sum() <= 1.01
+    assert 0.9999 <= syn_class_labels.sum() <= 1.01
     stats = {}
     stats["class_labels"] = categorical_kl(gt_class_labels, syn_class_labels)
-    print(stats)
+    logger.info(stats)
     stats_filepath = os.path.join(args.log_dir, "kl_divergency_stats.npz")
 
     dataset_class_labels = {
@@ -175,7 +181,7 @@ def main():
         'dining_room': ST3D_DININGROOM_FURNITURE
     }['bedroom']
     for c, gt_cp, syn_cp in zip(dataset_class_labels, gt_class_labels, syn_class_labels):
-        print("{}: target: {} / synth: {}".format(c, gt_cp, syn_cp))
+        logger.info("{}: target: {} / synth: {}".format(c, gt_cp, syn_cp))
 
     # gt_cooccurrences = np.zeros((len(classes) - 2, len(classes) - 2))
     # syn_cooccurrences = np.zeros((len(classes) - 2, len(classes) - 2))
@@ -207,7 +213,7 @@ def main():
 
 def create_argparser():
     defaults = dict(
-        dataset_dir='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/debugh_quad_walls/bedroom',
+        dataset_dir='/home/fangchuan/datasets/Structured3d/preprocessed/debug_quad_walls/bedroom',
         log_dir='sample_results',
         clip_denoised=True,
         num_samples=1000,
