@@ -64,6 +64,8 @@ def main():
     logger.log("sampling layout...")
     all_layout_lst = []
     all_layout_type_lst = []
+
+    cond_text_prompt_lst = []
     while len(all_layout_lst) * args.batch_size < args.num_samples:
         begin_tms = time.time()
         model_kwargs = {}
@@ -75,19 +77,20 @@ def main():
             model_kwargs["y"] = layout_type_lst
         if args.b_text_cond:
             cond_data_lst = []
-            cond_text_prompt_lst = []
             for i in range(args.batch_size):
                 scene_idx = np.random.choice(len(dataset))
                 gt_scene, gt_cond_dict = dataset[scene_idx]
                 # text prompt from eval dataset
-                # cond_data_lst.append(gt_cond_dict['context'])
-                # logger.log('text_prompt: {}'.format(gt_cond_dict['text']))
+                cond_data_lst.append(gt_cond_dict['context'])
+                text_prompt = gt_cond_dict['text']
+                cond_text_prompt_lst.append(text_prompt)
+                logger.log('text_prompt: {}'.format(text_prompt))
 
                 # text prompt from predefined list
-                text_prompt = TEXT_PROMPT_LST[np.random.choice(len(TEXT_PROMPT_LST))]
-                logger.log('text_prompt: {}'.format(text_prompt))
-                cond_text_prompt_lst.append(text_prompt)
-                cond_data_lst.append(text_encoder.get_text_embeds(text_prompt).unsqueeze(0).cpu().numpy())
+                # text_prompt = TEXT_PROMPT_LST[np.random.choice(len(TEXT_PROMPT_LST))]
+                # logger.log('text_prompt: {}'.format(text_prompt))
+                # cond_text_prompt_lst.append(text_prompt)
+                # cond_data_lst.append(text_encoder.get_text_embeds(text_prompt).unsqueeze(0).cpu().numpy())
             model_kwargs["context"] = th.from_numpy(np.stack(cond_data_lst)).to(dist_util.dev(), dtype=th.float32)
         sample_fn = (diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop)
         sample = sample_fn(
@@ -113,6 +116,8 @@ def main():
     arr = np.concatenate(all_layout_lst, axis=0)
     arr = arr[:args.num_samples]
     arr = np.transpose(arr, (0, 2, 1))
+
+    cond_text_prompt_lst = cond_text_prompt_lst[:args.num_samples]
     if args.b_class_cond:
         label_arr = np.concatenate(all_layout_type_lst, axis=0)
         label_arr = label_arr[:args.num_samples]
