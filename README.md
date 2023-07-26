@@ -52,10 +52,9 @@ git clone git@github.com:bertjiazheng/Structured3D.git
 Please use Python 3, then follow [installation](https://pymesh.readthedocs.io/en/latest/installation.html) to install [PyMesh](https://github.com/PyMesh/PyMesh) (only for plane visualization) and the other dependencies:
 
 ```bash
-conda install -y open3d -c open3d-admin
-conda install -y opencv -c conda-forge
-conda install -y descartes matplotlib numpy shapely
-pip install panda3d
+sudo apt install libgl1-mesa-glx -y
+sudo apt install libopenmpi-dev -y
+conda env create -f environment.yaml
 ```
 
 ### Visualize 3D Annotation

@@ -483,8 +483,8 @@ def main(argv):
     os.makedirs(mesh_folder_path, exist_ok=True)
 
     for i, ss in tqdm(enumerate(dataset)):
-        if ss.uid != 'ff92de73-ae8f-4ea1-a936-40cbf888f6b4_SecondBedroom-1116':
-            continue
+        # if ss.uid != 'ff92de73-ae8f-4ea1-a936-40cbf888f6b4_SecondBedroom-1116':
+        #     continue
         # Create a separate folder for each room
         room_name = ss.uid
         json_fname = room_name + '.json'
