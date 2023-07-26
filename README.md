@@ -181,3 +181,4 @@ We would like to thank Kujiale.com for providing the database of house designs a
 23. 无input_encoding,无attn_mask训练: openai-2023-07-16-17-10-51-562054: 训练26h 20W步, 生成效果与无input_encoding没有显著区别; CKL: 0.0044
 24. 加入text_prompt, 无input_encoding,无attn_mask训练: openai-2023-07-16-21-06-58-942027: 只在与训练数据text prompt相似的文本上有一定控制能力, 但是在随机输入的文本对生成结果几乎看不出来影响, 缺乏CLIP-Score;
 25. 无input_encoding, 有attn_mask训练: openai-2023-07-18-00-57-10-419951: 训练36h, 25W步, 生成效果不如openai-2023-07-16-17-10-51-562054,废弃;
+26. text-condition, 无input_encoding, 无attn_mask训练: openai-2023-07-19-18-09-09-644965: 训练40h, 13W步, 在ST3D测试集上效果明显;

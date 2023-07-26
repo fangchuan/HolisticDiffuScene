@@ -32,13 +32,12 @@ def ordered_box_with_size(room_type: str, object_dicts: Dict):
     # elif room_type == 'dining room':
     #     class_freq_dict = ST3D_DININGROOM_FURNITURE_CNTS
 
-    object_dict_cp = object_dicts.copy()
-    print(f'object_dict_cp: {[k["class"] for k in object_dict_cp["objects"]]}')
+    object_dict_cp = {}
+    object_dict_cp['objects'] = []
     # discard 'door' object
-    for obj in object_dict_cp['objects']:
-        if obj['class'] == 'door':
-            object_dict_cp['objects'].remove(obj)
-    print(f'object_dict_cp remove door: {[k["class"] for k in object_dict_cp["objects"]]}')
+    for obj in object_dicts['objects']:
+        if obj['class'] != 'door':
+            object_dict_cp['objects'].append(obj)
 
     bbox_size_lst = np.array([np.array(bbox['size']) for bbox in object_dict_cp['objects']])
 
@@ -76,11 +75,11 @@ def add_relation(objct_dict: Dict):
             relation_str, distance = compute_rel(box1, box2)
             if relation_str is not None:
                 relation = (ndx, relation_str, other_ndx, distance)
-                # print('box: {}, center: {} is {} with {} center {}'.format(objct_dict['objects'][ndx]['class'],
-                #                                                            objct_dict['objects'][ndx]['center'],
-                #                                                            relation_str,
-                #                                                            objct_dict['objects'][other_ndx]['class'],
-                #                                                            objct_dict['objects'][other_ndx]['center']))
+                print('box: {}, center: {} is {} with {} center {}'.format(objct_dict['objects'][ndx]['class'],
+                                                                           objct_dict['objects'][ndx]['center'],
+                                                                           relation_str,
+                                                                           objct_dict['objects'][other_ndx]['class'],
+                                                                           objct_dict['objects'][other_ndx]['center']))
 
                 relations.append(relation)
 
@@ -99,7 +98,7 @@ def add_description(room_type: str, object_dict: Dict, eval=False):
     # clean object names once
     obj_names = list(map(clean_obj_name, [obj['class'] for obj in object_dict['objects']]))
     # skip the first object in Structured3D dataset, which is always the curtain
-    obj_names = obj_names[1:]
+    # obj_names = obj_names[1:]
     # objects that can be referred to
     refs = []
     # TODO: handle commas, use "and"
