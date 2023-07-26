@@ -13,6 +13,7 @@ import logging
 import json
 import os
 import sys
+import copy
 
 import numpy as np
 from PIL import Image, ImageFilter
@@ -482,6 +483,8 @@ def main(argv):
     os.makedirs(mesh_folder_path, exist_ok=True)
 
     for i, ss in tqdm(enumerate(dataset)):
+        if ss.uid != 'ff92de73-ae8f-4ea1-a936-40cbf888f6b4_SecondBedroom-1116':
+            continue
         # Create a separate folder for each room
         room_name = ss.uid
         json_fname = room_name + '.json'
@@ -521,8 +524,8 @@ def main(argv):
         # generate scene description
         scene_desc_text, scene_desc_emb = get_scene_description(
             room_type=room_type_str,
-            wall_dict=quad_wall_dict,
-            object_dict=obj_bbox_dict,
+            wall_dict=copy.deepcopy(quad_wall_dict),
+            object_dict=copy.deepcopy(obj_bbox_dict),
             glove_model=text_encoder,
         )
         print(f'room {room_name} scene_desc_text: {scene_desc_text}')
