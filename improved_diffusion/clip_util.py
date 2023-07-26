@@ -5,7 +5,7 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as TF
 from transformers import CLIPTokenizer, CLIPTextModel
 
-import clip
+# import clip
 
 from . import logger
 
@@ -19,54 +19,54 @@ class AbstractEncoder(nn.Module):
         raise NotImplementedError
 
 
-class CLIP(nn.Module):
+# class CLIP(nn.Module):
 
-    def __init__(self, device, **kwargs):
-        super().__init__()
+#     def __init__(self, device, **kwargs):
+#         super().__init__()
 
-        self.device = device
-        self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device, jit=False)
-        for param in self.clip_model.parameters():
-            param.requires_grad = False
-        self.aug = T.Compose([
-            T.Resize((224, 224)),
-            T.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-        ])
+#         self.device = device
+#         self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device, jit=False)
+#         for param in self.clip_model.parameters():
+#             param.requires_grad = False
+#         self.aug = T.Compose([
+#             T.Resize((224, 224)),
+#             T.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+#         ])
 
-    def get_text_embeds(self, prompt, **kwargs):
+#     def get_text_embeds(self, prompt, **kwargs):
 
-        text = clip.tokenize(prompt).to(self.device)
-        print(f'text token.shape: {text.shape}')
-        text_z = self.clip_model.encode_text(text).last_hidden_state
-        print(f'text_z.shape: {text_z.shape}')
-        text_z = text_z / text_z.norm(dim=-1, keepdim=True)
+#         text = clip.tokenize(prompt).to(self.device)
+#         print(f'text token.shape: {text.shape}')
+#         text_z = self.clip_model.encode_text(text).last_hidden_state
+#         print(f'text_z.shape: {text_z.shape}')
+#         text_z = text_z / text_z.norm(dim=-1, keepdim=True)
 
-        return text_z
+#         return text_z
 
-    def get_img_embeds(self, image, **kwargs):
+#     def get_img_embeds(self, image, **kwargs):
 
-        image_z = self.clip_model.encode_image(self.aug(image))
-        image_z = image_z / image_z.norm(dim=-1, keepdim=True)
+#         image_z = self.clip_model.encode_image(self.aug(image))
+#         image_z = image_z / image_z.norm(dim=-1, keepdim=True)
 
-        return image_z
+#         return image_z
 
-    def train_step(self, clip_z, pred_rgb, grad_scale=10, **kwargs):
-        """
-            Args:
-                grad_scale: scalar or 1-tensor of size [B], i.e. 1 grad_scale per batch item. 
-        """
-        # TODO: resize the image from NeRF-rendered resolution (e.g. 128x128) to what CLIP expects (512x512), to prevent Pytorch warning about `antialias=None`.
-        image_z = self.clip_model.encode_image(self.aug(pred_rgb))
-        image_z = image_z / image_z.norm(dim=-1, keepdim=True)  # normalize features
+#     def train_step(self, clip_z, pred_rgb, grad_scale=10, **kwargs):
+#         """
+#             Args:
+#                 grad_scale: scalar or 1-tensor of size [B], i.e. 1 grad_scale per batch item. 
+#         """
+#         # TODO: resize the image from NeRF-rendered resolution (e.g. 128x128) to what CLIP expects (512x512), to prevent Pytorch warning about `antialias=None`.
+#         image_z = self.clip_model.encode_image(self.aug(pred_rgb))
+#         image_z = image_z / image_z.norm(dim=-1, keepdim=True)  # normalize features
 
-        loss = 0
-        if 'image' in clip_z:
-            loss -= ((image_z * clip_z['image']).sum(-1) * grad_scale).mean()
+#         loss = 0
+#         if 'image' in clip_z:
+#             loss -= ((image_z * clip_z['image']).sum(-1) * grad_scale).mean()
 
-        if 'text' in clip_z:
-            loss -= ((image_z * clip_z['text']).sum(-1) * grad_scale).mean()
+#         if 'text' in clip_z:
+#             loss -= ((image_z * clip_z['text']).sum(-1) * grad_scale).mean()
 
-        return loss
+#         return loss
 
 
 class FrozenCLIPEmbedder(AbstractEncoder):

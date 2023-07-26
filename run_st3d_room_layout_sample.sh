@@ -2,4 +2,4 @@ MODEL_FLAGS="--layout_channels 32 --layout_size 23 --num_channels 128 --num_res_
 DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing 250"
 
 
-python scripts/st3d_room_layout_sample.py --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/debug_text_emb/test/bedroom/ --model_path log/openai-2023-07-18-20-59-08-946407/ema_0.9999_050000.pt $MODEL_FLAGS $DIFFUSION_FLAGS
+python scripts/st3d_room_layout_sample.py --data_dir /home/fangchuan/datasets/Structured3d/preprocessed/debug_text_emb/test/bedroom/ --model_path log/openai-2023-07-19-18-09-09-644965/ema_0.9999_130000.pt $MODEL_FLAGS $DIFFUSION_FLAGS

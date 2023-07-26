@@ -15,7 +15,7 @@ from .nn import (SiLU, conv_nd, linear, avg_pool_nd, zero_module, normalization,
                  get_activation_fn, FixedPositionalEncoding, LearnedPositionEmbedding)
 
 from . import dist_util, logger
-from .clip_util import CLIP
+# from .clip_util import CLIP
 from .attention import SpatialTransformer
 
 
@@ -746,7 +746,7 @@ class UNetModel(nn.Module):
         h = X.type(self.inner_dtype)
 
         # convert invalid_masks(Bx1xT) to attn_masks(BxTxT)
-        attn_masks = invalid_masks
+        attn_masks = None
         if attn_masks is not None:
             attn_masks = (~attn_masks).to(dtype=h.dtype)
             attn_masks = th.matmul(attn_masks.transpose(1, 2), attn_masks).to(dtype=th.bool)

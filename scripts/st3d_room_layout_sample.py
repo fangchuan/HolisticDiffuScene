@@ -26,7 +26,7 @@ from improved_diffusion.script_util import (
 )
 
 from dataset.st3d_dataset import PanoCorBoundDataset
-from improved_diffusion.clip_util import CLIP, FrozenCLIPEmbedder
+from improved_diffusion.clip_util import FrozenCLIPEmbedder
 
 TEXT_PROMPT_LST = [
     "The bedroom has five walls. The room has a door, a bed and a nightstand. The nightstand is beside the door.",
@@ -49,7 +49,6 @@ def main():
     log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
-    # text_encoder = CLIP(device=dist_util.dev())
     text_encoder = FrozenCLIPEmbedder(device=dist_util.dev())
     dataset = PanoCorBoundDataset(root_dir=args.data_dir, max_text_sentences=4)
 

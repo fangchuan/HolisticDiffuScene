@@ -19,7 +19,7 @@ from .fp16_util import (
 )
 from .nn import update_ema
 from .resample import LossAwareSampler, UniformSampler
-from .clip_util import CLIP
+# from .clip_util import CLIP
 
 from typing import Dict
 

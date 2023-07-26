@@ -564,7 +564,7 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
     return quad_wall_dict, quad_wall_normalized_dict, layout_bbox_size
 
 
-from improved_diffusion.clip_util import CLIP, FrozenCLIPEmbedder
+from improved_diffusion.clip_util import FrozenCLIPEmbedder
 
 
 def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_save_debug_files=False):
