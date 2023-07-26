@@ -183,7 +183,7 @@ class TrainLoop:
             micro_cond_data = {
                 k: v[i:i + self.microbatch].to(dist_util.dev()) for k, v in cond_data.items() if k != 'text'
             }
-
+            logger.debug(f"micro_batch_data.shape:  {micro_batch_data.shape}")  # BxCxT
             last_batch = (i + self.microbatch) >= batch_data.shape[0]
             # timestep sampling
             tms_indices, weights = self.schedule_sampler.sample(micro_batch_data.shape[0], dist_util.dev())

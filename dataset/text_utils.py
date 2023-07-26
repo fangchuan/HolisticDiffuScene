@@ -78,3 +78,10 @@ def get_article(word):
     word = word.split(" ")[0]
     article = "an" if starts_with_vowel_sound(word) else "a"
     return article
+
+
+def complete_stop_in_sentence(sentence: str) -> str:
+    """Implement the stop in the end of the sentence."""
+    if sentence[-1] != '.':
+        sentence += '.'
+    return sentence

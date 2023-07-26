@@ -729,9 +729,10 @@ class UNetModel(nn.Module):
 
         context_emb = None
         if self.num_classes is not None:
-            # logger.debug(f"UNetModel::forward: input y shape: {y.shape}")
             assert y.shape == (X.shape[0],)
             time_emb = time_emb + self.label_emb(y)
+            logger.debug(f"UNetModel::forward: input y shape: {y.shape}")
+
         elif context is not None:
             logger.debug(f"UNetModel::forward: input context shape: {context.shape}")
             assert context.shape == (

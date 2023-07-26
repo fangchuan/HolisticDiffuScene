@@ -24,28 +24,27 @@ def clean_obj_name(name):
     return name.replace('_', ' ')
 
 
-def ordered_box_with_class_frequency(room_type: str, object_dicts: Dict):
-    if room_type == 'bedroom':
-        class_freq_dict = ST3D_BEDROOM_FURNITURE_CNTS
-    elif room_type == 'living room':
-        class_freq_dict = ST3D_LIVINGROOM_FURNITURE_CNTS
-    elif room_type == 'dining room':
-        class_freq_dict = ST3D_DININGROOM_FURNITURE_CNTS
+def ordered_box_with_size(room_type: str, object_dicts: Dict):
+    # if room_type == 'bedroom':
+    #     class_freq_dict = ST3D_BEDROOM_FURNITURE_CNTS
+    # elif room_type == 'living room':
+    #     class_freq_dict = ST3D_LIVINGROOM_FURNITURE_CNTS
+    # elif room_type == 'dining room':
+    #     class_freq_dict = ST3D_DININGROOM_FURNITURE_CNTS
 
     object_dict_cp = object_dicts.copy()
+    print(f'object_dict_cp: {[k["class"] for k in object_dict_cp["objects"]]}')
     # discard 'door' object
     for obj in object_dict_cp['objects']:
         if obj['class'] == 'door':
             object_dict_cp['objects'].remove(obj)
+    print(f'object_dict_cp remove door: {[k["class"] for k in object_dict_cp["objects"]]}')
 
     bbox_size_lst = np.array([np.array(bbox['size']) for bbox in object_dict_cp['objects']])
-    # print(f'bbox_size_lst: {bbox_size_lst}')
-    class_freqs_lst = np.array([[class_freq_dict[bbox['class']]] for bbox in object_dict_cp['objects']])
-    # print('class_labels_lst: {}, class_freqs_lst: {}'.format([bbox['class'] for bbox in object_bbox_lst], class_freqs_lst))
-    # first sort by class frequency, then by size
+
+    # class_freqs_lst = np.array([[class_freq_dict[bbox['class']]] for bbox in object_dict_cp['objects']])
+
     ordering = np.lexsort(np.hstack([bbox_size_lst]).T)
-    # print(f'sort by {np.hstack([bbox_size_lst, class_freqs_lst]).T}')
-    # print(f'ordering: {ordering}')
 
     ordered_bboxes = [object_dict_cp['objects'][i] for i in ordering[::-1]]
     return ordered_bboxes
@@ -232,7 +231,8 @@ def get_scene_description(room_type: str,
                           eval: bool = False,
                           glove_model=None,
                           max_sentences=3,
-                          max_token_length=50):
+                          max_token_length=77,
+                          use_object_ordering: bool = True):
     '''
         Returns a string description of a scene
     '''
@@ -240,8 +240,9 @@ def get_scene_description(room_type: str,
     wall_num = len(wall_dict['walls'])
     scene_desc = f'The {clean_obj_name(room_type)} has {num2words(wall_num)} walls. '
 
-    # sort object name by frequency
-    object_dict['objects'] = ordered_box_with_class_frequency(room_type=room_type, object_dicts=object_dict)
+    if use_object_ordering:
+        # sort object name by frequency
+        object_dict['objects'] = ordered_box_with_size(room_type=room_type, object_dicts=object_dict)
 
     # generate a description of objects
     object_dict = add_relation(object_dict)

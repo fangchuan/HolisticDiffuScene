@@ -154,9 +154,10 @@ def create_model(
         channel_mult = (1, 2, 3, 4)
     elif layout_feature_size == 32:
         channel_mult = (1, 2, 2, 2)
-        # channel_mult = (1, 2, 3, 4)
+    elif layout_feature_size == 33:
+        channel_mult = (1, 2, 2, 2)
     else:
-        raise ValueError(f"unsupported layout size: {layout_size}")
+        raise ValueError(f"unsupported layout size: {layout_channels}")
 
     assert class_cond != text_cond, "only one of class_cond and text_cond can be True"
 

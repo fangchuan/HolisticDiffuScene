@@ -32,9 +32,11 @@ from dataset.threed_front import filter_function
 from dataset.threed_front.threed_front import ThreedFront
 from dataset.threed_front.threed_front_dataset import dataset_encoding_factory
 from dataset.threed_front.threed_front_scene import Room
+from dataset.gen_scene_text import get_scene_description
 
 from misc.equirect_projection import vis_objs3d
 from misc.utils import euler_angle_to_matrix, matrix_to_euler_angles
+from improved_diffusion.clip_util import FrozenCLIPEmbedder
 
 
 def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
@@ -191,8 +193,8 @@ def parse_room_layout(room: Room, all_class_labels: List, R: np.array = np.eye(3
         # if layout_bbox_size is not None:
         wall_normalized_dict = {}
         wall_normalized_dict['ID'] = wall_dict['ID']
-        wall_normalized_dict['class'] = wall.one_hot_label(all_class_labels).tolist()
-        # wall_normalized_dict['class'] = 'wall'
+        # wall_normalized_dict['class'] = wall.one_hot_label(all_class_labels).tolist()
+        wall_normalized_dict['class'] = 'wall'
         wall_normalized_dict['center'] = (new_center / scene_bbox_size).tolist()
         wall_normalized_dict['normal'] = new_normal.tolist()
         wall_normalized_dict['angles'] = [np.cos(new_angle), np.sin(new_angle)]
@@ -202,7 +204,7 @@ def parse_room_layout(room: Room, all_class_labels: List, R: np.array = np.eye(3
         new_quad_wall_dict_lst.append(new_wall_dict)
         new_quad_wall_normalized_dict_lst.append(wall_normalized_dict)
 
-    return {'quad_walls': new_quad_wall_dict_lst}, {'quad_walls': new_quad_wall_normalized_dict_lst}
+    return {'walls': new_quad_wall_dict_lst}, {'walls': new_quad_wall_normalized_dict_lst}
 
 
 def parse_bbox_in_room(room: Room, all_class_labels: List, R: np.array = np.eye(3)):
@@ -260,7 +262,7 @@ def parse_bbox_in_room(room: Room, all_class_labels: List, R: np.array = np.eye(
 
         door_normalized_dict = {}
         door_normalized_dict['ID'] = new_door_dict['ID']
-        # door_normalized_dict['class'] = door.one_hot_label(all_class_labels)
+        # door_normalized_dict['class'] = door.one_hot_label(all_class_labels).tolist()
         door_normalized_dict['class'] = 'door'
         door_normalized_dict['center'] = (new_center / scene_bbox_size).tolist()
         door_normalized_dict['angles'] = [np.cos(new_angle), np.sin(new_angle)]
@@ -345,6 +347,7 @@ def parse_bbox_in_room(room: Room, all_class_labels: List, R: np.array = np.eye(
 
         obj_noromalized_dict = {}
         obj_noromalized_dict['ID'] = obj.model_uid
+        # obj_noromalized_dict['class'] = obj.one_hot_label(all_class_labels)
         obj_noromalized_dict['class'] = obj.label
         obj_noromalized_dict['center'] = (new_center / scene_bbox_size).tolist()
         obj_noromalized_dict['angles'] = [np.cos(new_angle), np.sin(new_angle)]
@@ -417,15 +420,6 @@ def main(argv):
     if not os.path.exists(args.output_directory):
         os.makedirs(args.output_directory)
 
-    # # Create the scene and the behaviour list for simple-3dviz
-    # scene = scene_from_args(args)
-
-    with open(args.path_to_invalid_scene_ids, "r") as f:
-        invalid_scene_ids = set(l.strip() for l in f)
-
-    with open(args.path_to_invalid_bbox_jids, "r") as f:
-        invalid_bbox_jids = set(l.strip() for l in f)
-
     config = {
         "filter_fn": args.dataset_filtering,
         "min_n_boxes": -1,
@@ -434,37 +428,6 @@ def main(argv):
         "path_to_invalid_bbox_jids": args.path_to_invalid_bbox_jids,
         "annotation_file": args.annotation_file
     }
-
-    # # Initially, we only consider the train split to compute the dataset
-    # # statistics, e.g the translations, sizes and angles bounds
-    # dataset = ThreedFront.from_dataset_directory(dataset_directory=args.path_to_3d_front_dataset_directory,
-    #                                              path_to_model_info=args.path_to_model_info,
-    #                                              path_to_models=args.path_to_3d_future_dataset_directory,
-    #                                              filter_fn=filter_function(config, ["train", "val"],
-    #                                                                        args.without_lamps))
-    # print("Loading train/val dataset with {} rooms".format(len(dataset)))
-
-    # # Compute the bounds for the translations, sizes and angles in the dataset.
-    # # This will then be used to properly align rooms.
-    # tr_bounds = dataset.bounds["translations"]
-    # si_bounds = dataset.bounds["sizes"]
-    # an_bounds = dataset.bounds["angles"]
-
-    # dataset_stats = {
-    #     "bounds_translations": tr_bounds[0].tolist() + tr_bounds[1].tolist(),
-    #     "bounds_sizes": si_bounds[0].tolist() + si_bounds[1].tolist(),
-    #     "bounds_angles": an_bounds[0].tolist() + an_bounds[1].tolist(),
-    #     "class_labels": dataset.class_labels,
-    #     "object_types": dataset.object_types,
-    #     "class_frequencies": dataset.class_frequencies,
-    #     "class_order": dataset.class_order,
-    #     "count_furniture": dataset.count_furniture
-    # }
-
-    # path_to_json = os.path.join(args.output_directory, "dataset_stats.txt")
-    # with open(path_to_json, "w") as f:
-    #     json.dump(dataset_stats, f)
-    # print("Saving training statistics for dataset with bounds: {} to {}".format(dataset.bounds, path_to_json))
 
     dataset = ThreedFront.from_dataset_directory(dataset_directory=args.path_to_3d_front_dataset_directory,
                                                  path_to_model_info=args.path_to_model_info,
@@ -477,8 +440,6 @@ def main(argv):
     lack_window_room_num = 0
     lack_door_room_num = 0
 
-    # encoded_dataset = dataset_encoding_factory("basic", dataset, augmentations=None, box_ordering=None)
-
     # rotate the coordinate system to x-right, y-forward, z-up
     rotation_to_nerf = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
 
@@ -487,35 +448,92 @@ def main(argv):
     all_scene_type_lst = dataset.room_types
     max_wall_num = dataset.max_wall_length
     max_furniture_num = dataset.max_furniture_length
+
+    text_encoder = FrozenCLIPEmbedder(device='cuda')
+
+    room_type_str = 'bedroom'
+    if args.dataset_filtering == "threed_front_bedroom":
+        room_type_str = 'bedroom'
+    elif args.dataset_filtering == "threed_front_livingroom":
+        room_type_str = 'livingroom'
+    elif args.dataset_filtering == "threed_front_diningroom":
+        room_type_str = 'diningroom'
+    elif args.dataset_filtering == "threed_front_library":
+        room_type_str = 'library'
+    else:
+        raise NotImplementedError
+
+    base_folder_path = os.path.join(args.output_directory, room_type_str)
+    quad_walls_folder_path = os.path.join(base_folder_path, "quad_walls")
+    cam_pose_folder_path = os.path.join(base_folder_path, "cam_pose")
+    objects_bbox_folder_path = os.path.join(base_folder_path, "bbox_3d")
+    text_desc_folder_path = os.path.join(base_folder_path, "text_desc")
+    text_desc_emb_folder_path = os.path.join(base_folder_path, "text_desc_emb")
+    img_folder_path = os.path.join(base_folder_path, "img")
+    mesh_folder_path = os.path.join(base_folder_path, "mesh")
+
+    os.makedirs(base_folder_path, exist_ok=True)
+    os.makedirs(quad_walls_folder_path, exist_ok=True)
+    os.makedirs(cam_pose_folder_path, exist_ok=True)
+    os.makedirs(objects_bbox_folder_path, exist_ok=True)
+    os.makedirs(text_desc_folder_path, exist_ok=True)
+    os.makedirs(text_desc_emb_folder_path, exist_ok=True)
+    os.makedirs(img_folder_path, exist_ok=True)
+    os.makedirs(mesh_folder_path, exist_ok=True)
+
     for i, ss in tqdm(enumerate(dataset)):
-        if ss.uid not in ['01805656-e66f-44b1-8bc1-5e722fff3fff_Bedroom-8715']:
-            continue
         # Create a separate folder for each room
-        room_directory = os.path.join(args.output_directory, ss.uid)
-        os.makedirs(room_directory, exist_ok=True)
+        room_name = ss.uid
+        json_fname = room_name + '.json'
+        img_fname = room_name + '.png'
+        mesh_fname = room_name + '.ply'
+        txt_fname = room_name + '.txt'
+        npy_fname = room_name + '.npy'
 
-        save_quad_wall_filepath = os.path.join(room_directory, "quad_walls.json")
-        save_object_filepath = os.path.join(room_directory, "objects.json")
-        save_room_mask_filepath = os.path.join(room_directory, "room_mask.png")
-        save_rendered_image_filepath = os.path.join(room_directory, "rendered_image.png")
-        save_debug_scene_mesh_filepath = os.path.join(room_directory, "scene_mesh.ply")
+        save_quad_wall_filepath = os.path.join(quad_walls_folder_path, json_fname)
+        save_object_filepath = os.path.join(objects_bbox_folder_path, json_fname)
+        save_cam_pos_filepath = os.path.join(cam_pose_folder_path, txt_fname)
+        # save_room_mask_filepath = os.path.join(img_folder_path, "room_mask.png")
+        save_rendered_image_filepath = os.path.join(img_folder_path, img_fname)
+        save_text_desc_filepath = os.path.join(text_desc_folder_path, txt_fname)
+        save_text_desc_emb_filepath = os.path.join(text_desc_emb_folder_path, npy_fname)
+        save_debug_scene_bbox_filepath = os.path.join(mesh_folder_path, room_name + '_bbox.ply')
+        save_debug_scene_mesh_filepath = os.path.join(mesh_folder_path, room_name + '_mesh.ply')
 
-        # save quad walls
+        # save quad walls bbox
         quad_wall_dict, quad_wall_n_dict = parse_room_layout(room=ss,
                                                              all_class_labels=all_class_labels_lst,
                                                              R=rotation_to_nerf)
         with open(save_quad_wall_filepath, "w") as f:
             json.dump(quad_wall_n_dict, f, indent=4)
 
-        # save furtniture
+        # save furtniture bbox
         obj_bbox_dict, obj_bbox_n_dict = parse_bbox_in_room(room=ss,
                                                             all_class_labels=all_class_labels_lst,
                                                             R=rotation_to_nerf)
         with open(save_object_filepath, "w") as f:
             json.dump(obj_bbox_n_dict, f, indent=4)
 
+        # save room centroid
+        camera_position = np.array([ss.scene_bbox_centroid[0], -ss.scene_bbox_centroid[2], ss.scene_bbox_centroid[1]])
+        np.savetxt(save_cam_pos_filepath, camera_position, fmt='%.6f')
+
+        # generate scene description
+        scene_desc_text, scene_desc_emb = get_scene_description(
+            room_type=room_type_str,
+            wall_dict=quad_wall_dict,
+            object_dict=obj_bbox_dict,
+            glove_model=text_encoder,
+        )
+        print(f'room {room_name} scene_desc_text: {scene_desc_text}')
+        # write text description
+        with open(save_text_desc_filepath, 'w') as f:
+            f.write(scene_desc_text)
+        # write text embedding
+        np.save(save_text_desc_emb_filepath, scene_desc_emb)
+
         # debug
-        debug_bbox_lst = quad_wall_dict['quad_walls'] + obj_bbox_dict['objects']
+        debug_bbox_lst = quad_wall_dict['walls'] + obj_bbox_dict['objects']
         vis_pano_img = np.zeros((512, 1024, 3), dtype=np.uint8)
         vis_pano_img = vis_objs3d(image=vis_pano_img,
                                   v_bbox3d=debug_bbox_lst,
@@ -528,13 +546,11 @@ def main(argv):
 
         new_room_layout_vertices = (rotation_to_nerf @ (ss.wall_meshes.vertices - ss.scene_bbox_centroid).T).T
         new_room_layout_normals = (rotation_to_nerf @ (ss.wall_meshes.vertex_normals.T)).T
-        # room_layout_vertices = ss.wall_meshes.vertices - ss.scene_bbox_centroid
-        # room_layout_normals = ss.wall_meshes.vertex_normals
         trans_room_layout_mesh = trimesh.Trimesh(vertices=new_room_layout_vertices,
                                                  faces=ss.wall_meshes.faces,
                                                  vertex_normals=new_room_layout_normals)
-        scene_mesh = vis_scene_mesh(room_layout_mesh=None, obj_bbox_lst=debug_bbox_lst)
-        scene_mesh.export(save_debug_scene_mesh_filepath)
+        scene_bbox = vis_scene_mesh(room_layout_mesh=None, obj_bbox_lst=debug_bbox_lst)
+        scene_bbox.export(save_debug_scene_bbox_filepath)
 
         # debug furniture mesh
         obj_mesh_lst = []
@@ -550,89 +566,44 @@ def main(argv):
             obj_mesh_lst.append(tr_obj_mesh)
         obj_mesh = trimesh.util.concatenate(obj_mesh_lst) if len(obj_mesh_lst) > 0 else None
         if obj_mesh is not None:
-            obj_mesh.export(os.path.join(room_directory, "objects.ply"))
+            debug_bbox_lst = quad_wall_dict['walls']
+            quad_wall_bbox = vis_scene_mesh(room_layout_mesh=None, obj_bbox_lst=debug_bbox_lst)
+            obj_mesh = trimesh.util.concatenate([obj_mesh, quad_wall_bbox])
+            obj_mesh.export(save_debug_scene_mesh_filepath)
 
-        # Render and save the room mask as an image
-        # room_mask = render(scene, [floor_plan_renderable(ss)], (1.0, 1.0, 1.0), "flat",
-        #                     os.path.join(room_directory, "room_mask.png"))[:, :, 0:1]
+        # save mesh in 3D-Front coordinate system
+        # # save room floor plan as a mesh
+        # floor_plan_vertices, floor_plan_faces = ss.floor_plan
+        # floor_mesh = trimesh.Trimesh(vertices=floor_plan_vertices, faces=floor_plan_faces)
+        # floor_mesh.export(os.path.join(room_directory, "floor.ply"))
 
-        # room_mask = np.zeros((64, 64, 1))
-        # np.savez_compressed(os.path.join(room_directory, "boxes"),
-        #                     uids=uids,
-        #                     jids=jids,
-        #                     scene_id=ss.scene_id,
-        #                     scene_uid=ss.uid,
-        #                     scene_type=ss.scene_type,
-        #                     json_path=ss.json_path,
-        #                     room_layout=room_mask,
-        #                     floor_plan_vertices=floor_plan_vertices,
-        #                     floor_plan_faces=floor_plan_faces,
-        #                     floor_plan_centroid=ss.floor_plan_centroid,
-        #                     class_labels=es["class_labels"],
-        #                     translations=es["translations"],
-        #                     sizes=es["sizes"],
-        #                     angles=es["angles"])
+        # # save room walls as a mesh
+        # path_to_walls_mesh = "{}/walls.ply".format(room_directory)
+        # ss.wall_meshes.export(path_to_walls_mesh)
 
-        # Render a top-down orthographic projection of the room at a
-        # specific pixel resolutin
-        # path_to_image = "{}/rendered_scene_{}.png".format(room_directory, args.window_size[0])
-
-        # # Get a simple_3dviz Mesh of the floor plan to be rendered
-        # floor_plan, _, _ = floor_plan_from_scene(ss, args.path_to_floor_plan_textures, without_room_mask=True)
-        # renderables = get_textured_objects_in_scene(ss, ignore_lamps=args.without_lamps)
-        # render(scene, renderables + floor_plan, color=None, mode="shading", frame_path=path_to_image)
-
-        # save room floor plan as a mesh
-        floor_plan_vertices, floor_plan_faces = ss.floor_plan
-        floor_mesh = trimesh.Trimesh(vertices=floor_plan_vertices, faces=floor_plan_faces)
-        floor_mesh.export(os.path.join(room_directory, "floor.ply"))
-
-        # save room walls as a mesh
-        path_to_walls_mesh = "{}/walls.ply".format(room_directory)
-        ss.wall_meshes.export(path_to_walls_mesh)
-
-        path_to_quad_wall_mesh = "{}/quad_wall.ply".format(room_directory)
-        quad_wall_mesh = trimesh.util.concatenate(ss.quad_wall_meshes)
-        quad_wall_mesh.export(path_to_quad_wall_mesh)
+        # path_to_quad_wall_mesh = "{}/quad_wall.ply".format(room_directory)
+        # quad_wall_mesh = trimesh.util.concatenate(ss.quad_wall_meshes)
+        # quad_wall_mesh.export(path_to_quad_wall_mesh)
 
         # save door and windows in the room
         if ss.doors_mesh is not None:
             doors_mesh_lst = []
-            path_to_door_mesh = "{}/door.ply".format(room_directory)
-            for idx, mesh in enumerate(ss.doors_mesh):
-                doors_mesh_lst.append(mesh)
-                # verfiy the bbox size of the door
-                # mesh_bbox = mesh.bounding_box_oriented
-                # mesh_bbox_size = mesh_bbox.extents
-                # mesh_bbox_center = mesh_bbox.primitive.transform[:3, 3]
-                # R = mesh_bbox.primitive.transform
-                # print(f'door bbox size: {mesh_bbox_size}, bbox center: {mesh_bbox_center}')
-
-                # extra_door = [d for d in ss.extras if d.model_type == "door"][idx]
-                # print(f'extra_door size: {extra_door.size}')
-            doors_mesh = trimesh.util.concatenate(doors_mesh_lst)
-            doors_mesh.export(path_to_door_mesh)
-
+            # path_to_door_mesh = "{}/door.ply".format(room_directory)
+            # for idx, mesh in enumerate(ss.doors_mesh):
+            #     doors_mesh_lst.append(mesh)
+            # doors_mesh = trimesh.util.concatenate(doors_mesh_lst)
+            # doors_mesh.export(path_to_door_mesh)
         else:
             # print(f"No door in this room {ss.uid}")
             lack_door_room_num += 1
 
         if ss.windows_mesh is not None:
             windows_mesh_lst = []
-            path_to_window_mesh = "{}/window.ply".format(room_directory)
-            for idx, mesh in enumerate(ss.windows_mesh):
-                windows_mesh_lst.append(mesh)
-                # verify the bbox size of the window
-                # mesh_bbox = mesh.bounding_box_oriented
-                # mesh_bbox_size = mesh_bbox.extents
-                # mesh_bbox_center = mesh_bbox.primitive.transform[:3, 3]
-                # R = mesh_bbox.primitive.transform
-                # print(f'window bbox size: {mesh_bbox_size}, bbox center: {mesh_bbox_center}')
-
-                # extra_window = [w for w in ss.extras if w.model_type == "window"][idx]
-                # print(f'extra_window size: {extra_window.size}')
-            windows_mesh = trimesh.util.concatenate(windows_mesh_lst)
-            windows_mesh.export(path_to_window_mesh)
+            # path_to_window_mesh = "{}/window.ply".format(room_directory)
+            # for idx, mesh in enumerate(ss.windows_mesh):
+            #     windows_mesh_lst.append(mesh)
+            # windows_mesh = trimesh.util.concatenate(windows_mesh_lst)
+            # windows_mesh.export(path_to_window_mesh)
         else:
             # print(f"No window in this room {ss.uid}")
             lack_window_room_num += 1

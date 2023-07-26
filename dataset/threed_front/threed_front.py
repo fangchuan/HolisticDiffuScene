@@ -193,9 +193,9 @@ class ThreedFront(BaseDataset):
             if 'bed' in _room_types:
                 self._max_wall_length = 10
             elif 'living' in _room_types:
-                self._max_wall_length = 15
+                self._max_wall_length = 20
             elif 'dining' in _room_types:
-                self._max_wall_length = 15
+                self._max_wall_length = 20
             elif 'library' in _room_types:
                 self._max_wall_length = 10
 

@@ -44,6 +44,37 @@ THREED_FRONT_BEDROOM_FURNITURE = [
     'double_bed', 'dressing_chair', 'dressing_table', 'kids_bed', 'nightstand', 'pendant_lamp', 'shelf', 'single_bed',
     'sofa', 'stool', 'table', 'tv_stand', 'wall', 'wardrobe', 'window', 'empty'
 ]
+THREED_FRONT_BEDROOM_FURNITURE_CNTS = {
+    "wall": 11072,
+    "nightstand": 2931,
+    "door": 2644,
+    "double_bed": 1910,
+    "window": 1798,
+    "wardrobe": 1749,
+    "pendant_lamp": 1379,
+    "ceiling_lamp": 731,
+    "tv_stand": 333,
+    "chair": 271,
+    "dressing_table": 239,
+    "single_bed": 225,
+    "table": 218,
+    "cabinet": 214,
+    "desk": 201,
+    "stool": 127,
+    "kids_bed": 93,
+    "bookshelf": 90,
+    "children_cabinet": 88,
+    "shelf": 86,
+    "dressing_chair": 64,
+    "armchair": 40,
+    "sofa": 21,
+    "coffee_table": 17
+}
+
+THREED_FRONT_BEDROOM_MIN_FURNITURE_NUM = 3
+THREED_FRONT_BEDROOM_MAX_FURNITURE_NUM = 13
+THREED_FRONT_BEDROOM_MIN_WALL_NUM = 4
+THREED_FRONT_BEDROOM_MAX_WALL_NUM = 10
 
 THREED_FRONT_LIBRARY_FURNITURE_MAP = {
     "bookcase/jewelry armoire": "bookshelf",
@@ -75,6 +106,43 @@ THREED_FRONT_LIBRARY_FURNITURE_MAP = {
     "dressing chair": "dressing_chair",
 }
 
+THREED_FRONT_LIBRARY_FURNITURE = [
+    'armchair', 'bookshelf', 'cabinet', 'ceiling_lamp', 'chair', 'children_cabinet', 'coffee_table', 'desk', 'door',
+    'double_bed', 'dressing_chair', 'dressing_table', 'kids_bed', 'nightstand', 'pendant_lamp', 'shelf', 'single_bed',
+    'sofa', 'stool', 'table', 'tv_stand', 'wall', 'wardrobe', 'window', 'empty'
+]
+THREED_FRONT_LIBRARY_FURNITURE_CNTS = {
+    "wall": 11072,
+    "nightstand": 2931,
+    "door": 2644,
+    "double_bed": 1910,
+    "window": 1798,
+    "wardrobe": 1749,
+    "pendant_lamp": 1379,
+    "ceiling_lamp": 731,
+    "tv_stand": 333,
+    "chair": 271,
+    "dressing_table": 239,
+    "single_bed": 225,
+    "table": 218,
+    "cabinet": 214,
+    "desk": 201,
+    "stool": 127,
+    "kids_bed": 93,
+    "bookshelf": 90,
+    "children_cabinet": 88,
+    "shelf": 86,
+    "dressing_chair": 64,
+    "armchair": 40,
+    "sofa": 21,
+    "coffee_table": 17
+}
+
+THREED_FRONT_LIBRARY_MIN_FURNITURE_NUM = 3
+THREED_FRONT_LIBRARY_MAX_FURNITURE_NUM = 10
+THREED_FRONT_LIBRARY_MIN_WALL_NUM = 4
+THREED_FRONT_LIBRARY_MAX_WALL_NUM = 10
+
 THREED_FRONT_LIVINGROOM_FURNITURE_MAP = {
     "bookcase/jewelry armoire": "bookshelf",
     "desk": "desk",
@@ -103,3 +171,39 @@ THREED_FRONT_LIVINGROOM_FURNITURE_MAP = {
     "l-shaped sofa": "l_shaped_sofa",
     "tv stand": "tv_stand"
 }
+THREED_FRONT_LIVINGROOM_FURNITURE = [
+    'armchair', 'bookshelf', 'cabinet', 'ceiling_lamp', 'chair', 'children_cabinet', 'coffee_table', 'desk', 'door',
+    'double_bed', 'dressing_chair', 'dressing_table', 'kids_bed', 'nightstand', 'pendant_lamp', 'shelf', 'single_bed',
+    'sofa', 'stool', 'table', 'tv_stand', 'wall', 'wardrobe', 'window', 'empty'
+]
+THREED_FRONT_LIVINGROOM_FURNITURE_CNTS = {
+    "wall": 11072,
+    "nightstand": 2931,
+    "door": 2644,
+    "double_bed": 1910,
+    "window": 1798,
+    "wardrobe": 1749,
+    "pendant_lamp": 1379,
+    "ceiling_lamp": 731,
+    "tv_stand": 333,
+    "chair": 271,
+    "dressing_table": 239,
+    "single_bed": 225,
+    "table": 218,
+    "cabinet": 214,
+    "desk": 201,
+    "stool": 127,
+    "kids_bed": 93,
+    "bookshelf": 90,
+    "children_cabinet": 88,
+    "shelf": 86,
+    "dressing_chair": 64,
+    "armchair": 40,
+    "sofa": 21,
+    "coffee_table": 17
+}
+
+THREED_FRONT_LIVINGROOM_MIN_FURNITURE_NUM = 3
+THREED_FRONT_LIVINGROOM_MAX_FURNITURE_NUM = 21
+THREED_FRONT_LIVINGROOM_MIN_WALL_NUM = 4
+THREED_FRONT_LIVINGROOM_MAX_WALL_NUM = 20
