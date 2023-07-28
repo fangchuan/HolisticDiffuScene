@@ -77,11 +77,11 @@ def visualize_bbox_annotations(rgb_imgs_folderpath, labels_folderpath):
 def parse_args():
     parser = argparse.ArgumentParser(description="Structured3D 3D Bounding Box Visualization")
     parser.add_argument("--rgbs_path",
-                        default="/data/dataset/Structured3D/preprocessed/annotations/bedroom/rgb",
+                        default="/data/dataset/Structured3D/preprocessed/annotations/livingroom/rgb",
                         help="raw dataset path",
                         metavar="DIR")
     parser.add_argument("--labels_path",
-                        default="/data/dataset/Structured3D/preprocessed/annotations/bedroom/labels",
+                        default="/data/dataset/Structured3D/preprocessed/annotations/livingroom/labels",
                         help="debug folder path for object bbox annotations",
                         metavar="DIR")
     return parser.parse_args()

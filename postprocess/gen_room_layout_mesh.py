@@ -1,5 +1,8 @@
 import os
-import cv2
+import sys
+
+sys.path.append(".")
+sys.path.append("..")  # Adds higher directory to python modules path.
 import argparse
 
 import matplotlib.pyplot as plt
@@ -11,12 +14,15 @@ from descartes.patch import PolygonPatch
 from tqdm import tqdm
 from PIL import Image
 import open3d as o3d
+import trimesh
 
 # from misc.panorama import draw_boundary_from_cor_id
 # from misc.colors import colormap_255
 from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE
+from dataset.threed_front.metadata import THREED_FRONT_BEDROOM_FURNITURE, THREED_FRONT_LIBRARY_FURNITURE, THREED_FRONT_LIVINGROOM_FURNITURE
+from dataset.threed_front.threed_future_dataset import ThreedFutureDataset
 from dataset.st3d_dataset import PanoCorBoundDataset, np_coor2xy, np_coor2xy, ROOM_TYPE_DICT
-from prepare_st3d_dataset import vis_scene_mesh
+from preprocess.prepare_st3d_dataset import vis_scene_mesh
 from misc.equirect_projection import vis_objs3d
 from misc.utils import euler_angle_to_matrix
 
@@ -30,12 +36,12 @@ def parse_args():
         default=
         '/home/hkust/fangchuan/codes/Structured3D/sample_results/openai-2023-07-05-16-35-56-396382/samples_10x23x32.npz'
     )
+    parser.add_argument('--path_to_pickled_3d_futute_models',
+                        default='/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/threed_future_model_bedroom.pkl',
+                        type=str,
+                        help='3D_FURTURE models')
+    parser.add_argument('--dataset_type', default='3d_front', type=str, help='dataset type, [3d_front, st3d]')
     parser.add_argument('--room_type', default='bedroom', type=str, help='generated room type')
-    parser.add_argument('--ith', default=0, type=int, help='Pick a data id to visualize.'
-                        '-1 for visualize all data')
-    parser.add_argument('--flip', action='store_true', help='whether to random flip')
-    parser.add_argument('--rotate', action='store_true', help='whether to random horizon rotation')
-    parser.add_argument('--gamma', action='store_true', help='whether to random luminance change')
     parser.add_argument('--vis_layout_mesh', action='store_true', help='whether to visualize layout mesh')
     parser.add_argument('--vis_layout_wireframe', action='store_true', help='whether to visualize wireframe of layout')
     parser.add_argument('--out_dir', default='sample_dataset_visualization')
@@ -116,15 +122,18 @@ def save_layout_mesh(save_filepath: str, points: np.array, faces: np.array):
             f.write(f'3 {i:d} {j:d} {k:d}\n')
 
 
-def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, object_bbox_lst: np.ndarray):
-    room_layout_bbox_size = np.array([1.0, 1.0, 1.0])
+def recover_quad_wall_layout_mesh(dataset_type: str,
+                                  room_type: str,
+                                  quad_wall_lst: np.ndarray,
+                                  object_bbox_lst: np.ndarray,
+                                  room_layout_bbox_size: np.array = np.array([1.0, 1.0, 1.0])):
 
     if room_type == 'bedroom':
-        class_labels_lst = (ST3D_BEDROOM_FURNITURE)
+        class_labels_lst = (ST3D_BEDROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_BEDROOM_FURNITURE
     elif room_type == 'living_room':
-        class_labels_lst = (ST3D_LIVINGROOM_FURNITURE)
+        class_labels_lst = (ST3D_LIVINGROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_LIVINGROOM_FURNITURE
     elif room_type == 'dining_room':
-        class_labels_lst = (ST3D_DININGROOM_FURNITURE)
+        class_labels_lst = (ST3D_DININGROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_LIVINGROOM_FURNITURE
     else:
         raise NotImplementedError
 
@@ -145,7 +154,6 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
         class_label_prob = np.where(class_label_prob > 0.5, 1, 0)
         class_label = class_labels_lst[class_label_prob.argmax()]
         if class_label == 'empty':
-            print(f'wall {i} is empty')
             continue
         quad_wall_dict['class'] = class_label
         wall_center = quad_wall_lst[i][centroid_idx:centroid_idx + 3] * room_layout_bbox_size
@@ -185,7 +193,6 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
             print(f'object {i} has no class label')
         class_label = class_labels_lst[class_label_prob.argmax()]
         if class_label == 'empty':
-            # print(f'object {i} is empty')
             continue
         obj_bbox_dict['class'] = class_label
 
@@ -195,21 +202,66 @@ def recover_quad_wall_layout_mesh(room_type: str, quad_wall_lst: np.ndarray, obj
         obj_bbox_dict['center'] = centroid.tolist()
         # recover size
         size = object_bbox_lst[i][size_idx:angle_idx]
-        # size = (size + 1) * 0.5
         size = size * room_layout_bbox_size
         obj_bbox_dict['size'] = size.tolist()
         # recover angle
-        angle = object_bbox_lst[i][angle_idx:]
-        angle_0 = np.arccos(angle[0])
-        angle_1 = np.arcsin(angle[1])
-        angle = angle_0
+        cs_angle_value = object_bbox_lst[i][angle_idx:]
+        angle_0 = np.arccos(cs_angle_value[0])
+        angle_1 = np.arcsin(cs_angle_value[1])
+        angle = angle_1 if abs(cs_angle_value[0]) < 5e-3 else angle_0
         obj_bbox_dict['angles'] = [0, 0, angle]
         # print(f' object {class_label} centroid: {centroid} size: {size} angle: {angle_0}')
         obj_bbox_dict_list.append(obj_bbox_dict)
     print(f'object num: {len(obj_bbox_dict_list)}')
 
-    quad_wall_dict_list.extend(obj_bbox_dict_list)
-    return quad_wall_dict_list
+    # quad_wall_dict_list.extend(obj_bbox_dict_list)
+    return quad_wall_dict_list, obj_bbox_dict_list
+
+
+def get_textured_objects(bbox_params_dict, objects_dataset):
+    # For each one of the boxes replace them with an object
+    renderables = []
+    trimesh_meshes = []
+
+    # rotate the coordinate system to x-right, y-forward, z-up
+    rotation_to_nerf = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
+
+    for i in range(len(bbox_params_dict)):
+        query_label = bbox_params_dict[i]['class']
+        if query_label in ['door', 'window', 'wall']:
+            continue
+
+        query_size = bbox_params_dict[i]['size']
+        query_size = np.array([query_size[0] / 2, query_size[2] / 2, query_size[1] / 2])
+        query_translation = np.array(bbox_params_dict[i]['center'])
+        query_rotation = bbox_params_dict[i]['angles']
+        # 3D-FURTURE object is in x-right, y-up, z-forward coordinate system
+        query_rotation = euler_angle_to_matrix(query_rotation)
+        # print(f'query_label: {query_label} query_size: {query_size}')
+        furniture = objects_dataset.get_closest_furniture_to_box(query_label, query_size)
+        # print(f'retrieved furniture: {furniture.size}')
+
+        # Create a trimesh object for the same mesh in order to save
+        # everything as a single scene
+        tr_mesh = trimesh.load(furniture.raw_model_path, force="mesh")
+        centroid = tr_mesh.bounding_box.centroid
+        tr_mesh.visual.material.image = Image.open(furniture.texture_image_path)
+        tr_mesh.vertices *= furniture.scale
+        tr_mesh.vertices -= centroid
+        # rotate the coordinate system to x-right, y-forward, z-up
+        new_tr_mesh_vertices = rotation_to_nerf.dot(tr_mesh.vertices.T).T
+        new_tr_mesh_vertex_normals = rotation_to_nerf.dot(tr_mesh.vertex_normals.T).T
+        new_tr_mesh_face_normals = rotation_to_nerf.dot(tr_mesh.face_normals.T).T
+        tr_mesh = trimesh.Trimesh(vertices=new_tr_mesh_vertices,
+                                  faces=tr_mesh.faces,
+                                  vertex_normals=new_tr_mesh_vertex_normals,
+                                  face_normals=new_tr_mesh_face_normals)
+        # tr_mesh.visual.material.image = Image.open(furniture.texture_image_path)
+        tr_mesh.vertices[...] = tr_mesh.vertices.dot(query_rotation) + query_translation
+
+        trimesh_meshes.append(tr_mesh)
+
+    return trimesh_meshes
 
 
 if __name__ == "__main__":
@@ -222,81 +274,19 @@ if __name__ == "__main__":
     for key, val in vars(args).items():
         print('    {:16} {}'.format(key, val))
 
-    dataset = PanoCorBoundDataset(root_dir=args.root_dir, flip=args.flip, rotate=args.rotate, gamma=args.gamma)
-
+    dataset = PanoCorBoundDataset(root_dir=args.root_dir)
     # Showing some information about dataset
     print('len(dataset): {}'.format(len(dataset)))
-    # img, boundary_lst, wall_y_prob_lst, img_filepath = dataset[0]
-    # print('image : ', img.size())
-    # print('ceiling-wall and floor-wall boundary veto: ', boundary_lst.size())
-    # print('wall-wall probability vector: ', wall_y_prob_lst.size())
+
+    # Build the dataset of 3D models
+    threed_furture_dataset = ThreedFutureDataset.from_pickled_dataset(args.path_to_pickled_3d_futute_models)
+    print("Loaded {} 3D-FUTURE models".format(len(threed_furture_dataset)))
 
     b_vis_mesh_from_corners = False
     b_vis_mesh_from_diffusion = True
 
     # load sample results: Bx3x1024
     sample_result_lst = np.load(args.samples_filepath)
-
-    # for idx, data_items in enumerate(tqdm(dataset)):
-    #     if idx != args.ith:
-    #         continue
-    #     else:
-    #         img, boundary_lst, wall_prob_lst, img_filepath = data_items
-    #         img_fname = os.path.split(img_filepath)[-1]
-    #         out_img = visualize_a_data(img, boundary_lst, wall_prob_lst)
-    #         save_img_filepath = os.path.join(args.out_dir, img_fname)
-    #         Image.fromarray(out_img).save(save_img_filepath)
-
-    #         # save results ply
-    #         boundary_lst = boundary_lst.numpy()
-    #         wall_prob_lst = wall_prob_lst.numpy()[0]
-    #         if b_vis_mesh_from_corners:
-    #             layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_gt_layout_mesh(idx)
-    #         elif b_vis_mesh_from_diffusion:
-    #             layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_layout_mesh_from_prediction(bound_ceil_floor_lst=boundary_lst,
-    #                                                                                                                           wall_prob_lst=wall_prob_lst)
-    #         print('layout_ply_points: ', layout_ply_points.shape)
-    #         print('layout_ply_faces: ', layout_ply_faces.shape)
-    #         print('layout_corner_lst: ', layout_corner_lst.shape)
-    #         print('cam_pos_lst: ', cam_pos_lst)
-    #         ply_fname = img_fname.replace(img_fname[-4:] , '.ply')
-    #         save_ply_filepath = os.path.join(args.out_dir, ply_fname)
-    #         save_layout_mesh(save_ply_filepath, layout_ply_points, layout_ply_faces)
-
-    #         if args.vis_layout_mesh:
-    #             mesh = o3d.geometry.TriangleMesh()
-    #             mesh.vertices = o3d.utility.Vector3dVector(layout_ply_points[:, :3])
-    #             mesh.vertex_colors = o3d.utility.Vector3dVector(layout_ply_points[:, 3:] / 255.)
-    #             mesh.triangles = o3d.utility.Vector3iVector(layout_ply_faces)
-    #             draw_geometries = [mesh]
-
-    #             # Show wireframe
-    #             if args.vis_layout_wireframe:
-    #                 # Convert cor_id to 3d xyz
-    #                 N = len(layout_corner_lst) // 2
-    #                 floor_height = cam_pos_lst[2]
-    #                 floor_xy = np_coor2xy(layout_corner_lst[1::2], floor_height, img.shape[1], img.shape[0], floorW=1, floorH=1)
-    #                 c = np.sqrt((floor_xy**2).sum(1))
-    #                 v = np_coor2xy(layout_corner_lst[0::2, 1], img.shape[0])
-    #                 ceil_z = (c * np.tan(v)).mean()
-
-    #                 # Prepare wireframe in open3d
-    #                 assert N == len(floor_xy)
-    #                 wf_points = [[x, y, floor_height] for x, y in floor_xy] +\
-    #                             [[x, y, ceil_z] for x, y in floor_xy]
-    #                 wf_lines = [[i, (i+1)%N] for i in range(N)] +\
-    #                         [[i+N, (i+1)%N+N] for i in range(N)] +\
-    #                         [[i, i+N] for i in range(N)]
-    #                 wf_colors = [[1, 0, 0] for i in range(len(wf_lines))]
-    #                 wf_line_set = o3d.geometry.LineSet()
-    #                 wf_line_set.points = o3d.utility.Vector3dVector(wf_points)
-    #                 wf_line_set.lines = o3d.utility.Vector2iVector(wf_lines)
-    #                 wf_line_set.colors = o3d.utility.Vector3dVector(wf_colors)
-    #                 draw_geometries.append(wf_line_set)
-
-    #             o3d.visualization.draw_geometries(draw_geometries, mesh_show_back_face=True)
-
-    #         break
 
     for idx in range(len(sample_result_lst['arr_0'])):
         scene_sample_result = sample_result_lst['arr_0'][idx]
@@ -307,23 +297,11 @@ if __name__ == "__main__":
         scene_sample_label = scene_sample_label.replace(' ', '_')
         print(f'scene_sample_label: {scene_sample_label}')
 
-        # # convert sample into real range
-        # boundary_lst = scene_sample_result[:2, :] * 0.5 * np.pi
-        # wall_prob_lst = (scene_sample_result[2, :] + 1) * 0.5
-
+        room_layout_size = np.array([3.5491398691635867, 3.8409623633141603, 2.651076370213072])
         # quad walls
         quad_wall_lst = scene_sample_result[:10, :]
         # objects
         obj_bbox_lst = scene_sample_result[10:, :]
-
-        # if args.room_type == 'bedroom':
-        #     obj_feat_num, obj_feat_dim = 13, 32
-        # elif args.room_type == 'living_room':
-        #     obj_feat_num, obj_feat_dim = 24, 32
-        # elif args.room_type == 'dining_room':
-        #     obj_feat_num, obj_feat_dim = 24, 32
-
-        # obj_bbox_lst = scene_sample_result[3, :(obj_feat_num * obj_feat_dim)].reshape((obj_feat_num, obj_feat_dim))
 
         if b_vis_mesh_from_corners:
             layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_gt_layout_mesh(idx)
@@ -334,9 +312,11 @@ if __name__ == "__main__":
             #     wall_prob_lst=wall_prob_lst,
             #     obj_bbox_lst=obj_bbox_lst,
             #     b_force_raw=False)
-            obj_bbox_dict_lst = recover_quad_wall_layout_mesh(args.room_type,
-                                                              quad_wall_lst=quad_wall_lst,
-                                                              object_bbox_lst=obj_bbox_lst)
+            wall_dict_lst, obj_bbox_dict_lst = recover_quad_wall_layout_mesh(dataset_type=args.dataset_type,
+                                                                             room_type=args.room_type,
+                                                                             quad_wall_lst=quad_wall_lst,
+                                                                             object_bbox_lst=obj_bbox_lst,
+                                                                             room_layout_bbox_size=room_layout_size)
 
         # save synthetic boundaries as image
         img_fname = f'{scene_sample_label}_{idx}.png'
@@ -347,7 +327,7 @@ if __name__ == "__main__":
         out_img = np.zeros((512, 1024, 3), np.uint8)
         cam_position = np.zeros((3,), np.float32)
         out_img = vis_objs3d(out_img,
-                             v_bbox3d=obj_bbox_dict_lst,
+                             v_bbox3d=(wall_dict_lst + obj_bbox_dict_lst),
                              camera_position=cam_position,
                              b_show_axes=False,
                              b_show_centroid=False,
@@ -357,8 +337,18 @@ if __name__ == "__main__":
         Image.fromarray(out_img).save(save_img_filepath)
 
         # save synthetic object and room_layout as ply
-        ply_fname = f'{scene_sample_label}_{idx}.ply'
-        save_ply_filepath = os.path.join(args.out_dir, ply_fname)
+        scene_bbox_ply_fname = f'{scene_sample_label}_{idx}.ply'
+        scene_bbox_ply_filepath = os.path.join(args.out_dir, scene_bbox_ply_fname)
         # save_layout_mesh(save_ply_filepath, layout_ply_points, layout_ply_faces)
-        scene_mesh = vis_scene_mesh(room_layout_mesh=None, obj_bbox_lst=obj_bbox_dict_lst, room_layout_bbox=None)
-        scene_mesh.export(save_ply_filepath)
+        scene_mesh = vis_scene_mesh(room_layout_mesh=None,
+                                    obj_bbox_lst=(wall_dict_lst + obj_bbox_dict_lst),
+                                    room_layout_bbox=None)
+        scene_mesh.export(scene_bbox_ply_filepath)
+
+        # search 3D-FUTURE models for objects
+        objects_mesh_lst = get_textured_objects(obj_bbox_dict_lst, threed_furture_dataset)
+        scene_mesh_ply_fname = f'{scene_sample_label}_{idx}_mesh.ply'
+        scene_mesh_ply_filepath = os.path.join(args.out_dir, scene_mesh_ply_fname)
+        objects_mesh = trimesh.util.concatenate(objects_mesh_lst)
+        scene_mesh = vis_scene_mesh(room_layout_mesh=objects_mesh, obj_bbox_lst=wall_dict_lst, room_layout_bbox=None)
+        scene_mesh.export(scene_mesh_ply_filepath)

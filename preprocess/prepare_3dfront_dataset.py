@@ -13,10 +13,14 @@ import logging
 import json
 import os
 import sys
+
+sys.path.append('.')
+sys.path.append('..')
+
 import copy
 
 import numpy as np
-from PIL import Image, ImageFilter
+# from PIL import Image, ImageFilter
 from tqdm import tqdm
 from typing import List, Dict
 
@@ -378,13 +382,13 @@ def main(argv):
                         default="/home/hkust/fangchuan/codes/ATISS/demo/",
                         help="Path to floor texture images")
     parser.add_argument("--path_to_invalid_scene_ids",
-                        default="config/invalid_threed_front_rooms.txt",
+                        default="../config/invalid_threed_front_rooms.txt",
                         help="Path to invalid scenes")
     parser.add_argument("--path_to_invalid_bbox_jids",
-                        default="config/threed_front_black_list.txt",
+                        default="../config/threed_front_black_list.txt",
                         help="Path to objects that ae blacklisted")
     parser.add_argument("--annotation_file",
-                        default="config/bedroom_threed_front_splits.csv",
+                        default="../config/bedroom_threed_front_splits.csv",
                         help="Path to the train/test splits file")
     parser.add_argument("--room_side", type=float, default=3.1, help="The size of the room along a side (default:3.1)")
     parser.add_argument(
@@ -435,7 +439,7 @@ def main(argv):
                                                  path_to_models=args.path_to_3d_future_dataset_directory,
                                                  filter_fn=filter_function(config, ["train", "val", "test"],
                                                                            args.without_lamps))
-    print(dataset.bounds)
+
     print("Loading train/val/test dataset with {} rooms".format(len(dataset)))
 
     lack_window_room_num = 0
@@ -482,6 +486,9 @@ def main(argv):
     os.makedirs(img_folder_path, exist_ok=True)
     os.makedirs(mesh_folder_path, exist_ok=True)
 
+    room_layout_min_size = np.array([10000000] * 3)
+    room_layout_max_size = np.array([-10000000] * 3)
+    room_layout_size_lst = []
     for i, ss in tqdm(enumerate(dataset)):
         # if ss.uid != 'ff92de73-ae8f-4ea1-a936-40cbf888f6b4_SecondBedroom-1116':
         #     continue
@@ -502,6 +509,12 @@ def main(argv):
         save_text_desc_emb_filepath = os.path.join(text_desc_emb_folder_path, npy_fname)
         save_debug_scene_bbox_filepath = os.path.join(mesh_folder_path, room_name + '_bbox.ply')
         save_debug_scene_mesh_filepath = os.path.join(mesh_folder_path, room_name + '_mesh.ply')
+
+        # calculate the min/max size of the room layout
+        scene_bbox_size = np.array([ss.scene_bbox_size[0], ss.scene_bbox_size[2], ss.scene_bbox_size[1]])
+        room_layout_min_size = np.minimum(scene_bbox_size, room_layout_min_size)
+        room_layout_max_size = np.maximum(scene_bbox_size, room_layout_max_size)
+        room_layout_size_lst.append(scene_bbox_size)
 
         # save quad walls bbox
         quad_wall_dict, quad_wall_n_dict = parse_room_layout(room=ss,
@@ -610,6 +623,30 @@ def main(argv):
         else:
             # print(f"No window in this room {ss.uid}")
             lack_window_room_num += 1
+
+    # Compute the bounds for the translations, sizes and angles in the dataset.
+    # This will then be used to properly align rooms.
+    tr_bounds = dataset.bounds["translations"]
+    si_bounds = dataset.bounds["sizes"]
+    an_bounds = dataset.bounds["angles"]
+
+    dataset_stats = {
+        "bounds_translations": tr_bounds[0].tolist() + tr_bounds[1].tolist(),
+        "bounds_sizes": si_bounds[0].tolist() + si_bounds[1].tolist(),
+        "bounds_angles": an_bounds[0].tolist() + an_bounds[1].tolist(),
+        "class_labels": dataset.class_labels,
+        "object_types": dataset.object_types,
+        "class_frequencies": dataset.class_frequencies,
+        "class_order": dataset.class_order,
+        "count_furniture": dataset.count_furniture,
+        "room_layout_size": room_layout_min_size.tolist() + room_layout_max_size.tolist(),
+        "room_layout_size_mean": np.mean(room_layout_size_lst, axis=0).tolist(),
+    }
+    print(dataset_stats)
+
+    dataset_stat_filepath = os.path.join(base_folder_path, "dataset_stats.json")
+    with open(dataset_stat_filepath, "w") as f:
+        json.dump(dataset_stats, f, indent=4)
 
     print(f"lack door room num: {lack_door_room_num}")
     print(f"lack window room num: {lack_window_room_num}")

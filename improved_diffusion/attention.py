@@ -158,18 +158,18 @@ class MemoryEfficientCrossAttention(nn.Module):
             (q, k, v),
         )
         logger.debug(
-            # f"MemoryEfficientCrossAttention::forward reshaped q shape: {q.shape}, k shape: {k.shape}, v shape: {v.shape}"
+            f"MemoryEfficientCrossAttention::forward reshaped q shape: {q.shape}, k shape: {k.shape}, v shape: {v.shape}"
         )
 
         # actually compute the attention, what we cannot get enough of
         out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
-        # logger.debug(f"MemoryEfficientCrossAttention::forward out shape: {out.shape}")
+        logger.debug(f"MemoryEfficientCrossAttention::forward out shape: {out.shape}")
         if exists(mask):
             raise NotImplementedError
         out = (out.unsqueeze(0).reshape(b, self.heads, out.shape[1],
                                         self.dim_head).permute(0, 2, 1, 3).reshape(b, out.shape[1],
                                                                                    self.heads * self.dim_head))
-        # logger.debug(f"MemoryEfficientCrossAttention::forward reshaped out shape: {out.shape}")
+        logger.debug(f"MemoryEfficientCrossAttention::forward reshaped out shape: {out.shape}")
         return self.to_out(out)
 
 

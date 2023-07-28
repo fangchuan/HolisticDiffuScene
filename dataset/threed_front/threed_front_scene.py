@@ -410,8 +410,13 @@ class ThreedFutureModel(BaseThreedFutureModel):
             bbox_vertices = np.load(self.path_to_bbox_vertices, mmap_mode="r")
         except:
             bbox_vertices = np.array(self.raw_model().bounding_box.vertices)
+            if np.isnan(bbox_vertices).any():
+                print(f"model {self.raw_model_path} contains NaN vertices", flush=True)
             np.save(self.path_to_bbox_vertices, bbox_vertices)
         c = self._transform(bbox_vertices)
+        if np.isnan(c).any():
+            print(f"model {self.raw_model_path} contains NaN vertices", flush=True)
+
         return c + offset
 
     def origin_renderable(self, offset=[[0, 0, 0]]):
@@ -885,18 +890,10 @@ class Room(BaseScene):
                 mesh_bbos_corners = np.array(mesh_bbox.vertices)
                 mesh_bbox_size = np.array(mesh_bbox.extents)
                 mesh_bbox_center = np.array(mesh_bbox.primitive.transform[:3, 3])
-                # if np.any(np.isnan(mesh_bbox_size)) or np.any(np.isnan(mesh_bbox_center)):
-                #     print(f'room {self.uid} has invalid door {i}')
-                #     continue
+                if np.any(np.isnan(mesh_bbox_size)) or np.any(np.isnan(mesh_bbox_center)):
+                    print(f'room {self.uid} has invalid door {i}')
+                    continue
 
-                # rotation derived from bounding box is weird, we use the rotation from the mesh
-                # R = mesh_bbox.primitive.transform[:3, :3]
-                # y_angle = matrix_to_euler_angles(R)[1]
-                # normal = np.array([0, 0, 1])
-                # for quad_wall_mesh in self.quad_wall_meshes:
-                #     if check_mesh_attachment(mesh, quad_wall_mesh):
-                #         normal = quad_wall_mesh.vertex_normals[0, :]
-                #         break
                 # use X-Y plane corners to compute the normal
                 normal = np.cross(mesh_bbos_corners[2] - mesh_bbos_corners[0],
                                   mesh_bbos_corners[1] - mesh_bbos_corners[0])
@@ -918,7 +915,7 @@ class Room(BaseScene):
                 if abs(normal[0]) == 1:
                     y_angle = np.pi / 2 if normal[0] == 1 else -np.pi / 2
                 d["angles"] = [0, y_angle, 0]
-                # print(f'door {d["ID"]} center: {d["center"]}, size: {d["size"]},  angle: {d["angles"]}')
+                # print(f'room {self.uid} door {d["ID"]} center: {d["center"]}, size: {d["size"]},  angle: {d["angles"]}')
                 new_doors_lst.append(d)
 
             self._doors = new_doors_lst

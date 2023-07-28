@@ -25,23 +25,16 @@ def clean_obj_name(name):
 
 
 def ordered_box_with_size(room_type: str, object_dicts: Dict):
-    # if room_type == 'bedroom':
-    #     class_freq_dict = ST3D_BEDROOM_FURNITURE_CNTS
-    # elif room_type == 'living room':
-    #     class_freq_dict = ST3D_LIVINGROOM_FURNITURE_CNTS
-    # elif room_type == 'dining room':
-    #     class_freq_dict = ST3D_DININGROOM_FURNITURE_CNTS
 
     object_dict_cp = {}
     object_dict_cp['objects'] = []
     # discard 'door' object
     for obj in object_dicts['objects']:
-        if obj['class'] != 'door':
+        # here we skip door and curtain , since door is default in the room, and curtain is too large in Structured3D
+        if obj['class'] not in ['door', 'curtain']:
             object_dict_cp['objects'].append(obj)
 
     bbox_size_lst = np.array([np.array(bbox['size']) for bbox in object_dict_cp['objects']])
-
-    # class_freqs_lst = np.array([[class_freq_dict[bbox['class']]] for bbox in object_dict_cp['objects']])
 
     ordering = np.lexsort(np.hstack([bbox_size_lst]).T)
 
@@ -75,11 +68,11 @@ def add_relation(objct_dict: Dict):
             relation_str, distance = compute_rel(box1, box2)
             if relation_str is not None:
                 relation = (ndx, relation_str, other_ndx, distance)
-                print('box: {}, center: {} is {} with {} center {}'.format(objct_dict['objects'][ndx]['class'],
-                                                                           objct_dict['objects'][ndx]['center'],
-                                                                           relation_str,
-                                                                           objct_dict['objects'][other_ndx]['class'],
-                                                                           objct_dict['objects'][other_ndx]['center']))
+                # print('box: {}, center: {} is {} with {} center {}'.format(objct_dict['objects'][ndx]['class'],
+                #                                                            objct_dict['objects'][ndx]['center'],
+                #                                                            relation_str,
+                #                                                            objct_dict['objects'][other_ndx]['class'],
+                #                                                            objct_dict['objects'][other_ndx]['center']))
 
                 relations.append(relation)
 

@@ -87,6 +87,7 @@ def filter_function(config, split=["train", "val"], without_lamps=False):
             BaseDataset.contains_doors(), BaseDataset.room_smaller_than_along_axis(4.0, axis=1),
             BaseDataset.room_larger_than_along_axis(-0.005, axis=1),
             BaseDataset.floor_plan_with_limits(12, 12, axis=[0, 2]),
+            BaseDataset.walls_num_with_limits(min_wall_num=4, max_wall_num=20),
             BaseDataset.without_box_types(["ceiling_lamp", "pendant_lamp"] if without_lamps else [""]),
             BaseDataset.with_scene_ids(split_scene_ids))
     elif "threed_front_diningroom" in config["filter_fn"]:
@@ -98,6 +99,7 @@ def filter_function(config, split=["train", "val"], without_lamps=False):
             BaseDataset.contains_doors(), BaseDataset.room_smaller_than_along_axis(4.0, axis=1),
             BaseDataset.room_larger_than_along_axis(-0.005, axis=1),
             BaseDataset.floor_plan_with_limits(12, 12, axis=[0, 2]),
+            BaseDataset.walls_num_with_limits(min_wall_num=4, max_wall_num=20),
             BaseDataset.without_box_types(["ceiling_lamp", "pendant_lamp"] if without_lamps else [""]),
             BaseDataset.with_scene_ids(split_scene_ids))
     elif "threed_front_library" in config["filter_fn"]:

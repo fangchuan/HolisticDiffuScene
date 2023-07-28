@@ -68,9 +68,8 @@ class ThreedFront(BaseDataset):
 
     def _centroid(self, box: BaseThreedFutureModel, offset):
         tr_centroid = box.centroid(offset)
-        # print(f'ThreedFront: _centroid: box_centroid: {tr_centroid}, scene_centroid: {offset}')
         if np.any(np.isnan(tr_centroid)):
-            print(f'ThreedFront: _centroid: {tr_centroid}')
+            print(f'ThreedFront: _centroid: box_centroid: {tr_centroid}, scene_centroid: {offset}')
         return tr_centroid
 
     def _size(self, box: BaseThreedFutureModel):
@@ -84,14 +83,14 @@ class ThreedFront(BaseDataset):
         _angle_min = np.array([10000000000])
         _angle_max = np.array([-10000000000])
         for s in self.scenes:
-            # print(f'********************* s.scene_id: {s.scene_id} *********************')
+            print(f'********************* s.scene_id: {s.scene_id} *********************')
 
             # normalize furnitures
             for f in s.bboxes:
                 if np.any(f.size > 5):
                     print(s.scene_id, f.size, f.model_uid, f.scale)
 
-                # print(f'********************* f.label: {f.label} *********************')
+                print(f'********************* f.label: {f.label} *********************')
 
                 # normalize the centroid and size by the room size
                 centroid = self._centroid(f, -s.centroid)
@@ -102,9 +101,9 @@ class ThreedFront(BaseDataset):
                 _angle_min = np.minimum(f.z_angle, _angle_min)
                 _angle_max = np.maximum(f.z_angle, _angle_max)
             # normalize door/window and walls
-            extras = [e for e in s.extras if e.model_type in ["door", "window", "wall"]]
+            extras = [e for e in s.extras if e.model_type in ["door", "window"]]
             for e in extras:
-                # print(f'********************* e.label: {e.label} *********************')
+                print(f'********************* e.label: {e.label} *********************')
 
                 centroid = self._centroid(e, -s.centroid)
                 _centroid_min = np.minimum(centroid, _centroid_min)

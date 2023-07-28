@@ -1,4 +1,9 @@
 import os
+import sys
+
+sys.path.append('.')
+sys.path.append('..')
+
 import argparse
 
 import json
@@ -96,10 +101,6 @@ def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
             # only use z angle, rad
             transform_matrix[0:3, 0:3] = heading2rotmat(box['angles'][-1])
             box_trimesh_fmt = trimesh.creation.box(box_lengths, transform_matrix)
-            color = list(COLOR_TO_LABEL.keys())[list(COLOR_TO_LABEL.values()).index(box['class'])]
-            box_trimesh_fmt.visual.face_colors = np.random.uniform(0, 1, (len(box_trimesh_fmt.faces), 3))
-            # for facet in box_trimesh_fmt.facets:
-            #     box_trimesh_fmt.visual.face_colors[facet] = [color[0], color[1], color[2], 255]
             return box_trimesh_fmt
 
         scene = trimesh.scene.Scene()
@@ -179,19 +180,6 @@ def vis_color_pointcloud(rgb_img_filepath, depth_img_filepath, saved_color_pcl_f
     return o3d_pointcloud
 
 
-def normalize_bbox_size(object_bbox_dict_lst: List[Dict]):
-    """ normalize bbox size to [0, 1] """
-    assert len(object_bbox_dict_lst) > 0, 'object_bbox_dict_lst is empty!!!'
-    object_bbox_dict_lst = copy.deepcopy(object_bbox_dict_lst)
-    object_bbox_dict_lst = sorted(object_bbox_dict_lst, key=lambda x: np.linalg.norm(x['size']))
-    min_bbox_size = np.array(object_bbox_dict_lst[0]['size'])
-    max_bbox_size = np.array(object_bbox_dict_lst[-1]['size'])
-    for object_bbox_dict in object_bbox_dict_lst:
-        object_bbox_dict['size'] = ((np.array(object_bbox_dict['size'] - min_bbox_size) / max_bbox_size) * 2 -
-                                    1).tolist()
-    return object_bbox_dict_lst
-
-
 def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: Dict[str, List] = None):
     """ parse object bounding box in room
 
@@ -236,7 +224,7 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
             bbox_center[:, 2] < layout_bbox_min[2] or bbox_center[:, 2] > layout_bbox_max[2]:
             cloest_pts, distance, faces_idx = room_layout_mesh.nearest.on_surface(bbox_center)
             # print('%s distance %f to room ' % (bbox['class'], distance))
-            if distance < margin_dist and bbox['class'] in ['door', 'window', 'picture', 'curtain']:
+            if (distance < margin_dist).any() and bbox['class'] in ['door', 'window', 'picture', 'curtain']:
                 return True
             return False
         else:
@@ -291,9 +279,6 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
 
     if len(obj_bbox_lst) < ST3D_LIVINGROOM_MIN_LEN:
         return None, None, None, None
-
-    # normalize bbox size to [-1, 1]
-    # obj_bbox_normal_lst = normalize_bbox_size(obj_bbox_normal_lst)
 
     obj_bbox_dicts = {}
     obj_bbox_dicts['objects'] = obj_bbox_lst
@@ -645,14 +630,14 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
             )
             print(f'room {room_str} scene_desc_text: {scene_desc_text}')
 
-            out_img_dir = os.path.join(out_dir, room_type_str, 'img')
-            out_cord_dir = os.path.join(out_dir, room_type_str, 'label_cor')
-            out_cam_pos_dir = os.path.join(out_dir, room_type_str, 'cam_pos')
-            out_room_type_dir = os.path.join(out_dir, room_type_str, 'room_type')
-            out_bbox_3d_dir = os.path.join(out_dir, room_type_str, 'bbox_3d')
-            out_quad_wall_dir = os.path.join(out_dir, room_type_str, 'quad_walls')
-            out_text_desc_dir = os.path.join(out_dir, room_type_str, 'text_desc')
-            out_text_emb_dir = os.path.join(out_dir, room_type_str, 'text_desc_emb')
+            out_img_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'img')
+            out_cord_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'label_cor')
+            out_cam_pos_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'cam_pos')
+            out_room_type_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'room_type')
+            out_bbox_3d_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'bbox_3d')
+            out_quad_wall_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'quad_walls')
+            out_text_desc_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'text_desc')
+            out_text_emb_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'text_desc_emb')
             os.makedirs(out_img_dir, exist_ok=True)
             os.makedirs(out_cord_dir, exist_ok=True)
             os.makedirs(out_cam_pos_dir, exist_ok=True)

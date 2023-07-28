@@ -5,6 +5,6 @@ NUM_GPUS=2
 
 # python scripts/st3d_room_layout_train.py --data_dir /data/dataset/Structured3D/preprocessed/st3d_train_full_raw_light/ $MODEL_FLAGS $DIFFUSION_FLAGS $TRAIN_FLAGS
 
-mpiexec -n $NUM_GPUS python scripts/threed_front_room_layout_train.py --data_dir /mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/bedroom/ $MODEL_FLAGS $DIFFUSION_FLAGS $TRAIN_FLAGS
+mpiexec -n $NUM_GPUS python scripts/threed_front_room_layout_train.py --data_dir /data/dataset/3D_FRONT_FUTURE/train/bedroom/ $MODEL_FLAGS $DIFFUSION_FLAGS $TRAIN_FLAGS
 
 # python scripts/image_sample.py --model_path log/openai-2023-05-17-11-01-53-885622/ema_0.9999_0100000.pt $MODEL_FLAGS $DIFFUSION_FLAGS

@@ -1,6 +1,10 @@
 import os
 import json
 import argparse
+import sys
+
+sys.path.append('.')
+sys.path.append('..')
 
 import cv2
 import numpy as np
