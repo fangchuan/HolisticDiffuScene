@@ -293,7 +293,7 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
             wall_dict = {}
 
             wall_dict['center'] = quad_wall['center']
-            wall_dict['size'] = [quad_wall['width'], 0.05, quad_wall['height']]
+            wall_dict['size'] = [quad_wall['width'], 0.01, quad_wall['height']]
             normal = quad_wall['normal']
             # print(f'wall normal: {normal}')
             # The direction of all camera is always along the negative y-axis.
@@ -303,21 +303,19 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, quad_walls_dict: 
                 angle = np.pi / 2 if normal[0] > 0 else -np.pi / 2
 
             wall_dict['angles'] = [0, 0, angle]
-            rotation_matrix = euler_angle_to_matrix(wall_dict['angles'])
-            recovered_normal = rotation_matrix.dot(np.array([0, -1, 0]))
-            # print(f'recovered normal: {recovered_normal}')
-            # print(f' recovered normal is {np.allclose(np.array(normal), recovered_normal, atol=1e-3)}')
             wall_dict['class'] = 'wall'
             wall_lst.append(wall_dict)
         debug_lst.extend(wall_lst)
 
-    anno_img = vis_objs3d(image=rgb_img,
+    bg_img = np.zeros_like(rgb_img)
+    anno_img = vis_objs3d(image=bg_img,
                           v_bbox3d=debug_lst,
                           camera_position=cam_position,
+                          color_to_labels=COLOR_TO_LABEL,
                           b_show_axes=False,
-                          b_show_centroid=False,
+                          b_show_centroid=True,
                           b_show_bbox3d=True,
-                          b_show_info=True,
+                          b_show_info=False,
                           thickness=2)
 
     scene_mesh = vis_scene_mesh(room_layout_mesh, debug_lst, room_layout_bbox=None)
@@ -560,7 +558,7 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
 
     # clip model
     glove_model = FrozenCLIPEmbedder(device='cuda')
-    # glove_model = torchtext.vocab.GloVe(name="6B", dim=50, cache='.vector_cache')
+
     for scene_id in tqdm(scene_ids):
 
         if scene_id in INVALID_SCENES_LST:
@@ -638,6 +636,7 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
             out_quad_wall_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'quad_walls')
             out_text_desc_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'text_desc')
             out_text_emb_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'text_desc_emb')
+            out_sem_bbox_img_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'sem_bbox_img')
             os.makedirs(out_img_dir, exist_ok=True)
             os.makedirs(out_cord_dir, exist_ok=True)
             os.makedirs(out_cam_pos_dir, exist_ok=True)
@@ -646,6 +645,7 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
             os.makedirs(out_quad_wall_dir, exist_ok=True)
             os.makedirs(out_text_desc_dir, exist_ok=True)
             os.makedirs(out_text_emb_dir, exist_ok=True)
+            os.makedirs(out_sem_bbox_img_dir, exist_ok=True)
             target_img_path = os.path.join(out_img_dir, '%s_%s.png' % (scene_id, room_id))
             target_cor_path = os.path.join(out_cord_dir, '%s_%s.txt' % (scene_id, room_id))
             target_cam_pos_path = os.path.join(out_cam_pos_dir, '%s_%s.txt' % (scene_id, room_id))
@@ -653,6 +653,7 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
             target_bbox_3d_path = os.path.join(out_bbox_3d_dir, '%s_%s.json' % (scene_id, room_id))
             target_bbox_3d_normal_path = os.path.join(out_bbox_3d_dir, '%s_%s_normalized.json' % (scene_id, room_id))
             target_bbox_3d_vis_path = os.path.join(out_bbox_3d_dir, '%s_%s.png' % (scene_id, room_id))
+            target_sem_bbox_img_path = os.path.join(out_sem_bbox_img_dir, '%s_%s.png' % (scene_id, room_id))
             target_bbox_3d_mesh_path = os.path.join(out_bbox_3d_dir, '%s_%s.ply' % (scene_id, room_id))
             target_quad_wall_path = os.path.join(out_quad_wall_dir, '%s_%s.json' % (scene_id, room_id))
             target_quad_wall_normalized_path = os.path.join(out_quad_wall_dir,
@@ -702,7 +703,9 @@ def prepare_dataset(raw_dataset_dir, target_room_type, scene_ids, out_dir, b_sav
 
                 if b_save_debug_files:
                     # visualize debug bbox img
-                    cv2.imwrite(target_bbox_3d_vis_path, debug_bbox_img)
+                    # cv2.imwrite(target_bbox_3d_vis_path, debug_bbox_img)
+                    # visualize semantic bbox img
+                    cv2.imwrite(target_sem_bbox_img_path, debug_bbox_img)
                     # print(f'save visualization for object bbox annotation of {room_id_str}')
                     debug_bbox_trimesh.export(target_bbox_3d_mesh_path)
 

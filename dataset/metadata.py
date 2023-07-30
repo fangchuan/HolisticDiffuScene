@@ -1142,7 +1142,32 @@ ST3D_BEDROOM_FURNITURE = [
     'night stand', 'desk', 'counter', 'curtain', 'door', 'sofa', 'mirror', 'window', 'cabinet', 'lamp', 'wall', 'floor',
     'empty'
 ]
-
+ST3D_BEDROOM_FURNITURE_LABEL_TO_COLOR = {
+    'shelves': (1, 1, 1),
+    'television': (2, 2, 2),
+    'dresser': (3, 3, 3),
+    'picture': (4, 4, 4),
+    'sink': (5, 5, 5),
+    'fridge': (6, 6, 6),
+    'bathtub': (7, 7, 7),
+    'pillow': (8, 8, 8),
+    'chair': (9, 9, 9),
+    'bed': (10, 10, 10),
+    'table': (11, 11, 11),
+    'night stand': (12, 12, 12),
+    'desk': (13, 13, 13),
+    'counter': (14, 14, 14),
+    'curtain': (15, 15, 15),
+    'door': (16, 16, 16),
+    'sofa': (17, 17, 17),
+    'mirror': (18, 18, 18),
+    'window': (19, 19, 19),
+    'cabinet': (20, 20, 20),
+    'lamp': (21, 21, 21),
+    'wall': (22, 22, 22),
+    'floor': (23, 23, 23),
+    'empty': (24, 24, 24)
+}
 ST3D_BEDROOM_FURNITURE_CNTS = {
     'lamp': 7098,
     'cabinet': 5868,

@@ -219,6 +219,7 @@ def wrapped_line(image, p1, p2, colour, thickness, lineType=cv2.LINE_AA):
 def vis_objs3d(image,
                v_bbox3d,
                camera_position,
+               color_to_labels,
                b_show_axes=False,
                b_show_centroid=False,
                b_show_bbox3d=True,
@@ -247,7 +248,7 @@ def vis_objs3d(image,
     def draw_centroid(image, centroid, color, thickness=2):
         color = (np.ones(3, dtype=np.uint8) * color).tolist()
         normal_centroid = centroid / np.linalg.norm(centroid)
-        center = cam3d2pix(normal_centroid)
+        center = cam3d2pix(normal_centroid, image)
         cv2.circle(image, tuple(center.astype(np.int32).tolist()), 5, color, thickness=thickness, lineType=cv2.LINE_AA)
 
     def draw_bdb3d(image, bdb3d, color, thickness=2):
@@ -303,7 +304,13 @@ def vis_objs3d(image,
         bdb3d = v_bbox3d[i_obj]
         obj_label = bdb3d['class']
 
-        color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+        if color_to_labels is not None:
+            labels_lst = list(color_to_labels.values())
+            colors_lst = list(color_to_labels.keys())
+            color = colors_lst[labels_lst.index(obj_label)]
+        else:
+            color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+
         centroid = np.array(bdb3d['center'])
         sizes = np.array(bdb3d['size'])
         rotation = euler_angle_to_matrix(bdb3d['angles'])
