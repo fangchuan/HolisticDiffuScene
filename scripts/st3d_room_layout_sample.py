@@ -25,7 +25,7 @@ from improved_diffusion.script_util import (
     args_to_dict,
 )
 
-from dataset.st3d_dataset import PanoCorBoundDataset
+from dataset.st3d_dataset import ST3DDataset
 from improved_diffusion.clip_util import FrozenCLIPEmbedder
 
 TEXT_PROMPT_LST = [
@@ -50,7 +50,7 @@ def main():
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
     text_encoder = FrozenCLIPEmbedder(device=dist_util.dev())
-    dataset = PanoCorBoundDataset(root_dir=args.data_dir, max_text_sentences=4)
+    dataset = ST3DDataset(root_dir=args.data_dir, max_text_sentences=4)
 
     logger.log("creating UNet model and diffusion model ...")
     model, diffusion = create_model_and_diffusion(**args_to_dict(args, model_and_diffusion_defaults().keys()))

@@ -19,7 +19,7 @@ from improved_diffusion.script_util import (
     add_dict_to_argparser,
     args_to_dict,
 )
-from dataset.st3d_dataset import PanoCorBoundDataset
+from dataset.st3d_dataset import ST3DDataset
 from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE
 import datetime
 
@@ -42,7 +42,7 @@ def main():
     model.to(dist_util.dev())
     model.eval()
 
-    dataset = PanoCorBoundDataset(root_dir=args.dataset_dir, flip=False, rotate=False, gamma=False, return_path=True)
+    dataset = ST3DDataset(root_dir=args.dataset_dir, flip=False, rotate=False, gamma=False, return_path=True)
 
     # Generate synthetic rooms with the pre-trained model
     layout_channel_size = args.layout_channels

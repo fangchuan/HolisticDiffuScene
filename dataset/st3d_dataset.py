@@ -16,7 +16,7 @@ import json
 import trimesh
 
 import torch.utils.data as data
-from . import panostretch
+from misc import panostretch
 from .metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, \
 ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN,\
 ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_ROOM_QUAD_WALL_MAX_LEN
@@ -681,7 +681,7 @@ def ordered_bboxes_with_class_frequencies(room_type: int, object_bbox_lst: List[
     elif room_type == ROOM_TYPE_DICT['dining room']:
         class_freq_dict = ST3D_DININGROOM_FURNITURE_CNTS
 
-    bbox_size_lst = np.array([(np.array(bbox['size']) + 1) * 0.5 for bbox in object_bbox_lst])
+    bbox_size_lst = np.array([np.array(bbox['size']) for bbox in object_bbox_lst])
     # print(f'bbox_size_lst: {bbox_size_lst}')
     class_freqs_lst = np.array([[class_freq_dict[bbox['class']]] for bbox in object_bbox_lst])
     # print('class_labels_lst: {}, class_freqs_lst: {}'.format([bbox['class'] for bbox in object_bbox_lst], class_freqs_lst))
@@ -756,7 +756,7 @@ def complete_stop_in_sentence(sentence: str) -> str:
     return sentence
 
 
-class PanoCorBoundDataset(data.Dataset):
+class ST3DDataset(data.Dataset):
     '''
     dataset for layout: PanoCoordinatesBoundary
     '''
@@ -879,7 +879,7 @@ class PanoCorBoundDataset(data.Dataset):
             bbox_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=bbox_class_label)
             bbox_centroid = np.array(obj_bbox['center'], np.float32)
             bbox_centroid = TranslationEncode(bbox_centroid)
-            bbox_size = (np.array(obj_bbox['size'], np.float32) + 1) * 0.5
+            bbox_size = np.array(obj_bbox['size'], np.float32)
             bbox_size = SizeEncode(bbox_size)
             # only use Z angle
             bbox_angle = np.array(obj_bbox['angles'], np.float32)

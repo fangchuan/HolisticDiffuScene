@@ -181,3 +181,5 @@ We would like to thank Kujiale.com for providing the database of house designs a
 24. 加入text_prompt, 无input_encoding,无attn_mask训练: openai-2023-07-16-21-06-58-942027: 只在与训练数据text prompt相似的文本上有一定控制能力, 但是在随机输入的文本对生成结果几乎看不出来影响, 缺乏CLIP-Score;
 25. 无input_encoding, 有attn_mask训练: openai-2023-07-18-00-57-10-419951: 训练36h, 25W步, 生成效果不如openai-2023-07-16-17-10-51-562054,废弃;
 26. text-condition, 无input_encoding, 无attn_mask训练: openai-2023-07-19-18-09-09-644965: 训练40h, 13W步, 在ST3D测试集上效果明显;
+27. 3D_FRONT数据集: unconditional训练, 无input_encoding, 无attn_mask, openai-2023-07-30-20-12-28-373197训练效果明显;
+28. 3D_FRONT数据集: text condition训练, 无input_encoding, 无attn_mask, openai-2023-07-30-21-29-55-294343训练, 还未在测试集上测试，只在随机文本上测试, 生成效果还凑活; 

@@ -89,7 +89,7 @@ INVALID_SCENES_LST = [
     'scene_00706', 'scene_01155', 'scene_01714', 'scene_01816', 'scene_03398', 'scene_01192', 'scene_01852'
 ]
 
-INVALID_ROOMS_LST = [
+INVALID_ROOMS_LST_OLD = [
     'scene_00212_494',
     'scene_00403_11105',
     'scene_00411_918447',
@@ -1131,6 +1131,34 @@ INVALID_ROOMS_LST = [
     'scene_03494_2534',
 ]
 
+INVALID_ROOMS_LST = [
+    'scene_00212_494',
+    'scene_00403_11105',
+    'scene_00411_918447',
+    'scene_00810_1817',
+    'scene_01209_4566',
+    'scene_01410_180208',
+    'scene_01815_1429',
+    'scene_01815_237',
+    'scene_02011_2003',
+    'scene_02001_4144',
+    'scene_02040_856',
+    'scene_02061_227',
+    'scene_02069_1277',
+    'scene_02212_1058346',
+    'scene_02212_175980',
+    'scene_02411_26703128',
+    'scene_02411_706561',
+    'scene_02608_345',
+    'scene_02609_1419',
+    'scene_00014_1083',
+    'scene_00014_947',
+    'scene_00212_377',
+    'scene_01209_5767',
+    'scene_01210_277',
+    'scene_01608_270286',
+    'scene_01608_270288',
+]
 # max number of walls in a room
 ST3D_ROOM_QUAD_WALL_MAX_LEN = 10
 
@@ -1138,8 +1166,8 @@ ST3D_BEDROOM_MIN_LEN = 3
 ST3D_BEDROOM_MAX_LEN = 13
 # 24
 ST3D_BEDROOM_FURNITURE = [
-    'shelves', 'television', 'dresser', 'picture', 'sink', 'fridge', 'bathtub', 'pillow', 'chair', 'bed', 'table',
-    'night stand', 'desk', 'counter', 'curtain', 'door', 'sofa', 'mirror', 'window', 'cabinet', 'lamp', 'wall', 'floor',
+    'picture', 'window', 'table', 'toilet', 'lamp', 'desk', 'television', 'fridge', 'shelves', 'dresser', 'bed', 'sofa',
+    'bathtub', 'sink', 'night stand', 'mirror', 'counter', 'chair', 'pillow', 'person', 'cabinet', 'bookshelf', 'wall',
     'empty'
 ]
 ST3D_BEDROOM_FURNITURE_LABEL_TO_COLOR = {
@@ -1168,7 +1196,7 @@ ST3D_BEDROOM_FURNITURE_LABEL_TO_COLOR = {
     'floor': (23, 23, 23),
     'empty': (24, 24, 24)
 }
-ST3D_BEDROOM_FURNITURE_CNTS = {
+ST3D_BEDROOM_FURNITURE_CNTS_OLD = {
     'lamp': 7098,
     'cabinet': 5868,
     'night stand': 4890,
@@ -1185,11 +1213,41 @@ ST3D_BEDROOM_FURNITURE_CNTS = {
     'table': 461,
     'sofa': 409,
     'shelves': 338,
+    'bookshelf': 319,
     'mirror': 149,
     'fridge': 9,
     'counter': 5,
     'bathtub': 2,
-    'sink': 1
+    'sink': 1,
+    'toilet': 1,
+    'person': 1,
+}
+
+ST3D_BEDROOM_FURNITURE_CNTS = {
+    "lamp": 6152,
+    "night stand": 5081,
+    "cabinet": 5025,
+    "bed": 4293,
+    "door": 4126,
+    "window": 3937,
+    "picture": 3781,
+    "curtain": 3715,
+    "chair": 2231,
+    "television": 1712,
+    "desk": 1206,
+    "pillow": 1069,
+    "dresser": 552,
+    "table": 550,
+    "shelves": 307,
+    "sofa": 230,
+    "mirror": 128,
+    "counter": 5,
+    "person": 3,
+    "bookshelf": 1,
+    "toilet": 1,
+    "bathtub": 1,
+    "fridge": 1,
+    "sink": 1
 }
 
 # # mean room layout size

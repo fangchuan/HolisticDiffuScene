@@ -22,7 +22,7 @@ from improved_diffusion.script_util import (
     add_dict_to_argparser,
 )
 from improved_diffusion.train_util import TrainLoop
-from dataset.st3d_dataset import PanoCorBoundDataset
+from dataset.st3d_dataset import ST3DDataset
 
 
 def make_dataloader_cycle(iterable):
@@ -47,10 +47,10 @@ def main():
     schedule_sampler = create_named_schedule_sampler(args.schedule_sampler, diffusion_model)
 
     logger.log("creating data loader...")
-    train_dataset = PanoCorBoundDataset(root_dir=args.data_dir,
-                                        max_text_sentences=4,
-                                        shard=MPI.COMM_WORLD.Get_rank(),
-                                        num_shards=MPI.COMM_WORLD.Get_size())
+    train_dataset = ST3DDataset(root_dir=args.data_dir,
+                                max_text_sentences=4,
+                                shard=MPI.COMM_WORLD.Get_rank(),
+                                num_shards=MPI.COMM_WORLD.Get_size())
     logger.info(f"train_dataset length: {len(train_dataset)}")
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1, drop_last=True)
 

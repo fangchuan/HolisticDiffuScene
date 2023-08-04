@@ -190,6 +190,7 @@ class ThreedFrontDataset(data.Dataset):
             shard=0,  #  support parallel training
             num_shards=1):
         self.img_dir = os.path.join(root_dir, 'img')
+        
         # quad walls folder
         self.quad_wall_dir = os.path.join(root_dir, 'quad_walls')
         # room centroid
@@ -216,6 +217,15 @@ class ThreedFrontDataset(data.Dataset):
 
         self._check_dataset()
 
+        self.local_img_lst = []
+        self.local_text_lst = []
+        self.local_text_emb_lst = []
+        self.local_room_type_lst = []
+        self.local_obj_bbox_lst = []
+        self.local_wall_bbox_lst = []
+
+        self._preload_()
+
     def _check_dataset(self):
         for fname in self.json_fnames:
             assert os.path.isfile(os.path.join(self.bbox_3d_dir,
@@ -224,46 +234,76 @@ class ThreedFrontDataset(data.Dataset):
     def __len__(self):
         return len(self.local_img_fnames)
 
-    def __getitem__(self, idx: int) -> List:
-        """retrieve scene data
-
-        Args:
-            idx (int): panorama/room idx
-
-        Returns:
-            List: 
+    def _preload_(self):
+        """pre-load all data
         """
+        for idx in range(len(self)):
+            # self.local_img_lst.append(self._load_image(idx))
 
-        # read camera position file
-        # cam_pos_lst = []
-        # cam_pos_filepath = os.path.join(self.cam_pos_dir, self.local_txt_fnames[idx])
-        # with open(cam_pos_filepath) as f:
-        #     cam_pos_lst = np.array([line.strip().split() for line in f if line.strip()], np.float32)
-        # assert len(cam_pos_lst) == 1, cam_pos_filepath
+            # room_type_filepath = os.path.join(self.room_type_dir, self.local_txt_fnames[idx])
+            # with open(room_type_filepath) as f:
+            #     room_type = f.readline().strip()
+            #     assert room_type in ROOM_TYPE_DICT.keys(), room_type_filepath
+            #     room_type = ROOM_TYPE_DICT[room_type]
+            room_type = ROOM_TYPE_DICT['bedroom']
+            self.local_room_type_lst.append(room_type)
 
-        # # read room type file
-        # room_type = None
-        # room_type_filepath = os.path.join(self.room_type_dir, self.local_txt_fnames[idx])
-        # with open(room_type_filepath) as f:
-        #     room_type = f.readline().strip()
-        #     assert room_type in ROOM_TYPE_DICT.keys(), room_type_filepath
-        #     room_type = ROOM_TYPE_DICT[room_type]
-        room_type = ROOM_TYPE_DICT['bedroom']
 
-        # read room textual description file
+            self.local_text_lst.append(self._load_text(idx))
+
+            # read text embedding file
+            self.local_text_emb_lst.append(self._load_text_embedding(idx))
+
+            # read object bbox file
+            self.local_obj_bbox_lst.append(self._load_object_bbox(idx, room_type=room_type))
+            self.local_wall_bbox_lst.append(self._load_wall_bbox(idx, room_type=room_type))
+
+    def _load_text(self, idx: int) -> str:
         text_desc_lst = []
-        text_emb = np.array([])
-        # text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx])
-        # with open(text_desc_filepath) as f:
-        #     text_desc = f.readline()
-        #     text_desc_lst = text_desc.strip().split('. ')
-        #     text_desc_lst = [complete_stop_in_sentence(sen) for sen in text_desc_lst if len(sen)]
-        # # print(text_desc_lst)
-        # # read text embedding file
-        # text_emb_filepath = os.path.join(self.text_emb_dir, self.local_npy_fnames[idx])
-        # text_emb = np.load(text_emb_filepath).astype(np.float32)
-        # # print(f'text_emb.shape: {text_emb.shape}')
+        text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx])
+        with open(text_desc_filepath) as f:
+            text_desc = f.readline()
+            text_desc_lst = text_desc.strip().split('. ')
+            text_desc_lst = [complete_stop_in_sentence(sen) for sen in text_desc_lst if len(sen)]
+        text_desc_len = len(text_desc_lst)
+        if text_desc_len:
+            if text_desc_len > self.max_text_sentences:
+                text_desc_lst = text_desc_lst[:self.max_text_sentences]
+            text_prompt = ''.join(text_desc_lst)
+        return text_prompt if text_desc_len else 'The room is empty.'
 
+    def _load_text_embedding(self, idx: int) -> np.ndarray:
+        # read text embedding file
+        text_emb_filepath = os.path.join(self.text_emb_dir, self.local_npy_fnames[idx])
+        text_emb = np.load(text_emb_filepath).astype(np.float32)
+        return np.squeeze(text_emb, axis=0)
+    
+    def _load_wall_bbox(self, idx: int, room_type:int=2) -> np.ndarray:
+        # read wall bbox
+        wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_json_fnames[idx])
+        wall_bbox_lst = []
+        with open(wall_bbox_filepath, 'r') as f:
+            wall_bbox_dicts = json.load(f)
+            wall_bbox_dicts = wall_bbox_dicts['walls']
+        for wall_bbox in wall_bbox_dicts:
+            wall_class_label = wall_bbox['class'].lower()
+            wall_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=wall_class_label)
+            wall_centroid = np.array(wall_bbox['center'], np.float32)
+            wall_centroid = TranslationEncode(wall_centroid)
+            wall_size = np.array([wall_bbox['width'], 0.01, wall_bbox['height']], np.float32)
+            wall_size = SizeEncode(wall_size)
+            wall_angle = np.array(wall_bbox['angles'], np.float32)
+            wall_angle = RotationEncode(wall_angle)
+            wall_property_encode = np.concatenate([wall_class, wall_centroid, wall_size, wall_angle], axis=-1)
+            # print(f'wall_property_encode: {wall_property_encode}')
+            wall_property_encode_dim = wall_property_encode.shape[-1]
+            wall_bbox_lst.append(wall_property_encode)
+        wall_bbox_lst = padding_and_reshape_wall_bbox(room_type=room_type,
+                                                      wall_bbox_lst=np.array(wall_bbox_lst),
+                                                      bbox_dim=wall_property_encode_dim)
+        return wall_bbox_lst
+    
+    def _load_object_bbox(self, idx: int, room_type:int =2) -> np.ndarray:
         # read object bbox file
         object_bbox_filepath = os.path.join(self.bbox_3d_dir, self.local_json_fnames[idx])
         object_bbox_lst = []
@@ -291,29 +331,104 @@ class ThreedFrontDataset(data.Dataset):
         object_bbox_lst = padding_and_reshape_object_bbox(room_type=room_type,
                                                           object_bbox_lst=np.array(object_bbox_lst),
                                                           bbox_dim=bbox_property_encode_dim)
+        return object_bbox_lst
 
-        # read wall bbox
-        wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_json_fnames[idx])
-        wall_bbox_lst = []
-        with open(wall_bbox_filepath, 'r') as f:
-            wall_bbox_dicts = json.load(f)
-            wall_bbox_dicts = wall_bbox_dicts['walls']
-        for wall_bbox in wall_bbox_dicts:
-            wall_class_label = wall_bbox['class'].lower()
-            wall_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=wall_class_label)
-            wall_centroid = np.array(wall_bbox['center'], np.float32)
-            wall_centroid = TranslationEncode(wall_centroid)
-            wall_size = np.array([wall_bbox['width'], 0.01, wall_bbox['height']], np.float32)
-            wall_size = SizeEncode(wall_size)
-            wall_angle = np.array(wall_bbox['angles'], np.float32)
-            wall_angle = RotationEncode(wall_angle)
-            wall_property_encode = np.concatenate([wall_class, wall_centroid, wall_size, wall_angle], axis=-1)
-            # print(f'wall_property_encode: {wall_property_encode}')
-            wall_property_encode_dim = wall_property_encode.shape[-1]
-            wall_bbox_lst.append(wall_property_encode)
-        wall_bbox_lst = padding_and_reshape_wall_bbox(room_type=room_type,
-                                                      wall_bbox_lst=np.array(wall_bbox_lst),
-                                                      bbox_dim=wall_property_encode_dim)
+    def __getitem__(self, idx: int) -> List:
+        """retrieve scene data
+
+        Args:
+            idx (int): panorama/room idx
+
+        Returns:
+            List: 
+        """
+
+        # read camera position file
+        # cam_pos_lst = []
+        # cam_pos_filepath = os.path.join(self.cam_pos_dir, self.local_txt_fnames[idx])
+        # with open(cam_pos_filepath) as f:
+        #     cam_pos_lst = np.array([line.strip().split() for line in f if line.strip()], np.float32)
+        # assert len(cam_pos_lst) == 1, cam_pos_filepath
+
+        # # read room type file
+        # room_type = None
+        # room_type_filepath = os.path.join(self.room_type_dir, self.local_txt_fnames[idx])
+        # with open(room_type_filepath) as f:
+        #     room_type = f.readline().strip()
+        #     assert room_type in ROOM_TYPE_DICT.keys(), room_type_filepath
+        #     room_type = ROOM_TYPE_DICT[room_type]
+        # room_type = ROOM_TYPE_DICT['bedroom']
+
+        # # read room textual description file
+        # text_desc_lst = []
+        # text_emb = np.array([])
+        # text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx])
+        # with open(text_desc_filepath) as f:
+        #     text_desc = f.readline()
+        #     text_desc_lst = text_desc.strip().split('. ')
+        #     text_desc_lst = [complete_stop_in_sentence(sen) for sen in text_desc_lst if len(sen)]
+        # # print(text_desc_lst)
+        # # read text embedding file
+        # text_emb_filepath = os.path.join(self.text_emb_dir, self.local_npy_fnames[idx])
+        # text_emb = np.load(text_emb_filepath).astype(np.float32)
+        # # print(f'text_emb.shape: {text_emb.shape}')
+
+        # # read object bbox file
+        # object_bbox_filepath = os.path.join(self.bbox_3d_dir, self.local_json_fnames[idx])
+        # object_bbox_lst = []
+        # with open(object_bbox_filepath) as f:
+        #     object_bbox_dicts = json.load(f)
+        #     object_bbox_dicts = object_bbox_dicts['objects']
+        # # sort object bbox by class frequency and bbox size
+        # object_bbox_dicts = ordered_bboxes_with_class_frequencies(room_type=room_type,
+        #                                                           object_bbox_lst=object_bbox_dicts)
+
+        # for obj_bbox in object_bbox_dicts:
+        #     bbox_class_label = obj_bbox['class'].lower()
+        #     bbox_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=bbox_class_label)
+        #     bbox_centroid = np.array(obj_bbox['center'], np.float32)
+        #     bbox_centroid = TranslationEncode(bbox_centroid)
+        #     bbox_size = np.array(obj_bbox['size'], np.float32)
+        #     bbox_size = SizeEncode(bbox_size)
+        #     # only use Z angle
+        #     bbox_angle = np.array(obj_bbox['angles'], np.float32)
+        #     bbox_angle = RotationEncode(bbox_angle)
+        #     bbox_property_encode = np.concatenate([bbox_class, bbox_centroid, bbox_size, bbox_angle], axis=-1)
+        #     # print(f'bbox_property_encode: {bbox_property_encode}')
+        #     bbox_property_encode_dim = bbox_property_encode.shape[-1]
+        #     object_bbox_lst.append(bbox_property_encode)
+        # object_bbox_lst = padding_and_reshape_object_bbox(room_type=room_type,
+        #                                                   object_bbox_lst=np.array(object_bbox_lst),
+        #                                                   bbox_dim=bbox_property_encode_dim)
+
+        # # read wall bbox
+        # wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_json_fnames[idx])
+        # wall_bbox_lst = []
+        # with open(wall_bbox_filepath, 'r') as f:
+        #     wall_bbox_dicts = json.load(f)
+        #     wall_bbox_dicts = wall_bbox_dicts['walls']
+        # for wall_bbox in wall_bbox_dicts:
+        #     wall_class_label = wall_bbox['class'].lower()
+        #     wall_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=wall_class_label)
+        #     wall_centroid = np.array(wall_bbox['center'], np.float32)
+        #     wall_centroid = TranslationEncode(wall_centroid)
+        #     wall_size = np.array([wall_bbox['width'], 0.01, wall_bbox['height']], np.float32)
+        #     wall_size = SizeEncode(wall_size)
+        #     wall_angle = np.array(wall_bbox['angles'], np.float32)
+        #     wall_angle = RotationEncode(wall_angle)
+        #     wall_property_encode = np.concatenate([wall_class, wall_centroid, wall_size, wall_angle], axis=-1)
+        #     # print(f'wall_property_encode: {wall_property_encode}')
+        #     wall_property_encode_dim = wall_property_encode.shape[-1]
+        #     wall_bbox_lst.append(wall_property_encode)
+        # wall_bbox_lst = padding_and_reshape_wall_bbox(room_type=room_type,
+        #                                               wall_bbox_lst=np.array(wall_bbox_lst),
+        #                                               bbox_dim=wall_property_encode_dim)
+
+        room_type = self.local_room_type_lst[idx]
+        wall_bbox_lst = self.local_wall_bbox_lst[idx]
+        object_bbox_lst = self.local_obj_bbox_lst[idx]
+        text_prompt = self.local_text_lst[idx]
+        text_emb = self.local_text_emb_lst[idx]
 
         assert wall_bbox_lst.shape[-1] == object_bbox_lst.shape[-1]
         out_lst = np.concatenate([wall_bbox_lst, object_bbox_lst], axis=0)
@@ -323,10 +438,10 @@ class ThreedFrontDataset(data.Dataset):
         if room_type is not None:
             cond_dict["y"] = np.array(room_type, dtype=np.int64)
 
-        text_desc_len = len(text_desc_lst)
-        if text_desc_len:
-            if text_desc_len > self.max_text_sentences:
-                text_desc_lst = text_desc_lst[:self.max_text_sentences]
-            cond_dict["text"] = ''.join(text_desc_lst)
-            cond_dict["context"] = np.squeeze(text_emb, axis=0)
+        # text_desc_len = len(text_desc_lst)
+        # if text_desc_len:
+        #     if text_desc_len > self.max_text_sentences:
+        #         text_desc_lst = text_desc_lst[:self.max_text_sentences]
+        cond_dict["text"] = text_prompt
+        cond_dict["context"] = text_emb
         return out_lst, cond_dict

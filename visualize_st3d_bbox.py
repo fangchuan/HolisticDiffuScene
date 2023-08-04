@@ -65,6 +65,7 @@ def visualize_bbox_annotations(rgb_imgs_folderpath, labels_folderpath):
         debug_img = vis_objs3d(image=rgb_img,
                                v_bbox3d=object_annos_dict_lst,
                                camera_position=None,
+                               color_to_labels=None,
                                b_show_axes=False,
                                b_show_centroid=False,
                                b_show_bbox3d=True,
@@ -77,11 +78,11 @@ def visualize_bbox_annotations(rgb_imgs_folderpath, labels_folderpath):
 def parse_args():
     parser = argparse.ArgumentParser(description="Structured3D 3D Bounding Box Visualization")
     parser.add_argument("--rgbs_path",
-                        default="/data/dataset/Structured3D/preprocessed/annotations/livingroom/rgb",
+                        default="/data/dataset/Structured3D/preprocessed/annotations/bedroom/rgb",
                         help="raw dataset path",
                         metavar="DIR")
     parser.add_argument("--labels_path",
-                        default="/data/dataset/Structured3D/preprocessed/annotations/livingroom/labels",
+                        default="/data/dataset/Structured3D/preprocessed/annotations/bedroom/annotated_labels",
                         help="debug folder path for object bbox annotations",
                         metavar="DIR")
     return parser.parse_args()

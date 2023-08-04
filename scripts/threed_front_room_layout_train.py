@@ -52,7 +52,12 @@ def main():
                                        shard=MPI.COMM_WORLD.Get_rank(),
                                        num_shards=MPI.COMM_WORLD.Get_size())
     logger.info(f"train_dataset length: {len(train_dataset)}")
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1, drop_last=True)
+    train_loader = DataLoader(train_dataset,
+                              batch_size=args.batch_size,
+                              shuffle=True,
+                              num_workers=2,
+                              pin_memory=True,
+                              drop_last=True)
 
     logger.log("training...")
     TrainLoop(

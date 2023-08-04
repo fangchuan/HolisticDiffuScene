@@ -21,7 +21,7 @@ import trimesh
 from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE
 from dataset.threed_front.metadata import THREED_FRONT_BEDROOM_FURNITURE, THREED_FRONT_LIBRARY_FURNITURE, THREED_FRONT_LIVINGROOM_FURNITURE
 from dataset.threed_front.threed_future_dataset import ThreedFutureDataset
-from dataset.st3d_dataset import PanoCorBoundDataset, np_coor2xy, np_coor2xy, ROOM_TYPE_DICT
+from dataset.st3d_dataset import ST3DDataset, np_coor2xy, np_coor2xy, ROOM_TYPE_DICT
 from preprocess.prepare_st3d_dataset import vis_scene_mesh
 from misc.equirect_projection import vis_objs3d
 from misc.utils import euler_angle_to_matrix
@@ -275,7 +275,7 @@ if __name__ == "__main__":
     for key, val in vars(args).items():
         print('    {:16} {}'.format(key, val))
 
-    dataset = PanoCorBoundDataset(root_dir=args.root_dir)
+    dataset = ST3DDataset(root_dir=args.root_dir)
     # Showing some information about dataset
     print('len(dataset): {}'.format(len(dataset)))
 

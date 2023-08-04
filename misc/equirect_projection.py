@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.preprocessing import normalize
 from scipy.spatial.transform import Rotation
 from .utils import euler_angle_to_matrix
+from .panostretch import get_cubic_plane_mask
 
 
 def interpolate_line(p1, p2, num=30):
@@ -224,6 +225,7 @@ def vis_objs3d(image,
                b_show_centroid=False,
                b_show_bbox3d=True,
                b_show_info=False,
+               b_show_polygen=False,
                thickness=2):
 
     def draw_line3d(image, p1, p2, color, thickness, quality=30, frame='cam3d'):
@@ -269,8 +271,6 @@ def vis_objs3d(image,
             for l in [0, 1]:
                 for idx1, idx2 in [((0, k, l), (1, k, l)), ((k, 0, l), (k, 1, l)), ((k, l, 0), (k, l, 1))]:
                     draw_line3d(image, corners_box[idx1], corners_box[idx2], color, thickness=thickness, frame='cam3d')
-        # for idx1, idx2 in [(0, 5), (1, 4)]:
-        #     draw_line3d(image, corners[idx1], corners[idx2], color, thickness=thickness, frame='cam3d')
 
     def draw_objinfo(image, bdb3d_centeroid_w, obj_cls_name, color):
         """ draw object name on the top of the object bbox
@@ -297,10 +297,37 @@ def vis_objs3d(image,
                     thickness=1,
                     lineType=cv2.LINE_AA)
 
+    def draw_Poly3d(image, bdb3d, color, object_label=None):
+        bbox_frame = 'camera'
+        if bbox_frame == 'world':
+            centroid = np.array(bdb3d['centroid'])
+            sizes = np.array(bdb3d['dimensions'])
+            rotation = np.array(bdb3d['rotations'])
+            corners = bdb3d_corners_no_order(basis=rotation, centroid=centroid, half_sizes=sizes)
+            # print(f'corners in world frame: {corners}')
+            corners = (corners - camera_position) * 0.001
+        elif bbox_frame == 'camera':
+            corners = bdb3d_corners(bdb3d)
+        # print(f'corners in camera frame: {corners}')
+        corners_box = corners.reshape(-1, 3)
+
+        # get (512,1024) mask for object
+        img_h, img_w = image.shape[:2]
+        object_mask = get_cubic_plane_mask(corners_box, image_w=img_w, image_h=img_h, bbox_class=object_label)
+        image[object_mask > 0] = color
+
     image = image.copy()
-    dis = [np.linalg.norm([o['center']]) for o in v_bbox3d]
-    i_objs = sorted(range(len(dis)), key=lambda k: dis[k])
-    for i_obj in reversed(i_objs):
+    wall_ids = [i for i, o in enumerate(v_bbox3d) if o['class'] == 'wall']
+    # print(f'wall_ids: {wall_ids}')
+    obj_ids = [i for i, o in enumerate(v_bbox3d) if (o['class'] not in ['wall', 'curtain'])]
+    # print(f'obj_ids: {len(obj_ids)}')
+    dis = {id: np.linalg.norm([v_bbox3d[id]['center']]) for id in obj_ids}
+    # print(f'dis: {len(dis)}')
+    obj_ids = sorted(obj_ids, key=lambda k: dis[k], reverse=True)
+
+    i_objs = wall_ids + obj_ids
+    # draw object from far to near, always draw wall at first
+    for i_obj in i_objs:
         bdb3d = v_bbox3d[i_obj]
         obj_label = bdb3d['class']
 
@@ -323,4 +350,6 @@ def vis_objs3d(image,
             draw_bdb3d(image, bdb3d, color, thickness=thickness)
         if b_show_info:
             draw_objinfo(image, centroid, obj_label, color)
+        if b_show_polygen:
+            draw_Poly3d(image, bdb3d, color, object_label=obj_label)
     return image

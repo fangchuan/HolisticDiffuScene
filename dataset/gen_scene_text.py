@@ -34,6 +34,8 @@ def ordered_box_with_size(room_type: str, object_dicts: Dict):
         if obj['class'] not in ['door', 'curtain']:
             object_dict_cp['objects'].append(obj)
 
+    if len(object_dict_cp['objects']) == 0:
+        object_dict_cp['objects'] = object_dicts['objects']
     bbox_size_lst = np.array([np.array(bbox['size']) for bbox in object_dict_cp['objects']])
 
     ordering = np.lexsort(np.hstack([bbox_size_lst]).T)
@@ -213,7 +215,7 @@ def add_glove_embeddings(glove_mode, object_dicts: Dict, max_sentences=3, max_to
     # embed words
     # object_dicts['desc_emb'] = torch.cat([glove_mode[token].unsqueeze(0) for token in tokens]).numpy()
     object_dicts['desc_emb'] = glove_mode.get_text_embeds(sentence).cpu().numpy()
-    print(f'desc_emb.shape: {object_dicts["desc_emb"].shape}')
+    # print(f'desc_emb.shape: {object_dicts["desc_emb"].shape}')
     return object_dicts
 
 
