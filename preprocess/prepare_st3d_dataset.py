@@ -16,19 +16,22 @@ import trimesh
 import copy
 import multiprocessing as mp
 from collections import Counter, OrderedDict
+from PIL import Image
 
 import open3d as o3d
 from panda3d.core import Triangulator
 
 from typing import List, Tuple, Dict, Any, Union
 
-from misc.utils import matrix_to_euler_angles, euler_angle_to_matrix
-from misc.equirect_projection import vis_objs3d
+from misc.utils import (matrix_to_euler_angles, reconstrcut_floor_ceiling_from_quad_walls,
+                        recover_floor_ceiling_points_from_quad_walls, check_mesh_attachment, check_mesh_distance)
+from misc.equirect_projection import vis_objs3d, vis_floor_ceiling
 from dataset.metadata import (INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS, COLOR_TO_LABEL,
-                              ST3D_LIVINGROOM_MIN_LEN, ST3D_BEDROOM_MIN_LEN, ST3D_DININGROOM_MIN_LEN)
+                              COLOR_TO_ADEK_LABEL, ST3D_LIVINGROOM_MIN_LEN, ST3D_BEDROOM_MIN_LEN,
+                              ST3D_DININGROOM_MIN_LEN)
 from dataset.metadata import ROOM_WALLS_LARGER_THAN_10
 
-from dataset.st3d_dataset import get_mesh_from_corners, np_coorx2u, np_coory2v
+from dataset.st3d_dataset import get_mesh_from_corners, np_coorx2u, np_coory2v, find_occlusion, corners_to_1d_boundary
 from dataset.gen_scene_text import get_scene_description
 
 from visualize_mesh import verify_normal, create_spatial_quad_polygen
@@ -64,12 +67,31 @@ The reorganized structure as follow:
 - {out_test_root} ...
 '''
 ALL_SCENE = ['scene_%05d' % i for i in range(0, 3500)]
-TRAIN_SCENE = ['scene_%05d' % i for i in range(0, 3000)]
+TRAIN_SCENE = ['scene_%05d' % i for i in range(608, 3000)]
 TEST_SCENE = ['scene_%05d' % i for i in range(3000, 3500)]
 
 ST3D_BEDROOM_FURNITURES_SET = set()
 ST3D_LIVINGROOM_FURNITURES_SET = set()
 ST3D_DININGROOM_FURNITURES_SET = set()
+
+
+def heading2rotmat(heading_angle_rad):
+    rotmat = np.eye(3)
+    cosval = np.cos(heading_angle_rad)
+    sinval = np.sin(heading_angle_rad)
+    rotmat[0:2, 0:2] = np.array([[cosval, -sinval], [sinval, cosval]])
+    return rotmat
+
+
+def convert_oriented_box_to_trimesh_fmt(box):
+    box_center = box['center']
+    box_lengths = box['size']
+    transform_matrix = np.eye(4)
+    transform_matrix[0:3, 3] = box_center
+    # only use z angle, rad
+    transform_matrix[0:3, 0:3] = heading2rotmat(box['angles'][-1])
+    box_trimesh_fmt = trimesh.creation.box(box_lengths, transform_matrix)
+    return box_trimesh_fmt
 
 
 def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
@@ -85,24 +107,6 @@ def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
                 heading angle of positive Y is 90 degrees.
             out_filename: (string) filename
         """
-
-        def heading2rotmat(heading_angle_rad):
-            rotmat = np.eye(3)
-            cosval = np.cos(heading_angle_rad)
-            sinval = np.sin(heading_angle_rad)
-            rotmat[0:2, 0:2] = np.array([[cosval, -sinval], [sinval, cosval]])
-            return rotmat
-
-        def convert_oriented_box_to_trimesh_fmt(box):
-            box_center = box['center']
-            box_lengths = box['size']
-            transform_matrix = np.eye(4)
-            transform_matrix[0:3, 3] = box_center
-            # only use z angle, rad
-            transform_matrix[0:3, 0:3] = heading2rotmat(box['angles'][-1])
-            box_trimesh_fmt = trimesh.creation.box(box_lengths, transform_matrix)
-            return box_trimesh_fmt
-
         scene = trimesh.scene.Scene()
         for box in scene_bbox:
             scene.add_geometry(convert_oriented_box_to_trimesh_fmt(box))
@@ -180,10 +184,7 @@ def vis_color_pointcloud(rgb_img_filepath, depth_img_filepath, saved_color_pcl_f
     return o3d_pointcloud
 
 
-def parse_bbox_in_room(room_folderpath: str,
-                       room_layout_mesh,
-                       quad_walls_dict: Dict[str, List] = None,
-                       new_labeld_room_filepath: str = None):
+def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, new_labeld_room_filepath: str = None):
     """ parse object bounding box in room
 
     Args:
@@ -220,13 +221,20 @@ def parse_bbox_in_room(room_folderpath: str,
                            layout_bbox_max: np.array):
         bbox_center = np.array([bbox['center']])
         margin_dist = 0.5
+        # if object bbox center is outside of room layout
         if bbox_center[:, 0] < layout_bbox_min[0] or bbox_center[:, 0] > layout_bbox_max[0] or \
             bbox_center[:, 1] < layout_bbox_min[1] or bbox_center[:, 1] > layout_bbox_max[1] or \
             bbox_center[:, 2] < layout_bbox_min[2] or bbox_center[:, 2] > layout_bbox_max[2]:
-            cloest_pts, distance, faces_idx = room_layout_mesh.nearest.on_surface(bbox_center)
-            # print('%s distance %f to room ' % (bbox['class'], distance))
-            if (distance < margin_dist).any() and bbox['class'] in ['door', 'window', 'picture', 'curtain']:
+            obj_bbox_mesh = convert_oriented_box_to_trimesh_fmt(bbox)
+            if check_mesh_attachment(obj_bbox_mesh,
+                                     room_layout_mesh) and bbox['class'] in ['door', 'window', 'picture', 'curtain']:
+                # print(f'{bbox["class"]} is attached to room ')
                 return True
+            else:
+                min_distance = check_mesh_distance(obj_bbox_mesh, room_layout_mesh)
+                if min_distance < margin_dist and bbox['class'] in ['door', 'window', 'picture', 'curtain']:
+                    # print(f'{bbox["class"]} is close to room, distance {min_distance} ')
+                    return True
             return False
         else:
             return True
@@ -320,53 +328,9 @@ def parse_bbox_in_room(room_folderpath: str,
                 obj_bbox_normal_lst.append(obj_bbox_normal_dict)
 
     if len(obj_bbox_lst) < ST3D_LIVINGROOM_MIN_LEN:
-        return None, None, None, None
+        return None, None
 
-    obj_bbox_dicts = {}
-    obj_bbox_dicts['objects'] = obj_bbox_lst
-    obj_bbox_normal_dicts = {}
-    obj_bbox_normal_dicts['objects'] = obj_bbox_normal_lst
-
-    debug_lst = obj_bbox_lst.copy()
-    # visualize quad wall if exists
-    if quad_walls_dict is not None:
-        wall_lst = []
-        for quad_wall in quad_walls_dict['walls']:
-            wall_dict = {}
-
-            wall_dict['center'] = quad_wall['center']
-            wall_dict['size'] = [quad_wall['width'], 0.01, quad_wall['height']]
-            normal = quad_wall['normal']
-            # print(f'wall normal: {normal}')
-            # The direction of all camera is always along the negative y-axis.
-            cos_angle = np.array(normal).dot(np.array([0, -1, 0]))
-            angle = np.arccos(cos_angle)
-            if abs(cos_angle) < 1e-6:
-                angle = np.pi / 2 if normal[0] > 0 else -np.pi / 2
-
-            wall_dict['angles'] = [0, 0, angle]
-            wall_dict['class'] = 'wall'
-            wall_lst.append(wall_dict)
-        debug_lst.extend(wall_lst)
-
-    # visualize room layout and object bbox in panorama
-    bg_img = np.zeros_like(rgb_img)
-    anno_img = vis_objs3d(image=bg_img,
-                          v_bbox3d=debug_lst,
-                          camera_position=cam_position,
-                          color_to_labels=COLOR_TO_LABEL,
-                          b_show_axes=False,
-                          b_show_centroid=False,
-                          b_show_bbox3d=False,
-                          b_show_info=False,
-                          b_show_polygen=True,
-                          thickness=2)
-    # convert BGR to RGB
-    anno_img = cv2.cvtColor(anno_img, cv2.COLOR_BGR2RGB)
-
-    scene_mesh = vis_scene_mesh(room_layout_mesh, debug_lst, room_layout_bbox=None)
-
-    return obj_bbox_dicts, obj_bbox_normal_dicts, anno_img, scene_mesh
+    return {"objects": obj_bbox_lst}, {"objects": obj_bbox_normal_lst}
 
 
 def parse_room_layout(img_filepath: str, cam_pos_filepath: str, layout_coor_filepath: str) -> trimesh.Trimesh:
@@ -465,8 +429,76 @@ def create_layout_mesh(vertices, vertices_floor, delta_height, camera_center):
     return mesh
 
 
-def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath: str,
-                       room_layout_mesh: trimesh.Trimesh):
+def merge_walls(quad_wall_dict_lst: List[Dict], quad_wall_mesh_lst: List[trimesh.Trimesh]):
+
+    def cat_mesh(m1, m2):
+        v1, f1 = m1
+        v2, f2 = m2
+        v = np.vstack([v1, v2])
+        f = np.vstack([f1, f2 + len(v1)])
+        return v, f
+
+    merged_wall_ids = []
+    for i in range(len(quad_wall_mesh_lst)):
+        if i in merged_wall_ids:
+            continue
+
+        mesh_0 = quad_wall_mesh_lst[i]
+        normal_0 = mesh_0.vertex_normals[0, :]
+
+        for j in range(i + 1, len(quad_wall_mesh_lst)):
+            mesh_1 = quad_wall_mesh_lst[j]
+            normal_1 = mesh_1.vertex_normals[0, :]
+            # if two walls have common corners and normals are the same
+            if np.allclose(np.abs(normal_0), np.abs(normal_1), atol=1e-2) and check_mesh_attachment(mesh_0, mesh_1):
+                print(f'wall {i} and wall {j} are merged, normal: {normal_0}')
+
+                # merge two wall
+                mesh_vertices, mesh_faces = cat_mesh((mesh_0.vertices, mesh_0.faces), (mesh_1.vertices, mesh_1.faces))
+                mesh_0 = trimesh.Trimesh(vertices=mesh_vertices,
+                                         faces=mesh_faces,
+                                         vertex_normals=np.tile(normal_0, (len(mesh_vertices), 1)))
+                quad_wall_mesh_lst[i] = mesh_0
+                merged_wall_ids.append(j)
+
+    new_walls_lst = []
+    for id in range(len(quad_wall_dict_lst)):
+        if id in merged_wall_ids:
+            continue
+
+        mesh = quad_wall_mesh_lst[id]
+
+        corners = np.array(mesh.vertices)
+        if len(corners) > 4:
+            # the wall is merged from multiple walls
+            new_corners = []
+            for i, c in enumerate(corners):
+                dists = [np.linalg.norm(c - c1) for c1 in corners]
+                dists[i] = np.inf
+                print(f'corners dists: {dists}')
+                if np.min(dists) < 1e-2:
+                    continue
+                new_corners.append(c)
+            corners = np.array(new_corners)
+        assert len(corners) == 4
+        wall_size = mesh.bounding_box_oriented.extents
+
+        wall_dict = {}
+        wall_dict['ID'] = len(new_walls_lst)
+        wall_dict['class'] = 'wall'
+        # all the coordinates are in camera frame
+        wall_dict['center'] = np.mean(corners, axis=0).tolist()
+        wall_dict['normal'] = quad_wall_dict_lst[id]['normal']
+        wall_dict['angles'] = quad_wall_dict_lst[id]['angles']
+        wall_dict['width'] = wall_size[0] if wall_size[0] > 0 else wall_size[1]
+        wall_dict['height'] = wall_size[2]
+        wall_dict['corners'] = corners.tolist()
+
+        new_walls_lst.append(wall_dict)
+    return new_walls_lst
+
+
+def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath: str):
 
     # read camera position file
     cam_pos_lst = []
@@ -530,7 +562,7 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
     # wall
     quad_wall_dict, quad_wall_normalized_dict = {}, {}
     quad_wall_lst, quad_wall_normalized_lst = [], []
-    quad_corners_lst = []
+    quad_wall_mesh_lst = []
     for i, j in zip(wall_floor, np.roll(wall_floor, shift=-1)):
         corner_i, corner_j = junctions[i], junctions[j]
         plane_normal = walls_normal[tuple(sorted([i, j]))]
@@ -542,6 +574,10 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
         # 3D coordinate for each wall
         quad_corners = np.array([corner_i, corner_i + delta_height, corner_j + delta_height, corner_j])
         # print(f'plane normal: {plane_normal}')
+        wall_mesh, _ = create_spatial_quad_polygen(quad_corners * 0.001,
+                                                   plane_normal,
+                                                   camera_center=cam_position * 0.001)
+        quad_wall_mesh_lst.append(wall_mesh)
 
         wall_center = np.mean(quad_corners, axis=0)
         # wall center in camera frame, unit: meter
@@ -558,14 +594,36 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
         wall_dict = {}
         wall_dict['ID'] = len(quad_wall_lst)
         wall_dict['class'] = 'wall'
+        # all the coordinates are in camera frame
         wall_dict['center'] = wall_center_in_cam.tolist()
         wall_dict['normal'] = wall_normal.tolist()
         wall_dict['angles'] = [np.cos(angle), np.sin(angle)]
-        wall_dict['width'] = wall_width.tolist()
-        wall_dict['height'] = wall_height.tolist()
-        wall_dict['corners'] = (quad_corners * 0.001).tolist()
+        wall_dict['width'] = wall_width
+        wall_dict['height'] = wall_height
+        wall_dict['corners'] = ((quad_corners - cam_position) * 0.001).tolist()
         quad_wall_lst.append(wall_dict)
 
+    # # sort walls by attaching order
+    # mesh_orders = [0]
+    # for i, mesh in enumerate(quad_wall_mesh_lst):
+    #     attached_ids = [
+    #         id for id, wall in enumerate(quad_wall_mesh_lst) if id != i and check_mesh_attachment(mesh, wall)
+    #     ]
+    #     assert len(attached_ids) == 2, f'wall {i} should have 2 attached walls'
+    #     if attached_ids[0] not in mesh_orders and attached_ids[1] not in mesh_orders:
+    #         mesh_orders.append(attached_ids[0])
+    #     if attached_ids[0] in mesh_orders and attached_ids[1] not in mesh_orders:
+    #         mesh_orders.append(attached_ids[1])
+    #     if attached_ids[1] in mesh_orders and attached_ids[0] not in mesh_orders:
+    #         mesh_orders.append(attached_ids[0])
+    # print(f'mesh orders: {mesh_orders}')
+    # for i, idx in enumerate(mesh_orders):
+    #     if i != idx:
+    #         quad_wall_lst[i], quad_wall_lst[idx] = quad_wall_lst[idx], quad_wall_lst[i]
+    #         quad_wall_mesh_lst[i], quad_wall_mesh_lst[idx] = quad_wall_mesh_lst[idx], quad_wall_mesh_lst[i]
+
+    # quad_wall_lst = merge_walls(quad_wall_lst, quad_wall_mesh_lst)
+    room_layout_mesh = trimesh.util.concatenate(quad_wall_mesh_lst)
     corner_floor = junctions[wall_floor]
     # compute the bounding box of the layout
     layout_bbox_min = trimesh.bounds.corners(room_layout_mesh.bounding_box_oriented.bounds).min(axis=0)
@@ -574,9 +632,14 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
     for wall_dict in quad_wall_lst:
         wall_center_in_cam = np.array(wall_dict['center'])
         wall_normal = np.array(wall_dict['normal'])
-        wall_width = float(wall_dict['width'])
-        wall_height = float(wall_dict['height'])
         wall_angles = wall_dict['angles']
+        # angle = np.arcsin(wall_angles[1]) if abs(wall_angles[0]) < 5e-3 else np.arccos(wall_angles[0])
+
+        wall_corners = np.array(wall_dict['corners'])
+        wall_corners_normalized = wall_corners / layout_bbox_size
+        wall_width_normalized = np.linalg.norm(wall_corners_normalized[0] - wall_corners_normalized[3])
+        wall_height_normalized = float(wall_dict['height']) / layout_bbox_size[2]
+
         # if layout_bbox_size is not None:
         wall_normalized_dict = {}
         wall_normalized_dict['ID'] = wall_dict['ID']
@@ -584,16 +647,95 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
         wall_normalized_dict['center'] = (wall_center_in_cam / layout_bbox_size).tolist()
         wall_normalized_dict['normal'] = wall_normal.tolist()
         wall_normalized_dict['angles'] = wall_angles
-        wall_normalized_dict['width'] = (wall_width / max(layout_bbox_size[0], layout_bbox_size[1])).tolist()
-        wall_normalized_dict['height'] = (wall_height / layout_bbox_size[2]).tolist()
+        # the width could be weird if the layout is nor square
+        wall_normalized_dict['width'] = wall_width_normalized
+        wall_normalized_dict['height'] = wall_height_normalized
         quad_wall_normalized_lst.append(wall_normalized_dict)
 
     quad_wall_dict['walls'] = quad_wall_lst
     quad_wall_normalized_dict['walls'] = quad_wall_normalized_lst
-    return quad_wall_dict, quad_wall_normalized_dict, layout_bbox_size
+    return quad_wall_dict, quad_wall_normalized_dict, room_layout_mesh
 
 
 from improved_diffusion.clip_util import FrozenCLIPEmbedder
+
+
+def save_visualization_and_mesh(
+    objects_lst: List[Dict],
+    quad_walls_lst: List[Dict],
+    source_cor_path: str,
+    source_img_path: str,
+):
+    """ get visualization of the layout and mesh
+
+    Args:
+        objects_lst (List[Dict]): objects bbox list
+        quad_walls_lst (List[Dict]): quad walls list
+        source_cor_path (str): 2d wall corners filepath
+        source_img_path (str): source panorama filepath
+
+    Returns:
+        _type_: semantic image and mesh
+    """
+    # visualize quad wall if exists
+    assert len(objects_lst)
+    assert len(quad_walls_lst)
+
+    quad_walls_lst_cp = copy.deepcopy(quad_walls_lst)
+    objects_lst_cp = copy.deepcopy(objects_lst)
+    for quad_wall in quad_walls_lst_cp:
+        wall_dict = {}
+
+        wall_dict['center'] = quad_wall['center']
+        wall_dict['size'] = [quad_wall['width'], 0.01, quad_wall['height']]
+        normal = quad_wall['normal']
+        # print(f'wall normal: {normal}')
+        # The direction of all camera is always along the negative y-axis.
+        cos_angle = np.array(normal).dot(np.array([0, -1, 0]))
+        angle = np.arccos(cos_angle)
+        if abs(cos_angle) < 1e-6:
+            angle = np.pi / 2 if normal[0] > 0 else -np.pi / 2
+
+        wall_dict['angles'] = [0, 0, angle]
+        wall_dict['class'] = 'wall'
+        objects_lst_cp.append(wall_dict)
+
+    # visualize room layout and object bbox in panorama
+    rgb_img = cv2.imread(source_img_path, cv2.IMREAD_UNCHANGED)
+    rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
+    img_H, img_W = 512, 1024
+    bg_img = np.zeros((img_H, img_W, 3), dtype=np.uint8)
+    bg_img = rgb_img
+    # Read ground truth corners
+    with open(source_cor_path, 'r') as f:
+        corners_lst = np.array([line.strip().split() for line in f if line.strip()], np.float32)
+        # Corner with minimum x should at the beginning
+        corners_lst = np.roll(corners_lst[:, :2], -2 * np.argmin(corners_lst[::2, 0]), 0)
+        # Detect occlusion
+        occlusion = find_occlusion(corners_lst[::2].copy()).repeat(2)
+        # corners correspondenses' x coordinate should be identical
+        assert (np.abs(corners_lst[0::2, 0] - corners_lst[1::2, 0]) > img_W / 100).sum() == 0, 'source_img_path'
+        # corners correspondenses' y coordinate should be y_floor < y_ceiling
+        assert (corners_lst[0::2, 1] > corners_lst[1::2, 1]).sum() == 0, 'source_img_path'
+    # 1d ceiling-wall/floor-wall boundary, [-pi/2, pi/2]
+    boundary_lst = corners_to_1d_boundary(corners_lst, img_H, img_W)
+    # sem_bbox_img = vis_floor_ceiling(image=bg_img, coords_2d=boundary_lst, color_to_labels=COLOR_TO_ADEK_LABEL)
+    sem_bbox_img = vis_objs3d(image=bg_img,
+                              v_bbox3d=objects_lst_cp,
+                              camera_position=np.array([0, 0, 0]),
+                              color_to_labels=COLOR_TO_ADEK_LABEL,
+                              b_show_axes=False,
+                              b_show_centroid=False,
+                              b_show_bbox3d=True,
+                              b_show_info=True,
+                              b_show_polygen=False,
+                              thickness=2)
+    # convert BGR to RGB
+    debug_bbox_img = sem_bbox_img
+
+    debug_bbox_trimesh = vis_scene_mesh(room_layout_mesh=None, obj_bbox_lst=objects_lst_cp, room_layout_bbox=None)
+
+    return debug_bbox_img, debug_bbox_trimesh
 
 
 def prepare_dataset(raw_dataset_dir: str,
@@ -619,7 +761,6 @@ def prepare_dataset(raw_dataset_dir: str,
     # clip model
     glove_model = FrozenCLIPEmbedder(device='cuda')
 
-    b_skip = False
     for scene_id in tqdm(scene_ids):
 
         if scene_id in INVALID_SCENES_LST:
@@ -635,14 +776,12 @@ def prepare_dataset(raw_dataset_dir: str,
             scene_anno_3d_dict = json.load(open(scene_anno_3d_filepath, 'r'))
             room_type_lst = scene_anno_3d_dict['semantics']
 
-        # print(f'Processing scene: {scene_id}')
         scene_dir = os.path.join(raw_dataset_dir, scene_id, '2D_rendering')
         for room_id in np.sort(os.listdir(scene_dir)):
 
             room_str = '%s_%s' % (scene_id, room_id)
             if room_str in INVALID_ROOMS_LST:
                 continue
-
             room_type_str = 'undefined'
             if room_type_lst is not None:
                 for rt in room_type_lst:
@@ -650,8 +789,9 @@ def prepare_dataset(raw_dataset_dir: str,
                         room_type_str = rt['type']
                         break
             if room_type_str != target_room_type:
-                # print(f'room_type_str: {room_type_str}, target_room_type: {target_room_type}')
                 continue
+
+            print(f'Processing room: {room_str}')
 
             room_path = os.path.join(scene_dir, room_id, "panorama")
             source_img_path = os.path.join(room_path, "full", "rgb_rawlight.png")
@@ -659,38 +799,45 @@ def prepare_dataset(raw_dataset_dir: str,
             source_cam_pos_path = os.path.join(room_path, "camera_xyz.txt")
 
             # parse room layout
-            room_layout_mesh = parse_room_layout(source_img_path, source_cam_pos_path, source_cor_path)
-            quad_walls_dict, quad_walls_normalized_dict, room_layout_size = parse_wall_corners(
-                scene_anno_3d_dict, room_id, source_cam_pos_path, room_layout_mesh)
+            # room_layout_mesh = parse_room_layout(source_img_path, source_cam_pos_path, source_cor_path)
+            quad_walls_dict, quad_walls_normalized_dict, room_layout_mesh = parse_wall_corners(
+                scene_anno_3d_dict, room_id, source_cam_pos_path)
             # skip wall number < 4
             if len(quad_walls_normalized_dict['walls']) < 4:
                 print(f'bad scene {room_str} walls number < 4')
                 INVALID_ROOMS_LST.append(room_str)
                 continue
-            if len(quad_walls_normalized_dict['walls']) > 10:
-                print(f'bad scene {room_str} walls number > 10')
-                ROOM_WALLS_LARGER_THAN_10.append(room_str)
-                continue
+            # if len(quad_walls_normalized_dict['walls']) > 10:
+            #     print(f'bad scene {room_str} walls number > 10')
+            #     ROOM_WALLS_LARGER_THAN_10.append(room_str)
+            #     continue
 
             # parse 3d bbox of objects in the room
             new_labeld_room_filepath = os.path.join(annotated_labels_dir, room_str + '.json')
             if not os.path.exists(new_labeld_room_filepath):
                 new_labeld_room_filepath = None
-            obj_bbox_3d_dict, obj_bbox_3d_normalized_dict, debug_bbox_img, debug_bbox_trimesh = parse_bbox_in_room(
-                room_path, room_layout_mesh, quad_walls_dict, new_labeld_room_filepath)
+            obj_bbox_3d_dict, obj_bbox_3d_normalized_dict = parse_bbox_in_room(room_path, room_layout_mesh,
+                                                                               new_labeld_room_filepath)
             if obj_bbox_3d_dict is None:
                 print(f'bad scene {room_str}')
                 INVALID_ROOMS_LST.append(room_str)
                 continue
 
+            # visialization and debug
+            debug_bbox_img, debug_bbox_trimesh = save_visualization_and_mesh(
+                objects_lst=obj_bbox_3d_dict['objects'],
+                quad_walls_lst=quad_walls_dict['walls'],
+                source_cor_path=source_cor_path,
+                source_img_path=source_img_path,
+            )
+
             # generate scene description
-            if not b_skip:
-                scene_desc_text, scene_desc_emb = get_scene_description(
-                    room_type=room_type_str,
-                    wall_dict=quad_walls_dict,
-                    object_dict=obj_bbox_3d_dict,
-                    glove_model=glove_model,
-                )
+            scene_desc_text, scene_desc_emb = get_scene_description(
+                room_type=room_type_str,
+                wall_dict=quad_walls_dict,
+                object_dict=obj_bbox_3d_dict.copy(),
+                glove_model=glove_model,
+            )
             # print(f'room {room_str} scene_desc_text: {scene_desc_text}')
 
             out_img_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'img')
@@ -701,7 +848,8 @@ def prepare_dataset(raw_dataset_dir: str,
             out_quad_wall_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'quad_walls')
             out_text_desc_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'text_desc')
             out_text_emb_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'text_desc_emb')
-            out_sem_bbox_img_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'sem_layout_img')
+            out_sem_bbox_img_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'sem_bbox_img')
+            out_sem_layout_img_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'sem_layout_img')
             os.makedirs(out_img_dir, exist_ok=True)
             os.makedirs(out_cord_dir, exist_ok=True)
             os.makedirs(out_cam_pos_dir, exist_ok=True)
@@ -711,14 +859,16 @@ def prepare_dataset(raw_dataset_dir: str,
             os.makedirs(out_text_desc_dir, exist_ok=True)
             os.makedirs(out_text_emb_dir, exist_ok=True)
             os.makedirs(out_sem_bbox_img_dir, exist_ok=True)
+            os.makedirs(out_sem_layout_img_dir, exist_ok=True)
             target_img_path = os.path.join(out_img_dir, '%s_%s.png' % (scene_id, room_id))
             target_cor_path = os.path.join(out_cord_dir, '%s_%s.txt' % (scene_id, room_id))
             target_cam_pos_path = os.path.join(out_cam_pos_dir, '%s_%s.txt' % (scene_id, room_id))
             target_room_type_path = os.path.join(out_room_type_dir, '%s_%s.txt' % (scene_id, room_id))
             target_bbox_3d_path = os.path.join(out_bbox_3d_dir, '%s_%s.json' % (scene_id, room_id))
             target_bbox_3d_normal_path = os.path.join(out_bbox_3d_dir, '%s_%s_normalized.json' % (scene_id, room_id))
-            target_bbox_3d_vis_path = os.path.join(out_bbox_3d_dir, '%s_%s.png' % (scene_id, room_id))
+            # target_bbox_3d_vis_path = os.path.join(out_bbox_3d_dir, '%s_%s.png' % (scene_id, room_id))
             target_sem_bbox_img_path = os.path.join(out_sem_bbox_img_dir, '%s_%s.png' % (scene_id, room_id))
+            target_sem_layout_img_path = os.path.join(out_sem_layout_img_dir, '%s_%s.png' % (scene_id, room_id))
             target_bbox_3d_mesh_path = os.path.join(out_bbox_3d_dir, '%s_%s.ply' % (scene_id, room_id))
             target_quad_wall_path = os.path.join(out_quad_wall_dir, '%s_%s.json' % (scene_id, room_id))
             target_quad_wall_normalized_path = os.path.join(out_quad_wall_dir,
@@ -741,37 +891,39 @@ def prepare_dataset(raw_dataset_dir: str,
                 print(f'bad scene {room_str} with corrupted files')
                 continue
             else:
-                if not b_skip:
-                    shutil.copyfile(source_img_path, target_img_path)
-                    shutil.copyfile(source_cor_path, target_cor_path)
-                    shutil.copyfile(source_cam_pos_path, target_cam_pos_path)
-                    # write room type
-                    with open(target_room_type_path, 'w') as f:
-                        f.write(room_type_str)
-                    # write 3d bbox
-                    with open(target_bbox_3d_path, 'w') as f:
-                        json.dump(obj_bbox_3d_dict, f, indent=4)
-                    # write normalized 3d bbox
-                    with open(target_bbox_3d_normal_path, 'w') as f:
-                        json.dump(obj_bbox_3d_normalized_dict, f, indent=4)
-                    # write quad walls
-                    with open(target_quad_wall_path, 'w') as f:
-                        json.dump(quad_walls_dict, f, indent=4)
-                    # write normalized quad walls
-                    with open(target_quad_wall_normalized_path, 'w') as f:
-                        json.dump(quad_walls_normalized_dict, f, indent=4)
+                shutil.copyfile(source_img_path, target_img_path)
+                shutil.copyfile(source_cor_path, target_cor_path)
+                shutil.copyfile(source_cam_pos_path, target_cam_pos_path)
+                # write room type
+                with open(target_room_type_path, 'w') as f:
+                    f.write(room_type_str)
+                # write 3d bbox
+                with open(target_bbox_3d_path, 'w') as f:
+                    json.dump(obj_bbox_3d_dict, f, indent=4)
+                # write normalized 3d bbox
+                with open(target_bbox_3d_normal_path, 'w') as f:
+                    json.dump(obj_bbox_3d_normalized_dict, f, indent=4)
+                # write quad walls
+                with open(target_quad_wall_path, 'w') as f:
+                    json.dump(quad_walls_dict, f, indent=4)
+                # write normalized quad walls
+                with open(target_quad_wall_normalized_path, 'w') as f:
+                    json.dump(quad_walls_normalized_dict, f, indent=4)
 
-                    # write text description
-                    with open(target_text_desc_path, 'w') as f:
-                        f.write(scene_desc_text)
-                    # write text embedding
-                    np.save(target_text_emb_path, scene_desc_emb)
+                # write text description
+                with open(target_text_desc_path, 'w') as f:
+                    f.write(scene_desc_text)
+                # write text embedding
+                np.save(target_text_emb_path, scene_desc_emb)
 
-                # visualize semantic bbox img
-                cv2.imwrite(target_sem_bbox_img_path, debug_bbox_img)
                 if b_save_debug_files:
                     # visualize debug bbox img
-                    # cv2.imwrite(target_bbox_3d_vis_path, debug_bbox_img)
+                    # cv2.imwrite(target_sem_bbox_img_path, debug_bbox_img)
+                    Image.fromarray(debug_bbox_img).save(target_sem_bbox_img_path)
+
+                    # visualize semantic layout img
+                    # Image.fromarray(debug_bbox_img).save(target_sem_layout_img_path)
+
                     # print(f'save visualization for object bbox annotation of {room_id_str}')
                     debug_bbox_trimesh.export(target_bbox_3d_mesh_path)
 
@@ -786,15 +938,17 @@ def prepare_dataset(raw_dataset_dir: str,
                 room_furniture_types = set([box['class'] for box in obj_bbox_3d_dict['objects']])
                 ST3D_DININGROOM_FURNITURES_SET.update(room_furniture_types)
 
+            room_layout_size = room_layout_mesh.bounding_box_oriented.extents
             room_layout_size_lst.append(room_layout_size)
             furniture_counts.append([box['class'] for box in obj_bbox_3d_dict['objects']])
 
     furniture_counts = Counter(sum(furniture_counts, []))
     furniture_counts = OrderedDict(sorted(furniture_counts.items(), key=lambda x: -x[1]))
+    room_mean_size = np.mean(np.array(room_layout_size_lst), axis=0)
     print(f"furniture_counts: \n {furniture_counts}")
-    print(f'mean room_layout size : {np.mean(np.array(room_layout_size_lst), axis=0)}')
+    print(f'mean room_layout size : {room_mean_size}')
 
-    return furniture_counts, room_layout_size_lst
+    return furniture_counts, room_mean_size
 
 
 def parse_args():
@@ -812,9 +966,9 @@ def parse_args():
                         default='/data/dataset/Structured3D/preprocessed/annotations/bedroom/annotated_labels/',
                         help='path to annotated labels')
     parser.add_argument('--out_train_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/new_sem_layout/train')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/text2pano/train')
     parser.add_argument('--out_test_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/new_sem_layout/test')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/text2pano/test')
     return parser.parse_args()
 
 
@@ -830,12 +984,12 @@ def main():
     elif args.room_type == 'st3d_study':
         room_type_str = 'study'
 
-    train_furniture_stats, _ = prepare_dataset(args.dataset_path,
-                                               room_type_str,
-                                               TRAIN_SCENE,
-                                               args.out_train_path,
-                                               args.annotated_labels_path,
-                                               b_save_debug_files=True)
+    train_furniture_stats, room_mean_size = prepare_dataset(args.dataset_path,
+                                                            room_type_str,
+                                                            TRAIN_SCENE,
+                                                            args.out_train_path,
+                                                            args.annotated_labels_path,
+                                                            b_save_debug_files=True)
     test_furniture_stats, _ = prepare_dataset(args.dataset_path,
                                               room_type_str,
                                               TEST_SCENE,
@@ -858,13 +1012,20 @@ def main():
         print('*' * 20 + ' st3d_diningroom furniture types: ' + '*' * 20)
         print(ST3D_DININGROOM_FURNITURES_SET)
 
+    # merge train and test furniture statistics
+    for k, v in train_furniture_stats.items():
+        if k in test_furniture_stats:
+            v += test_furniture_stats[k]
+        train_furniture_stats[k] = v
+
     dataset_stats = {
         'invalid_rooms': INVALID_ROOMS_LST,
         'room_walls_larger_than_10': ROOM_WALLS_LARGER_THAN_10,
         'bedroom_furniture_types': list(ST3D_BEDROOM_FURNITURES_SET),
         'livingroom_furniture_types': list(ST3D_LIVINGROOM_FURNITURES_SET),
         'diningroom_furniture_types': list(ST3D_DININGROOM_FURNITURES_SET),
-        'furniture_counter': train_furniture_stats
+        'furniture_counter': train_furniture_stats,
+        'room_mean_size': room_mean_size.tolist()
     }
     dataset_stats_filepath = os.path.join(os.path.dirname(args.out_train_path), 'dataset_stats.json')
     with open(dataset_stats_filepath, 'w') as f:

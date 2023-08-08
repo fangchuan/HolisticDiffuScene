@@ -318,11 +318,12 @@ def vis_objs3d(image,
 
     image = image.copy()
     wall_ids = [i for i, o in enumerate(v_bbox3d) if o['class'] == 'wall']
-    # print(f'wall_ids: {wall_ids}')
-    obj_ids = [i for i, o in enumerate(v_bbox3d) if (o['class'] not in ['wall', 'curtain'])]
-    # print(f'obj_ids: {len(obj_ids)}')
+    if b_show_polygen:
+        obj_ids = [i for i, o in enumerate(v_bbox3d) if (o['class'] not in ['wall', 'curtain'])]
+    else:
+        obj_ids = [i for i, o in enumerate(v_bbox3d) if (o['class'] not in ['wall'])]
+
     dis = {id: np.linalg.norm([v_bbox3d[id]['center']]) for id in obj_ids}
-    # print(f'dis: {len(dis)}')
     obj_ids = sorted(obj_ids, key=lambda k: dis[k], reverse=True)
 
     i_objs = wall_ids + obj_ids
@@ -352,4 +353,212 @@ def vis_objs3d(image,
             draw_objinfo(image, centroid, obj_label, color)
         if b_show_polygen:
             draw_Poly3d(image, bdb3d, color, object_label=obj_label)
+    return image
+
+
+from .panorama import lineIdxFromCors
+from .panostretch import check_3dline_cross_pano
+
+# def vis_floor_ceiling(image: np.array, floor_points: np.array, ceiling_points: np.array, color_to_labels: dict = None):
+#     """visualize floor and ceiling of a room, the floor and ceiling points are in camera frame
+
+#     Args:
+#         image (np.array): panorama image of the room
+#         floor_points (_type_): _description_
+#         ceiling_points (_type_): _description_
+#         color_to_labels (dict, optional): color for ceiling and floor.
+
+#     Returns:
+#         np.array: _description_
+#     """
+#     image = image.copy()
+#     im_h, im_w = image.shape[:2]
+#     floor_points = floor_points.reshape(-1, 3)
+#     ceiling_points = ceiling_points.reshape(-1, 3)
+
+#     if color_to_labels is not None:
+#         labels_lst = list(color_to_labels.values())
+#         colors_lst = list(color_to_labels.keys())
+#         color = colors_lst[labels_lst.index('floor')]
+#     else:
+#         color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+
+#     # assume the floor points are sorted in counter-clockwise order
+#     quality = 512
+#     cross_pix_right = []
+#     cross_pix_left = []
+#     pix_all = []
+
+#     coords_2d = []
+#     # sort the pixel of floor points in counter-clockwise order
+#     for i in range(0, (floor_points.shape[0] // 2)):
+#         p1 = floor_points[2 * i]
+#         p2 = floor_points[2 * i + 1]
+#         p1_normalized = p1 / np.linalg.norm(p1)
+#         p2_normalized = p2 / np.linalg.norm(p2)
+#         p1_pix = np.round(cam3d2pix(cam3d=np.expand_dims(p1_normalized, axis=0), image=image)).astype(np.int32)
+#         p2_pix = np.round(cam3d2pix(cam3d=np.expand_dims(p2_normalized, axis=0), image=image)).astype(np.int32)
+#         coords_2d.append(p1_pix)
+#         coords_2d.append(p2_pix)
+#     coords_2d = np.concatenate(coords_2d, axis=0)
+#     print(f'coords_2d: {coords_2d}')
+#     min_coord_idx = np.argmin(coords_2d[::2, 0])
+#     coords_2d = np.roll(coords_2d[:, :2], -2 * min_coord_idx, 0)
+#     print(f'rolled coords_2d: {coords_2d}')
+#     sorted_floor_points = np.roll(floor_points[:, :3], -2 * min_coord_idx, 0)
+#     print(f'rolled_floor_points: {sorted_floor_points}')
+
+#     for i in range(0, (sorted_floor_points.shape[0] // 2)):
+#         p1 = sorted_floor_points[2 * i]
+#         p2 = sorted_floor_points[2 * i + 1]
+#         p1_normalized = p1 / np.linalg.norm(p1)
+#         p2_normalized = p2 / np.linalg.norm(p2)
+#         p1_pix = np.round(cam3d2pix(cam3d=np.expand_dims(p1_normalized, axis=0), image=image)).astype(np.int32)
+#         p2_pix = np.round(cam3d2pix(cam3d=np.expand_dims(p2_normalized, axis=0), image=image)).astype(np.int32)
+#         print(f'p1_pix: {p1_pix[0]}, p2_pix: {p2_pix[0]}')
+
+#         points = interpolate_line(p1, p2, num=quality)
+#         normal_points = normalize(points)
+#         pix = np.round(cam3d2pix(cam3d=normal_points, image=image)).astype(np.int32)
+#         if check_3dline_cross_pano(p1, p2, image_w=im_w):
+#             print(f'p1: {p1}, p2: {p2} cross pano')
+#             # current edge cross the pano
+#             for pix_sub in pix:
+#                 if (pix_sub[0] > im_w / 2):
+#                     cross_pix_right.append(np.expand_dims(pix_sub, 0))
+#                 else:
+#                     cross_pix_left.append(np.expand_dims(pix_sub, 0))
+#         else:
+#             # current edge is in the pano
+#             pix_all.append(pix)
+#     cross_pix_left = sorted(cross_pix_left, key=lambda k: k[0][0])
+#     cross_pix_right = sorted(cross_pix_right, key=lambda k: k[0][0])
+#     pix_all = cross_pix_left + pix_all + cross_pix_right
+#     floor_pixels = np.concatenate(pix_all, axis=0)
+#     x_min = np.min(floor_pixels[:, 0], axis=0)
+#     x_max = np.max(floor_pixels[:, 0], axis=0)
+#     left_pixel = floor_pixels[floor_pixels[:, 0] == x_min][0]
+#     right_pixel = floor_pixels[floor_pixels[:, 0] == x_max][0]
+#     padding_pixels = np.array([[1023, right_pixel[1]], [1023, 511], [0, 511], [0, left_pixel[1]]])
+#     floor_pixels = np.concatenate([floor_pixels, padding_pixels], axis=0)
+#     cv2.fillPoly(image, pts=[floor_pixels], color=color)
+
+#     if color_to_labels is not None:
+#         labels_lst = list(color_to_labels.values())
+#         colors_lst = list(color_to_labels.keys())
+#         color = colors_lst[labels_lst.index('ceiling')]
+#     else:
+#         color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+
+#     cross_pix_right = []
+#     cross_pix_left = []
+#     pix_all = []
+#     coords_2d = []
+#     # sort the pixel of ceiling points in counter-clockwise order
+#     for i in range(0, (ceiling_points.shape[0] // 2)):
+#         p1 = ceiling_points[2 * i]
+#         p2 = ceiling_points[2 * i + 1]
+#         p1_normalized = p1 / np.linalg.norm(p1)
+#         p2_normalized = p2 / np.linalg.norm(p2)
+#         p1_pix = np.round(cam3d2pix(cam3d=np.expand_dims(p1_normalized, axis=0), image=image)).astype(np.int32)
+#         p2_pix = np.round(cam3d2pix(cam3d=np.expand_dims(p2_normalized, axis=0), image=image)).astype(np.int32)
+#         coords_2d.append(p1_pix)
+#         coords_2d.append(p2_pix)
+#     coords_2d = np.concatenate(coords_2d, axis=0)
+#     print(f'ceiling coords_2d: {coords_2d}')
+#     min_coord_idx = np.argmin(coords_2d[::2, 0])
+#     coords_2d = np.roll(coords_2d[:, :2], -2 * min_coord_idx, 0)
+#     print(f'rolled ceiling coords_2d: {coords_2d}')
+#     sorted_ceiling_points = np.roll(ceiling_points[:, :3], -2 * min_coord_idx, 0)
+#     print(f'rolled_floor_points: {sorted_ceiling_points}')
+
+#     for i in range(0, (sorted_ceiling_points.shape[0] // 2)):
+#         p1 = sorted_ceiling_points[2 * i]
+#         p2 = sorted_ceiling_points[2 * i + 1]
+#         p1_normalized = p1 / np.linalg.norm(p1)
+#         p2_normalized = p2 / np.linalg.norm(p2)
+#         p1_pix = np.round(cam3d2pix(cam3d=np.expand_dims(p1_normalized, axis=0), image=image)).astype(np.int32)
+#         p2_pix = np.round(cam3d2pix(cam3d=np.expand_dims(p2_normalized, axis=0), image=image)).astype(np.int32)
+#         print(f'p1_pix: {p1_pix[0]}, p2_pix: {p2_pix[0]}')
+
+#         points = interpolate_line(p1, p2, num=quality)
+#         normal_points = normalize(points)
+#         pix = np.round(cam3d2pix(cam3d=normal_points, image=image)).astype(np.int32)
+#         if check_3dline_cross_pano(p1, p2, image_w=im_w):
+#             print(f'p1: {p1}, p2: {p2} cross pano')
+#             # current edge cross the pano
+#             for pix_sub in pix:
+#                 if (pix_sub[0] > im_w / 2):
+#                     cross_pix_right.append(np.expand_dims(pix_sub, 0))
+#                 else:
+#                     cross_pix_left.append(np.expand_dims(pix_sub, 0))
+#         else:
+#             # current edge is in the pano
+#             pix_all.append(pix)
+#     cross_pix_left = sorted(cross_pix_left, key=lambda k: k[0][0])
+#     cross_pix_right = sorted(cross_pix_right, key=lambda k: k[0][0])
+#     pix_all = cross_pix_left + pix_all + cross_pix_right
+#     ceiling_pixels = np.concatenate(pix_all, axis=0)
+#     x_min = np.min(ceiling_pixels[:, 0], axis=0)
+#     x_max = np.max(ceiling_pixels[:, 0], axis=0)
+#     left_pixel = ceiling_pixels[ceiling_pixels[:, 0] == x_min][0]
+#     right_pixel = ceiling_pixels[ceiling_pixels[:, 0] == x_max][0]
+#     padding_pixels = np.array([[1023, right_pixel[1]], [1023, 0], [0, 0], [0, left_pixel[1]]])
+#     ceiling_pixels = np.concatenate([ceiling_pixels, padding_pixels], axis=0)
+#     cv2.fillPoly(image, pts=[ceiling_pixels], color=color)
+
+#     return image
+
+
+def vis_floor_ceiling(image: np.array, coords_2d: np.array, color_to_labels: dict = None):
+    """
+    Visualize the floor and ceiling in the panorama image
+    :param image: panorama image
+    :param coords_2d_filepath: the file path of the 2D coordinates of floor and ceiling
+    :param color_to_labels: color to labels mapping
+    :return: panorama image with floor and ceiling
+    """
+    img_h, img_w = image.shape[:2]
+    ceiling_boundary_lst = coords_2d[0, :]
+    floor_boundary_lst = coords_2d[1, :]
+    # print(f'floor_boundary_lst: {floor_boundary_lst.shape}')
+    # print(f'ceiling_boundary_lst: {ceiling_boundary_lst.shape}')
+    coords_x = np.arange(0, img_w)
+    floor_boundary_coords_y = ((floor_boundary_lst / np.pi + 0.5) * img_h - 0.5).astype(np.int32)
+    floor_boundary_pixels = np.stack([coords_x, floor_boundary_coords_y], axis=1)
+    # print(f'floor_boundary_pixels: {floor_boundary_pixels}')
+    ceiling_boundary_coords_y = ((ceiling_boundary_lst / np.pi + 0.5) * img_h - 0.5).astype(np.int32)
+    ceiling_boundary_pixels = np.stack([coords_x, ceiling_boundary_coords_y], axis=1)
+    # print(f'ceiling_boundary_pixels: {ceiling_boundary_pixels}')
+
+    if color_to_labels is not None:
+        labels_lst = list(color_to_labels.values())
+        colors_lst = list(color_to_labels.keys())
+        color = colors_lst[labels_lst.index('ceiling')]
+    else:
+        color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+
+    x_min = np.min(ceiling_boundary_pixels[:, 0], axis=0)
+    x_max = np.max(ceiling_boundary_pixels[:, 0], axis=0)
+    left_pixel = ceiling_boundary_pixels[ceiling_boundary_pixels[:, 0] == x_min][0]
+    right_pixel = ceiling_boundary_pixels[ceiling_boundary_pixels[:, 0] == x_max][0]
+    padding_pixels = np.array([[1023, right_pixel[1]], [1023, 0], [0, 0], [0, left_pixel[1]]])
+    ceiling_pixels = np.concatenate([ceiling_boundary_pixels, padding_pixels], axis=0)
+    cv2.fillPoly(image, pts=[ceiling_pixels], color=color)
+
+    if color_to_labels is not None:
+        labels_lst = list(color_to_labels.values())
+        colors_lst = list(color_to_labels.keys())
+        color = colors_lst[labels_lst.index('floor')]
+    else:
+        color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+
+    x_min = np.min(floor_boundary_pixels[:, 0], axis=0)
+    x_max = np.max(floor_boundary_pixels[:, 0], axis=0)
+    left_pixel = floor_boundary_pixels[floor_boundary_pixels[:, 0] == x_min][0]
+    right_pixel = floor_boundary_pixels[floor_boundary_pixels[:, 0] == x_max][0]
+    padding_pixels = np.array([[1023, right_pixel[1]], [1023, 511], [0, 511], [0, left_pixel[1]]])
+    floor_pixels = np.concatenate([floor_boundary_pixels, padding_pixels], axis=0)
+    cv2.fillPoly(image, pts=[floor_pixels], color=color)
+
     return image

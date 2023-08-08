@@ -30,12 +30,9 @@ from misc.utils import euler_angle_to_matrix
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--root_dir',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/debugh_quad_walls/bedroom/')
-    parser.add_argument(
-        '--samples_filepath',
-        default=
-        '/home/hkust/fangchuan/codes/Structured3D/sample_results/openai-2023-07-05-16-35-56-396382/samples_10x23x32.npz'
-    )
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/new_sem_layout/test/bedroom/')
+    parser.add_argument('--samples_filepath',
+                        default='../sample_results/openai-2023-08-08-14-07-51-332048/samples_10x23x33.npz')
     parser.add_argument('--path_to_pickled_3d_futute_models',
                         default='/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/threed_future_model_bedroom.pkl',
                         type=str,
@@ -298,7 +295,7 @@ if __name__ == "__main__":
         scene_sample_label = scene_sample_label.replace(' ', '_')
         print(f'scene_sample_label: {scene_sample_label}')
 
-        room_layout_size = np.array([3.5491398691635867, 3.8409623633141603, 2.651076370213072])
+        room_layout_size = np.array([3.64073229, 3.73553261, 2.81591231])
         # quad walls
         quad_wall_lst = scene_sample_result[:10, :]
         # objects
@@ -348,9 +345,12 @@ if __name__ == "__main__":
         scene_mesh.export(scene_bbox_ply_filepath)
 
         # search 3D-FUTURE models for objects
-        objects_mesh_lst = get_textured_objects(obj_bbox_dict_lst, threed_furture_dataset)
-        scene_mesh_ply_fname = f'{scene_sample_label}_{idx}_mesh.ply'
-        scene_mesh_ply_filepath = os.path.join(args.out_dir, scene_mesh_ply_fname)
-        objects_mesh = trimesh.util.concatenate(objects_mesh_lst)
-        scene_mesh = vis_scene_mesh(room_layout_mesh=objects_mesh, obj_bbox_lst=wall_dict_lst, room_layout_bbox=None)
-        scene_mesh.export(scene_mesh_ply_filepath)
+        if args.dataset_type == '3d_front':
+            objects_mesh_lst = get_textured_objects(obj_bbox_dict_lst, threed_furture_dataset)
+            scene_mesh_ply_fname = f'{scene_sample_label}_{idx}_mesh.ply'
+            scene_mesh_ply_filepath = os.path.join(args.out_dir, scene_mesh_ply_fname)
+            objects_mesh = trimesh.util.concatenate(objects_mesh_lst)
+            scene_mesh = vis_scene_mesh(room_layout_mesh=objects_mesh,
+                                        obj_bbox_lst=wall_dict_lst,
+                                        room_layout_bbox=None)
+            scene_mesh.export(scene_mesh_ply_filepath)
