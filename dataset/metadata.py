@@ -42,6 +42,50 @@ COLOR_TO_LABEL = {
     (100, 85, 144): "prop"
 }
 
+COLOR_TO_ADEK_LABEL = {
+    (0, 0, 0): "unknown",
+    (120, 120, 120): "wall",
+    (80, 50, 50): "floor",
+    (224, 5, 255): "cabinet",
+    (204, 5, 255): "bed",
+    (204, 70, 3): "chair",
+    (11, 102, 255): "sofa",
+    (255, 6, 82): "table",
+    (8, 255, 51): "door",
+    (230, 230, 230): "window",
+    (0, 255, 245): "bookshelf",
+    (255, 6, 51): "picture",
+    (235, 12, 255): "counter",
+    (0, 61, 255): "blinds",
+    (10, 255, 71): "desk",
+    (255, 7, 71): "shelves",
+    (255, 51, 8): "curtain",
+    (6, 51, 255): "dresser",
+    (0, 235, 255): "pillow",
+    (220, 220, 220): "mirror",
+    (255, 9, 92): "floor mat",
+    (0, 112, 255): "clothes",
+    (120, 120, 80): "ceiling",
+    (255, 163, 0): "books",
+    (20, 255, 0): "fridge",
+    (0, 255, 194): "television",
+    (153, 98, 156): "paper",
+    (255, 0, 102): "towel",
+    (255, 51, 7): "shower curtain",
+    (0, 255, 20): "box",
+    (184, 255, 0): "whiteboard",
+    (150, 5, 61): "person",
+    (146, 111, 194): "night stand",
+    (0, 255, 133): "toilet",
+    (0, 163, 255): "sink",
+    (0, 31, 255): "lamp",
+    (0, 133, 255): "bathtub",
+    (70, 184, 160): "bag",
+    (94, 106, 211): "structure",
+    (82, 84, 163): "furniture",
+    (100, 85, 144): "prop"
+}
+
 OBJECT_LABEL_IDS = {
     # "wall": 1,
     # "floor": 2,
@@ -1132,9 +1176,11 @@ INVALID_ROOMS_LST_OLD = [
 ]
 
 INVALID_ROOMS_LST = [
+    'scene_00030_735',
     'scene_00212_494',
     'scene_00403_11105',
     'scene_00411_918447',
+    'scene_00609_159',
     'scene_00810_1817',
     'scene_01209_4566',
     'scene_01410_180208',
@@ -1166,36 +1212,11 @@ ST3D_BEDROOM_MIN_LEN = 3
 ST3D_BEDROOM_MAX_LEN = 13
 # 24
 ST3D_BEDROOM_FURNITURE = [
-    'picture', 'window', 'table', 'toilet', 'lamp', 'desk', 'television', 'fridge', 'shelves', 'dresser', 'bed', 'sofa',
-    'bathtub', 'sink', 'night stand', 'mirror', 'counter', 'chair', 'pillow', 'person', 'cabinet', 'bookshelf', 'wall',
-    'empty'
+    "table", "night stand", "picture", "door", "cabinet", "curtain", "bathtub", "bed", "sink", "fridge", "shelves",
+    "window", "lamp", "chair", "pillow", "dresser", "bookshelf", "sofa", "counter", "desk", "mirror", "television",
+    "wall", "empty"
 ]
-ST3D_BEDROOM_FURNITURE_LABEL_TO_COLOR = {
-    'shelves': (1, 1, 1),
-    'television': (2, 2, 2),
-    'dresser': (3, 3, 3),
-    'picture': (4, 4, 4),
-    'sink': (5, 5, 5),
-    'fridge': (6, 6, 6),
-    'bathtub': (7, 7, 7),
-    'pillow': (8, 8, 8),
-    'chair': (9, 9, 9),
-    'bed': (10, 10, 10),
-    'table': (11, 11, 11),
-    'night stand': (12, 12, 12),
-    'desk': (13, 13, 13),
-    'counter': (14, 14, 14),
-    'curtain': (15, 15, 15),
-    'door': (16, 16, 16),
-    'sofa': (17, 17, 17),
-    'mirror': (18, 18, 18),
-    'window': (19, 19, 19),
-    'cabinet': (20, 20, 20),
-    'lamp': (21, 21, 21),
-    'wall': (22, 22, 22),
-    'floor': (23, 23, 23),
-    'empty': (24, 24, 24)
-}
+
 ST3D_BEDROOM_FURNITURE_CNTS_OLD = {
     'lamp': 7098,
     'cabinet': 5868,
@@ -1220,31 +1241,28 @@ ST3D_BEDROOM_FURNITURE_CNTS_OLD = {
     'bathtub': 2,
     'sink': 1,
     'toilet': 1,
-    'person': 1,
 }
 
 ST3D_BEDROOM_FURNITURE_CNTS = {
-    "lamp": 6152,
-    "night stand": 5081,
-    "cabinet": 5025,
-    "bed": 4293,
-    "door": 4126,
-    "window": 3937,
-    "picture": 3781,
-    "curtain": 3715,
-    "chair": 2231,
-    "television": 1712,
-    "desk": 1206,
-    "pillow": 1069,
-    "dresser": 552,
-    "table": 550,
-    "shelves": 307,
-    "sofa": 230,
-    "mirror": 128,
+    "lamp": 7224,
+    "night stand": 5969,
+    "cabinet": 5783,
+    "bed": 5011,
+    "door": 4839,
+    "window": 4584,
+    "curtain": 4476,
+    "picture": 4400,
+    "chair": 2543,
+    "television": 2001,
+    "desk": 1378,
+    "pillow": 1182,
+    "dresser": 639,
+    "table": 648,
+    "shelves": 347,
+    "sofa": 291,
+    "mirror": 148,
     "counter": 5,
-    "person": 3,
     "bookshelf": 1,
-    "toilet": 1,
     "bathtub": 1,
     "fridge": 1,
     "sink": 1

@@ -4,6 +4,7 @@ import argparse
 
 import cv2
 import open3d
+import trimesh
 import numpy as np
 from panda3d.core import Triangulator
 
@@ -151,31 +152,32 @@ def verify_normal(corner_i, corner_j, delta_height, plane_normal):
 def create_spatial_quad_polygen(quad_vertices: List, normal: np.array, camera_center: np.array):
     """create a quad polygen for spatial mesh
     """
-    quad_vertices = (quad_vertices - camera_center) * 0.001
+    if camera_center is None:
+        camera_center = np.array([0, 0, 0])
+    quad_vertices = (quad_vertices - camera_center)
     quad_triangles = []
     triangle = np.array([[0, 2, 1], [2, 0, 3]])
     quad_triangles.append(triangle)
 
     quad_triangles = np.concatenate(quad_triangles, axis=0)
 
-    mesh = open3d.geometry.TriangleMesh(
-        # convert vertices from mm to m
-        vertices=open3d.utility.Vector3dVector(quad_vertices),
-        triangles=open3d.utility.Vector3iVector(quad_triangles))
-    # mesh.compute_vertex_normals()
-    mesh.vertex_normals = open3d.utility.Vector3dVector(np.tile(normal, (4, 1)))
+    mesh = trimesh.Trimesh(vertices=quad_vertices,
+                           faces=quad_triangles,
+                           vertex_normals=np.tile(normal, (4, 1)),
+                           process=False)
 
     centroid = np.mean(quad_vertices, axis=0)
-    print(f'centroid: {centroid}')
+    # print(f'centroid: {centroid}')
     normal_point = centroid + np.array(normal) * 0.5
-    print(f'normal_point: {normal_point}')
+    # print(f'normal_point: {normal_point}')
 
-    pcd = open3d.geometry.PointCloud()
-    pcd.points = open3d.utility.Vector3dVector(np.asarray(mesh.vertices))
-    pcd.points.append(normal_point)
-    pcd.points.append(centroid)
-    # pcd.estimate_normals()
-    return mesh, pcd
+    pcd_o3d = open3d.geometry.PointCloud()
+    pcd_o3d.points = open3d.utility.Vector3dVector(np.asarray(mesh.vertices))
+    pcd_o3d.points.append(normal_point)
+    pcd_o3d.points.append(centroid)
+
+    # pcd = trimesh.PointCloud(np.asarray(pcd.points))
+    return mesh, pcd_o3d
 
 
 def visualize_mesh(args):
@@ -265,7 +267,12 @@ def visualize_mesh(args):
 
         quad_corner = np.array([corner_i, corner_i + delta_height, corner_j + delta_height, corner_j])
         print(f'plane normal: {plane_normal}')
-        quad_polygen_mesh, quad_polygen_pcd = create_spatial_quad_polygen(quad_corner, plane_normal, camera_center)
+        quad_polygen_mesh, quad_polygen_pcd = create_spatial_quad_polygen(quad_corner * 0.001, plane_normal,
+                                                                          camera_center * 0.001)
+        quad_polygen_mesh = open3d.geometry.TriangleMesh(
+            # convert vertices from mm to m
+            vertices=open3d.utility.Vector3dVector(quad_polygen_mesh.vertices),
+            triangles=open3d.utility.Vector3iVector(quad_polygen_mesh.faces))
         open3d.visualization.draw_geometries([quad_polygen_mesh, quad_polygen_pcd])
         quad_wall_lst.append(quad_polygen_mesh)
 
@@ -290,14 +297,14 @@ def visualize_mesh(args):
                              ignore_ceiling=args.ignore_ceiling,
                              camera_center=camera_center)
     open3d.io.write_triangle_mesh(
-        "/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00000_490854.ply", mesh)
+        "/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00001_906323.ply", mesh)
 
     quad_meshes = open3d.geometry.TriangleMesh()
 
     for mesh in quad_wall_lst:
         quad_meshes += mesh
     open3d.io.write_triangle_mesh(
-        "/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00000_490854_quadwall.ply",
+        "/home/hkust/fangchuan/codes/Structured3D/sample_dataset_visualization/scene_00001_906323_quadwall.ply",
         quad_meshes)
     # visualize mesh
     open3d.visualization.draw_geometries(quad_wall_lst)

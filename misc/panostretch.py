@@ -236,6 +236,20 @@ def check_2dline_cross_pano(p1: np.array, p2: np.array, image_w: int = 1024) -> 
         return False
 
 
+def check_3dline_cross_pano(p1: np.array, p2: np.array, image_w: int = 1024) -> bool:
+    """ check if line cross panorama
+    Args:
+        p1 (np.array): 3d camera coordinate
+        p2 (np.array): 3d camera coordinate
+        image_w (int): image width
+    Returns:
+        bool: True if cross
+    """
+    p1_pxl = np.round(transform_xyz2pix(np.expand_dims(p1, 0))).astype(np.int64).squeeze(0)
+    p2_pxl = np.round(transform_xyz2pix(np.expand_dims(p2, 0))).astype(np.int64).squeeze(0)
+    return check_2dline_cross_pano(p1_pxl, p2_pxl, image_w)
+
+
 def check_3dplane_cross_pano(corners: np.ndarray, plane_idx: int, imgae_w: int = 1024) -> int:
     """ check if plane cross panorama
 
@@ -270,14 +284,14 @@ def get_cubic_plane_mask(corners: np.ndarray,
         corners (np.ndarray): (8,3) corners of bbox in camera coordinate
     """
     # faces_lst = [[0, 1, 3, 2], [0, 1, 5, 4], [0, 2, 6, 4], [2, 3, 7, 6], [1, 3, 7, 5], [4, 5, 7, 6]]
-
+    # arrange corners in counter-clockwise order
     planes1 = np.array([[0, 1], [1, 3], [3, 2], [2, 0]])
     planes2 = np.array([[0, 1], [1, 5], [5, 4], [4, 0]])
     planes3 = np.array([[0, 2], [2, 6], [6, 4], [4, 0]])
     planes4 = np.array([[2, 3], [3, 7], [7, 6], [6, 2]])
     planes5 = np.array([[1, 3], [3, 7], [7, 5], [5, 1]])
     planes6 = np.array([[4, 5], [5, 7], [7, 6], [6, 4]])
-    quality = 50
+    quality = 1023
     mask = np.zeros((512, 1024))
 
     planes = [planes1, planes2, planes3, planes4, planes5, planes6]

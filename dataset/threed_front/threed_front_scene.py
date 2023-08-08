@@ -11,6 +11,12 @@ from dataclasses import dataclass
 from functools import cached_property, reduce, lru_cache
 import json
 import os
+import sys
+
+sys.path.append('.')
+sys.path.append('..')
+sys.path.append('../..')
+
 from typing import List, Dict, Tuple
 
 import numpy as np
@@ -18,9 +24,9 @@ from PIL import Image
 
 import trimesh
 import open3d as o3d
-import fcl
 
 from .base import BaseScene
+from misc.utils import check_mesh_attachment
 
 # from simple_3dviz import Lines, Mesh, Spherecloud
 # from simple_3dviz.renderables.textured_mesh import Material, TexturedMesh
@@ -126,39 +132,6 @@ def create_spatial_quad_polygen(quad_vertices: np.array, normal: np.array, camer
 
     # pcd = trimesh.PointCloud(np.asarray(pcd.points))
     return mesh, pcd_o3d
-
-
-def check_mesh_attachment(object_mesh: trimesh.Trimesh, room_mesh: trimesh.Trimesh):
-    """check if the object mesh is attached with the room, i.e. the window/door mesh is collided with the room
-
-    use FCL to detect attachment and collision, see https://github.com/BerkeleyAutomation/python-fcl/ for ref.
-    Args:
-        object_mesh (o3d.geometry.TriangleMesh): object mesh
-        room_walls (o3d.geometry.TriangleMesh): room walls mesh
-
-    Returns:
-        bool: True if the object mesh is in the room
-    """
-    room = fcl.BVHModel()
-    room.beginModel(len(room_mesh.vertices), len(room_mesh.faces))
-    room.addSubModel(room_mesh.vertices, room_mesh.faces)
-    room.endModel()
-
-    window = fcl.BVHModel()
-    window.beginModel(len(object_mesh.vertices), len(object_mesh.faces))
-    window.addSubModel(object_mesh.vertices, object_mesh.faces)
-    window.endModel()
-
-    t1 = fcl.Transform(np.array([1, 0, 0, 0]), np.array([0, 0, 0]))
-    t2 = fcl.Transform(np.array([1, 0, 0, 0]), np.array([0., 0, 0]))
-
-    o1 = fcl.CollisionObject(room, t1)
-    o2 = fcl.CollisionObject(window, t2)
-
-    request = fcl.CollisionRequest(num_max_contacts=100, enable_contact=True)
-    result = fcl.CollisionResult()
-    ret = fcl.collide(o1, o2, request, result)
-    return result.is_collision
 
 
 def cat_mesh(m1, m2):

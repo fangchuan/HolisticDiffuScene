@@ -1,8 +1,19 @@
 """
 Adapted from https://github.com/thusiyuan/cooperative_scene_parsing/blob/master/utils/sunrgbd_utils.py
 """
+import os
+import sys
+
+sys.path.append('.')
+sys.path.append('..')
+
+import fcl
 import numpy as np
 import torch as th
+import trimesh
+from typing import List, Dict
+
+from visualize_mesh import create_spatial_quad_polygen
 
 
 def normalize(vector):
@@ -210,3 +221,239 @@ def euler_angle_to_matrix(angles_lst: (list, th.Tensor)):
     else:
         raise NotImplementedError
     return R
+
+
+def threeD_plane_intersect(planea, planeb):
+    """ calculate intersection of two planes in 3D
+    a, b   4-tuples/lists
+           Ax + By +Cz + D = 0
+           A,B,C,D in order  
+
+    output:  line of intersection, np.arrays, shape (3,)
+    """
+    a_normal, b_normal = np.array(planea[:3]), np.array(planeb[:3])
+    a_normal = a_normal / np.linalg.norm(a_normal)
+    b_normal = b_normal / np.linalg.norm(b_normal)
+    aXb_normal = np.cross(a_normal, b_normal)
+    aXb_normal = aXb_normal / np.linalg.norm(aXb_normal)
+
+    A = np.array([a_normal, b_normal, aXb_normal])
+    d = np.array([-planea[3], -planeb[3], 0.]).reshape(3, 1)
+    # could add np.linalg.det(A) == 0 test to prevent linalg.solve throwing error
+    if np.linalg.det(A) == 0:
+        print('Two planes are parallel!!!')
+        return None, None
+
+    # intersection point:3x1
+    p_inter = np.linalg.solve(A, d).T
+    return np.concatenate([aXb_normal, p_inter[0]], axis=0)
+
+
+def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
+    """
+    Reconstruct floor and ceiling from quad walls
+    """
+    assert len(quad_walls_lst) > 0, 'No quad walls detected!!!'
+
+    all_corners = np.concatenate([wall_dict['corners'] for wall_dict in quad_walls_lst], axis=0)
+    floor_z = np.min(all_corners[:, 2])
+    floor_normal = np.array([0, 0, 1])
+
+    ceiling_z = np.max(all_corners[:, 2])
+    ceiling_normal = np.array([0, 0, -1])
+
+    gt_floor_points_lst = all_corners[all_corners[:, 2] == floor_z]
+    gt_ceil_points_lst = all_corners[all_corners[:, 2] == ceiling_z]
+    floor_points_lst = []
+    ceiling_points_lst = []
+
+    # build wall meshes
+    wall_mesh_lst = []
+    for i, wall_dict in enumerate(quad_walls_lst):
+        normal = np.array(wall_dict['normal'])
+        corners = np.array(wall_dict['corners'])
+        wall_mesh, _ = create_spatial_quad_polygen(corners, normal, camera_center=None)
+        wall_mesh_lst.append(wall_mesh)
+
+    for i, wall_dict in enumerate(quad_walls_lst):
+
+        i_center = np.array(wall_dict['center'])
+        i_normal = np.array(wall_dict['normal'])
+
+        # AX + BY + CZ + D = 0
+        D = -np.dot(i_normal, i_center)
+        plane_i = np.concatenate([i_normal, [D]], axis=0)
+
+        # find the closest wall to current wall
+        # dists = np.abs(np.dot(centers - i_center, i_normal) + D)
+        # dists[i] = np.inf
+        dists = [check_mesh_distance(wall_mesh_lst[i], wall_mesh_lst[j]) for j in range(len(wall_mesh_lst))]
+        dists[i] = np.inf
+        print(f'to Wall {i} dists: {dists}')
+        closest_wall_idx = np.argmin(dists)
+        dists[closest_wall_idx] = np.inf
+        # find the second closest wall to current wall
+        second_closest_wall_idx = np.argmin(dists)
+
+        # calculate the intersection of the adjacent walls with the floor and ceiling
+        floor_corners = []
+        ceiling_corners = []
+        for idx in [closest_wall_idx, second_closest_wall_idx]:
+            j_normal = np.array(quad_walls_lst[idx]['normal'])
+            j_center = np.array(quad_walls_lst[idx]['center'])
+            D_j = -np.dot(j_normal, j_center)
+            plane_j = np.concatenate([j_normal, [D_j]], axis=0)
+            # if two wall are parrallel, skip
+            if np.allclose(np.abs(i_normal), np.abs(j_normal), atol=1e-3):
+                print(f'Wall {i} and Wall {idx} are parallel!!!')
+                print(f'i_normal: {i_normal}, j_normal: {j_normal}')
+                continue
+
+            print(f'Wall {i} and Wall {idx} are adjacent:')
+            intersect_line = threeD_plane_intersect(plane_i, plane_j)
+            print('intersect_line', intersect_line)
+            intersect_normal = intersect_line[:3]
+            intersect_point = intersect_line[3:]
+
+            # floor
+            assert np.allclose(abs(np.dot(intersect_normal, floor_normal)), 1,
+                               atol=1e-2), 'intersect_normal should be vertical to floor_normal!!!'
+            point_on_floor = intersect_point + np.array([0, 0, floor_z - intersect_point[2]])
+            print(f'point_on_floor: {point_on_floor}')
+            floor_corners.append(point_on_floor)
+
+            # ceiling
+            assert np.allclose(abs(np.dot(intersect_normal, ceiling_normal)), 1,
+                               atol=1e-2), 'intersect_normal should be vertical to ceiling_normal!!!'
+            point_on_ceiling = intersect_point + np.array([0, 0, ceiling_z - intersect_point[2]])
+            # print(f'point_on_ceiling: {point_on_ceiling}')
+            ceiling_corners.append(point_on_ceiling)
+
+        assert len(floor_corners) == len(ceiling_corners) == 2, 'floor/ceiling_corners should have two points!!!'
+        floor_points_lst.append(np.array(floor_corners))
+        ceiling_points_lst.append(np.array(ceiling_corners))
+
+    floor_points_lst = np.concatenate(floor_points_lst).reshape(-1, 3)
+    ceiling_points_lst = np.concatenate(ceiling_points_lst).reshape(-1, 3)
+    print(f'floor_points_lst: {floor_points_lst}')
+    print(f'gt_floor_points_lst: {gt_floor_points_lst}')
+    print(f'ceiling_points_lst: {ceiling_points_lst}')
+    print(f'gt_ceil_points_lst: {gt_ceil_points_lst}')
+    return floor_points_lst, ceiling_points_lst
+
+
+def recover_floor_ceiling_points_from_quad_walls(quad_walls_lst: List[Dict]):
+    """
+    Reconstruct floor and ceiling points from quad walls
+    """
+    assert len(quad_walls_lst) > 0, 'No quad walls detected!!!'
+
+    def sort_points(points: np.array):
+        """
+        Sort points by connecting order
+        """
+        assert len(points) > 0, 'No points detected!!!'
+
+        start_idx = [0, 1]
+        sorted_points = [points[start_idx[0]], points[start_idx[1]]]
+        points = np.delete(points, start_idx, axis=0)
+        # print(f'deleted points.shape: {points.shape}')
+        while len(points) > 0:
+            dists = np.linalg.norm(points - sorted_points[-1], axis=1)
+            next_idx = np.argmin(dists)
+            if next_idx % 2 == 0:
+                sorted_points.append(points[next_idx])
+                sorted_points.append(points[next_idx + 1])
+                del_idx = [next_idx, next_idx + 1]
+            else:
+                sorted_points.append(points[next_idx - 1])
+                sorted_points.append(points[next_idx])
+                del_idx = [next_idx - 1, next_idx]
+            points = np.delete(points, del_idx, axis=0)
+        return np.array(sorted_points)
+
+    all_corners = np.concatenate([wall_dict['corners'] for wall_dict in quad_walls_lst], axis=0)
+    floor_z = np.min(all_corners[:, 2])
+    raw_floor_points = all_corners[all_corners[:, 2] == floor_z]
+    assert (raw_floor_points.shape[0] % 2 == 0)
+    print(f'raw_floor_points: {raw_floor_points}')
+    # sort points by connecting order
+    floor_points = raw_floor_points
+    floor_points = sort_points(raw_floor_points)
+    print(f'sorted floor_points: {floor_points}')
+
+    ceiling_z = np.max(all_corners[:, 2])
+    raw_ceiling_points = all_corners[all_corners[:, 2] == ceiling_z]
+    assert (raw_ceiling_points.shape[0] % 2 == 0)
+    # print(f'raw_ceiling_points: {raw_ceiling_points}')
+    # sort points by connecting order
+    ceiling_points = raw_ceiling_points
+    ceiling_points = sort_points(raw_ceiling_points)
+
+    return floor_points, ceiling_points
+
+
+def check_mesh_attachment(object_mesh: trimesh.Trimesh, room_mesh: trimesh.Trimesh):
+    """check if the object mesh is attached with the room, i.e. the window/door mesh is collided with the room
+
+    use FCL to detect attachment and collision, see https://github.com/BerkeleyAutomation/python-fcl/ for ref.
+    Args:
+        object_mesh (o3d.geometry.TriangleMesh): object mesh
+        room_walls (o3d.geometry.TriangleMesh): room walls mesh
+
+    Returns:
+        bool: True if the object mesh is in the room
+    """
+    room = fcl.BVHModel()
+    room.beginModel(len(room_mesh.vertices), len(room_mesh.faces))
+    room.addSubModel(room_mesh.vertices, room_mesh.faces)
+    room.endModel()
+
+    window = fcl.BVHModel()
+    window.beginModel(len(object_mesh.vertices), len(object_mesh.faces))
+    window.addSubModel(object_mesh.vertices, object_mesh.faces)
+    window.endModel()
+
+    t1 = fcl.Transform(np.array([1, 0, 0, 0]), np.array([0, 0, 0]))
+    t2 = fcl.Transform(np.array([1, 0, 0, 0]), np.array([0., 0, 0]))
+
+    o1 = fcl.CollisionObject(room, t1)
+    o2 = fcl.CollisionObject(window, t2)
+
+    request = fcl.CollisionRequest(num_max_contacts=100, enable_contact=True)
+    result = fcl.CollisionResult()
+    ret = fcl.collide(o1, o2, request, result)
+    return result.is_collision
+
+
+def check_mesh_distance(object_mesh: trimesh.Trimesh, room_mesh: trimesh.Trimesh):
+    """caculate distance between object mesh and room mesh, i.e. the window/door mesh is adjacent to the room but is not collided with the room.
+
+    use FCL to detect attachment and collision, see https://github.com/BerkeleyAutomation/python-fcl/ for ref.
+    Args:
+        object_mesh (o3d.geometry.TriangleMesh): object mesh
+        room_walls (o3d.geometry.TriangleMesh): room walls mesh
+
+    Returns:
+        float: distance
+    """
+    room = fcl.BVHModel()
+    room.beginModel(len(room_mesh.vertices), len(room_mesh.faces))
+    room.addSubModel(room_mesh.vertices, room_mesh.faces)
+    room.endModel()
+
+    window = fcl.BVHModel()
+    window.beginModel(len(object_mesh.vertices), len(object_mesh.faces))
+    window.addSubModel(object_mesh.vertices, object_mesh.faces)
+    window.endModel()
+
+    t1 = fcl.Transform(np.array([1, 0, 0, 0]), np.array([0, 0, 0]))
+    t2 = fcl.Transform(np.array([1, 0, 0, 0]), np.array([0., 0, 0]))
+
+    o1 = fcl.CollisionObject(room, t1)
+    o2 = fcl.CollisionObject(window, t2)
+
+    request = fcl.DistanceRequest()
+    result = fcl.DistanceResult()
+    ret = fcl.distance(o1, o2, request, result)
+    return ret

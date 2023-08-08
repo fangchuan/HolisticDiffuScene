@@ -771,8 +771,7 @@ class ST3DDataset(data.Dataset):
             max_stretch=2.0,
             normcor=False,
             max_text_sentences=4,  #  max number of text_prompt sentences
-            #  support parallel training
-        shard=0,
+            shard=0,  #  support parallel training
             num_shards=1):
         self.img_dir = os.path.join(root_dir, 'img')
         self.cor_dir = os.path.join(root_dir, 'label_cor')
@@ -790,13 +789,11 @@ class ST3DDataset(data.Dataset):
             [fname for fname in os.listdir(self.img_dir) if fname.endswith('.jpg') or fname.endswith('.png')])
         self.txt_fnames = ['%s.txt' % fname[:-4] for fname in self.img_fnames]
         self.json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
-        self.wall_json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
         self.npy_fnames = ['%s.npy' % fname[:-4] for fname in self.img_fnames]
         #  image file names and text file names on local_rank machine
         self.local_img_fnames = self.img_fnames[shard::num_shards]
         self.local_txt_fnames = self.txt_fnames[shard::num_shards]
         self.local_json_fnames = self.json_fnames[shard::num_shards]
-        self.local_wall_json_fnames = self.wall_json_fnames[shard::num_shards]
         self.local_npy_fnames = self.npy_fnames[shard::num_shards]
 
         self.flip = flip
@@ -857,12 +854,11 @@ class ST3DDataset(data.Dataset):
             text_desc = f.readline()
             text_desc_lst = text_desc.strip().split('. ')
             text_desc_lst = [complete_stop_in_sentence(sen) for sen in text_desc_lst if len(sen)]
-        # print(text_desc_lst)
+
         # read text embedding file
         text_emb = np.array([])
         text_emb_filepath = os.path.join(self.text_emb_dir, self.local_npy_fnames[idx])
         text_emb = np.load(text_emb_filepath).astype(np.float32)
-        # print(f'text_emb.shape: {text_emb.shape}')
 
         # read object bbox file
         object_bbox_filepath = os.path.join(self.bbox_3d_dir, self.local_json_fnames[idx])
@@ -892,7 +888,7 @@ class ST3DDataset(data.Dataset):
                                                           bbox_dim=bbox_property_encode_dim)
 
         # read wall bbox
-        wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_wall_json_fnames[idx])
+        wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_json_fnames[idx])
         wall_bbox_lst = []
         with open(wall_bbox_filepath, 'r') as f:
             wall_bbox_dicts = json.load(f)
