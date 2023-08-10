@@ -17,9 +17,9 @@ import trimesh
 
 import torch.utils.data as data
 from misc import panostretch
-from .metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, \
+from .metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, \
 ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN,\
-ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_ROOM_QUAD_WALL_MAX_LEN
+ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN)
 
 # room types
 ROOM_TYPE_DICT = {
@@ -730,13 +730,15 @@ def padding_and_reshape_wall_bbox(room_type: int, wall_bbox_lst: np.array, bbox_
         _type_: _description_
     """
     L = len(wall_bbox_lst)
-    max_len = ST3D_ROOM_QUAD_WALL_MAX_LEN
     if room_type == ROOM_TYPE_DICT['bedroom']:
         class_num = len(ST3D_BEDROOM_FURNITURE)
+        max_len = ST3D_BEDROOM_QUAD_WALL_MAX_LEN
     elif room_type == ROOM_TYPE_DICT['living room']:
         class_num = len(ST3D_LIVINGROOM_FURNITURE)
+        max_len = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
     elif room_type == ROOM_TYPE_DICT['dining room']:
         class_num = len(ST3D_DININGROOM_FURNITURE)
+        max_len = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
 
     assert L <= max_len, 'The length of the wall bbox list should be less than 10.'
 
@@ -881,11 +883,13 @@ class ST3DDataset(data.Dataset):
             bbox_angle = np.array(obj_bbox['angles'], np.float32)
             bbox_angle = RotationEncode(bbox_angle)
             bbox_property_encode = np.concatenate([bbox_class, bbox_centroid, bbox_size, bbox_angle], axis=-1)
+            # print(f'bbox_property_encode: {bbox_property_encode}')
             bbox_property_encode_dim = bbox_property_encode.shape[-1]
             object_bbox_lst.append(bbox_property_encode)
         object_bbox_lst = padding_and_reshape_object_bbox(room_type=room_type,
                                                           object_bbox_lst=np.array(object_bbox_lst),
                                                           bbox_dim=bbox_property_encode_dim)
+        # print(f'object_bbox_lst: {object_bbox_lst}')
 
         # read wall bbox
         wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_json_fnames[idx])
@@ -910,7 +914,7 @@ class ST3DDataset(data.Dataset):
                                                       wall_bbox_lst=np.array(wall_bbox_lst),
                                                       bbox_dim=wall_property_encode_dim)
 
-        # out_lst = np.concatenate([boundary_lst, corner_y_prob_lst, object_bbox_lst], axis=0)
+        # print(f'wall_bbox_lst: {wall_bbox_lst}')
         assert wall_bbox_lst.shape[-1] == object_bbox_lst.shape[-1]
         out_lst = np.concatenate([wall_bbox_lst, object_bbox_lst], axis=0)
         out_lst = out_lst.transpose(1, 0)

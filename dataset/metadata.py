@@ -1206,7 +1206,8 @@ INVALID_ROOMS_LST = [
     'scene_01608_270288',
 ]
 # max number of walls in a room
-ST3D_ROOM_QUAD_WALL_MAX_LEN = 10
+ST3D_BEDROOM_QUAD_WALL_MAX_LEN = 10
+ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN = 24
 
 ST3D_BEDROOM_MIN_LEN = 3
 ST3D_BEDROOM_MAX_LEN = 13
@@ -1299,7 +1300,7 @@ ROOM_WALLS_LARGER_THAN_10 = [
 ]
 
 ST3D_DININGROOM_MIN_LEN = 3
-ST3D_DININGROOM_MAX_LEN = 23
+ST3D_DININGROOM_MAX_LEN = 24
 
 # 18
 ST3D_DININGROOM_FURNITURE = [
@@ -1329,36 +1330,37 @@ ST3D_DININGROOM_FURNITURE_CNTS = {
 }
 
 ST3D_LIVINGROOM_MIN_LEN = 3
-ST3D_LIVINGROOM_MAX_LEN = 23
-# 23
+ST3D_LIVINGROOM_MAX_LEN = 24
+# 26
 ST3D_LIVINGROOM_FURNITURE = [
-    'picture', 'pillow', 'counter', 'lamp', 'shelves', 'cabinet', 'window', 'mirror', 'chair', 'bed', 'box', 'curtain',
-    'table', 'sink', 'desk', 'night stand', 'toilet', 'door', 'television', 'fridge', 'sofa', 'bathtub', 'dresser',
-    'wall', 'floor', 'empty'
+    "mirror", "night stand", "curtain", "door", "pillow", "books", "fridge", "dresser", "television", "counter",
+    "table", "bed", "desk", "toilet", "sofa", "picture", "window", "chair", "sink", "lamp", "shelves", "cabinet",
+    "bathtub", "box", "wall", "empty"
 ]
 
 ST3D_LIVINGROOM_FURNITURE_CNTS = {
-    'lamp': 10760,
-    'door': 10585,
-    'cabinet': 7500,
-    'table': 6606,
-    'chair': 5767,
-    'sofa': 5603,
-    'picture': 5514,
-    'curtain': 3609,
-    'television': 2019,
-    'pillow': 1950,
-    'window': 1881,
-    'shelves': 937,
-    'fridge': 664,
-    'mirror': 304,
-    'counter': 258,
-    'night stand': 156,
-    'desk': 143,
-    'bed': 69,
-    'sink': 62,
-    'dresser': 12,
-    'bathtub': 3,
-    'box': 2,
-    'toilet': 1
+    "lamp": 11162,
+    "door": 10888,
+    "cabinet": 7621,
+    "table": 6747,
+    "chair": 5801,
+    "picture": 5571,
+    "sofa": 5369,
+    "curtain": 3663,
+    "television": 2122,
+    "pillow": 2024,
+    "window": 1951,
+    "shelves": 943,
+    "fridge": 674,
+    "mirror": 311,
+    "counter": 263,
+    "desk": 145,
+    "night stand": 147,
+    "bed": 74,
+    "sink": 65,
+    "dresser": 12,
+    "bathtub": 4,
+    "books": 3,
+    "box": 2,
+    "toilet": 1
 }

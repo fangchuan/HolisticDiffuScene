@@ -29,7 +29,7 @@ from misc.equirect_projection import vis_objs3d, vis_floor_ceiling
 from dataset.metadata import (INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS, COLOR_TO_LABEL,
                               COLOR_TO_ADEK_LABEL, ST3D_LIVINGROOM_MIN_LEN, ST3D_BEDROOM_MIN_LEN,
                               ST3D_DININGROOM_MIN_LEN)
-from dataset.metadata import ROOM_WALLS_LARGER_THAN_10
+from dataset.metadata import ROOM_WALLS_LARGER_THAN_10, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_QUAD_WALL_MAX_LEN
 
 from dataset.st3d_dataset import get_mesh_from_corners, np_coorx2u, np_coory2v, find_occlusion, corners_to_1d_boundary
 from dataset.gen_scene_text import get_scene_description
@@ -67,7 +67,7 @@ The reorganized structure as follow:
 - {out_test_root} ...
 '''
 ALL_SCENE = ['scene_%05d' % i for i in range(0, 3500)]
-TRAIN_SCENE = ['scene_%05d' % i for i in range(608, 3000)]
+TRAIN_SCENE = ['scene_%05d' % i for i in range(0, 3000)]
 TEST_SCENE = ['scene_%05d' % i for i in range(3000, 3500)]
 
 ST3D_BEDROOM_FURNITURES_SET = set()
@@ -689,7 +689,6 @@ def save_visualization_and_mesh(
         wall_dict['center'] = quad_wall['center']
         wall_dict['size'] = [quad_wall['width'], 0.01, quad_wall['height']]
         normal = quad_wall['normal']
-        # print(f'wall normal: {normal}')
         # The direction of all camera is always along the negative y-axis.
         cos_angle = np.array(normal).dot(np.array([0, -1, 0]))
         angle = np.arccos(cos_angle)
@@ -701,11 +700,11 @@ def save_visualization_and_mesh(
         objects_lst_cp.append(wall_dict)
 
     # visualize room layout and object bbox in panorama
-    rgb_img = cv2.imread(source_img_path, cv2.IMREAD_UNCHANGED)
-    rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
+    # rgb_img = cv2.imread(source_img_path, cv2.IMREAD_UNCHANGED)
+    # rgb_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2RGB)
+    # bg_img = rgb_img
     img_H, img_W = 512, 1024
     bg_img = np.zeros((img_H, img_W, 3), dtype=np.uint8)
-    bg_img = rgb_img
     # Read ground truth corners
     with open(source_cor_path, 'r') as f:
         corners_lst = np.array([line.strip().split() for line in f if line.strip()], np.float32)
@@ -714,21 +713,21 @@ def save_visualization_and_mesh(
         # Detect occlusion
         occlusion = find_occlusion(corners_lst[::2].copy()).repeat(2)
         # corners correspondenses' x coordinate should be identical
-        assert (np.abs(corners_lst[0::2, 0] - corners_lst[1::2, 0]) > img_W / 100).sum() == 0, 'source_img_path'
+        assert (np.abs(corners_lst[0::2, 0] - corners_lst[1::2, 0]) > img_W / 100).sum() == 0, source_img_path
         # corners correspondenses' y coordinate should be y_floor < y_ceiling
-        assert (corners_lst[0::2, 1] > corners_lst[1::2, 1]).sum() == 0, 'source_img_path'
+        assert (corners_lst[0::2, 1] > corners_lst[1::2, 1]).sum() == 0, source_img_path
     # 1d ceiling-wall/floor-wall boundary, [-pi/2, pi/2]
     boundary_lst = corners_to_1d_boundary(corners_lst, img_H, img_W)
-    # sem_bbox_img = vis_floor_ceiling(image=bg_img, coords_2d=boundary_lst, color_to_labels=COLOR_TO_ADEK_LABEL)
+    sem_bbox_img = vis_floor_ceiling(image=bg_img, coords_2d=boundary_lst, color_to_labels=COLOR_TO_ADEK_LABEL)
     sem_bbox_img = vis_objs3d(image=bg_img,
                               v_bbox3d=objects_lst_cp,
                               camera_position=np.array([0, 0, 0]),
                               color_to_labels=COLOR_TO_ADEK_LABEL,
                               b_show_axes=False,
                               b_show_centroid=False,
-                              b_show_bbox3d=True,
-                              b_show_info=True,
-                              b_show_polygen=False,
+                              b_show_bbox3d=False,
+                              b_show_info=False,
+                              b_show_polygen=True,
                               thickness=2)
     # convert BGR to RGB
     debug_bbox_img = sem_bbox_img
@@ -757,6 +756,8 @@ def prepare_dataset(raw_dataset_dir: str,
     furniture_counts = []
 
     room_layout_size_lst = []
+
+    quad_wall_num_lst = []
 
     # clip model
     glove_model = FrozenCLIPEmbedder(device='cuda')
@@ -791,7 +792,7 @@ def prepare_dataset(raw_dataset_dir: str,
             if room_type_str != target_room_type:
                 continue
 
-            print(f'Processing room: {room_str}')
+            # print(f'Processing room: {room_str}')
 
             room_path = os.path.join(scene_dir, room_id, "panorama")
             source_img_path = os.path.join(room_path, "full", "rgb_rawlight.png")
@@ -803,14 +804,16 @@ def prepare_dataset(raw_dataset_dir: str,
             quad_walls_dict, quad_walls_normalized_dict, room_layout_mesh = parse_wall_corners(
                 scene_anno_3d_dict, room_id, source_cam_pos_path)
             # skip wall number < 4
-            if len(quad_walls_normalized_dict['walls']) < 4:
+            if len(quad_walls_normalized_dict['walls']) < ST3D_BEDROOM_QUAD_WALL_MAX_LEN:
                 print(f'bad scene {room_str} walls number < 4')
                 INVALID_ROOMS_LST.append(room_str)
                 continue
-            # if len(quad_walls_normalized_dict['walls']) > 10:
-            #     print(f'bad scene {room_str} walls number > 10')
-            #     ROOM_WALLS_LARGER_THAN_10.append(room_str)
-            #     continue
+
+            quad_wall_num_lst.append(len(quad_walls_normalized_dict['walls']))
+            if len(quad_walls_normalized_dict['walls']) > ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN:
+                print(f'bad scene {room_str} walls number > 10')
+                ROOM_WALLS_LARGER_THAN_10.append(room_str)
+                continue
 
             # parse 3d bbox of objects in the room
             new_labeld_room_filepath = os.path.join(annotated_labels_dir, room_str + '.json')
@@ -824,17 +827,18 @@ def prepare_dataset(raw_dataset_dir: str,
                 continue
 
             # visialization and debug
-            debug_bbox_img, debug_bbox_trimesh = save_visualization_and_mesh(
-                objects_lst=obj_bbox_3d_dict['objects'],
-                quad_walls_lst=quad_walls_dict['walls'],
-                source_cor_path=source_cor_path,
-                source_img_path=source_img_path,
-            )
+            if b_save_debug_files:
+                debug_bbox_img, debug_bbox_trimesh = save_visualization_and_mesh(
+                    objects_lst=obj_bbox_3d_dict['objects'],
+                    quad_walls_lst=quad_walls_dict['walls'],
+                    source_cor_path=source_cor_path,
+                    source_img_path=source_img_path,
+                )
 
             # generate scene description
             scene_desc_text, scene_desc_emb = get_scene_description(
                 room_type=room_type_str,
-                wall_dict=quad_walls_dict,
+                wall_dict=quad_walls_dict.copy(),
                 object_dict=obj_bbox_3d_dict.copy(),
                 glove_model=glove_model,
             )
@@ -918,11 +922,10 @@ def prepare_dataset(raw_dataset_dir: str,
 
                 if b_save_debug_files:
                     # visualize debug bbox img
-                    # cv2.imwrite(target_sem_bbox_img_path, debug_bbox_img)
-                    Image.fromarray(debug_bbox_img).save(target_sem_bbox_img_path)
+                    # Image.fromarray(debug_bbox_img).save(target_sem_bbox_img_path)
 
                     # visualize semantic layout img
-                    # Image.fromarray(debug_bbox_img).save(target_sem_layout_img_path)
+                    Image.fromarray(debug_bbox_img).save(target_sem_layout_img_path)
 
                     # print(f'save visualization for object bbox annotation of {room_id_str}')
                     debug_bbox_trimesh.export(target_bbox_3d_mesh_path)
@@ -945,10 +948,14 @@ def prepare_dataset(raw_dataset_dir: str,
     furniture_counts = Counter(sum(furniture_counts, []))
     furniture_counts = OrderedDict(sorted(furniture_counts.items(), key=lambda x: -x[1]))
     room_mean_size = np.mean(np.array(room_layout_size_lst), axis=0)
+    quad_wall_num_max = max(quad_wall_num_lst)
+    quad_wall_num_mean = np.mean(np.array(quad_wall_num_lst), axis=0)
     print(f"furniture_counts: \n {furniture_counts}")
     print(f'mean room_layout size : {room_mean_size}')
+    print(f'max quad wall num: {quad_wall_num_max}')
+    print(f'mean quad wall num: {quad_wall_num_mean}')
 
-    return furniture_counts, room_mean_size
+    return furniture_counts, room_mean_size, quad_wall_num_max, quad_wall_num_mean
 
 
 def parse_args():
@@ -963,12 +970,12 @@ def parse_args():
                         help="structured3d room type")
     parser.add_argument('--annotated_labels_path',
                         type=str,
-                        default='/data/dataset/Structured3D/preprocessed/annotations/bedroom/annotated_labels/',
+                        default='/data/dataset/Structured3D/preprocessed/annotations/livingroom/annotated_labels/',
                         help='path to annotated labels')
     parser.add_argument('--out_train_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/text2pano/train')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/debug_livingroom/train')
     parser.add_argument('--out_test_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/text2pano/test')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/debug_livingroom/test')
     return parser.parse_args()
 
 
@@ -984,23 +991,23 @@ def main():
     elif args.room_type == 'st3d_study':
         room_type_str = 'study'
 
-    train_furniture_stats, room_mean_size = prepare_dataset(args.dataset_path,
-                                                            room_type_str,
-                                                            TRAIN_SCENE,
-                                                            args.out_train_path,
-                                                            args.annotated_labels_path,
-                                                            b_save_debug_files=True)
-    test_furniture_stats, _ = prepare_dataset(args.dataset_path,
-                                              room_type_str,
-                                              TEST_SCENE,
-                                              args.out_test_path,
-                                              args.annotated_labels_path,
-                                              b_save_debug_files=True)
-    print('*' * 20 + ' invalid rooms ids: ' + '*' * 20)
-    print(INVALID_ROOMS_LST)
+    train_furniture_stats, room_mean_size, wall_num_max, wall_num_mean = prepare_dataset(args.dataset_path,
+                                                                                         room_type_str,
+                                                                                         TRAIN_SCENE,
+                                                                                         args.out_train_path,
+                                                                                         args.annotated_labels_path,
+                                                                                         b_save_debug_files=True)
+    test_furniture_stats, _, _, _ = prepare_dataset(args.dataset_path,
+                                                    room_type_str,
+                                                    TEST_SCENE,
+                                                    args.out_test_path,
+                                                    args.annotated_labels_path,
+                                                    b_save_debug_files=True)
+    # print('*' * 20 + ' invalid rooms ids: ' + '*' * 20)
+    # print(INVALID_ROOMS_LST)
 
-    print('*' * 20 + ' room walls  size > 10: ' + '*' * 20)
-    print(ROOM_WALLS_LARGER_THAN_10)
+    # print('*' * 20 + ' room walls  size > 10: ' + '*' * 20)
+    # print(ROOM_WALLS_LARGER_THAN_10)
 
     if args.room_type == 'st3d_bedroom':
         print('*' * 20 + ' bedroom furniture types: ' + '*' * 20)
@@ -1025,9 +1032,12 @@ def main():
         'livingroom_furniture_types': list(ST3D_LIVINGROOM_FURNITURES_SET),
         'diningroom_furniture_types': list(ST3D_DININGROOM_FURNITURES_SET),
         'furniture_counter': train_furniture_stats,
-        'room_mean_size': room_mean_size.tolist()
+        'room_mean_size': room_mean_size.tolist(),
+        'quad_wall_num_max': wall_num_max,
+        'quad_wall_num_mean': wall_num_mean,
     }
-    dataset_stats_filepath = os.path.join(os.path.dirname(args.out_train_path), 'dataset_stats.json')
+    dataset_stats_filepath = os.path.join(os.path.dirname(args.out_train_path),
+                                          room_type_str.replace(' ', '_') + '_dataset_stats.json')
     with open(dataset_stats_filepath, 'w') as f:
         json.dump(dataset_stats, f, indent=4)
 
