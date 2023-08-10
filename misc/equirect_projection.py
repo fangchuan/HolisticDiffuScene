@@ -510,6 +510,32 @@ from .panostretch import check_3dline_cross_pano
 #     return image
 
 
+def vis_floor_ceiling_simple(image: np.array, color_to_labels: dict = None):
+    img_h, img_w = image.shape[:2]
+
+    if color_to_labels is not None:
+        labels_lst = list(color_to_labels.values())
+        colors_lst = list(color_to_labels.keys())
+        color = colors_lst[labels_lst.index('ceiling')]
+    else:
+        color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+
+    ceiling_pixels = np.array([[0, 0], [0, img_h // 2], [img_w - 1, img_h // 2], [img_w - 1, 0]])
+    cv2.fillPoly(image, pts=[ceiling_pixels], color=color)
+
+    if color_to_labels is not None:
+        labels_lst = list(color_to_labels.values())
+        colors_lst = list(color_to_labels.keys())
+        color = colors_lst[labels_lst.index('floor')]
+    else:
+        color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+
+    floor_pixels = np.array([[0, img_h // 2], [0, img_h - 1], [img_w - 1, img_h - 1], [img_w - 1, img_h // 2]])
+    cv2.fillPoly(image, pts=[floor_pixels], color=color)
+
+    return image
+
+
 def vis_floor_ceiling(image: np.array, coords_2d: np.array, color_to_labels: dict = None):
     """
     Visualize the floor and ceiling in the panorama image

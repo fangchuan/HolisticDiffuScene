@@ -18,13 +18,15 @@ import trimesh
 
 # from misc.panorama import draw_boundary_from_cor_id
 # from misc.colors import colormap_255
-from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE
-from dataset.threed_front.metadata import THREED_FRONT_BEDROOM_FURNITURE, THREED_FRONT_LIBRARY_FURNITURE, THREED_FRONT_LIVINGROOM_FURNITURE
+from dataset.metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE,
+                              ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, COLOR_TO_ADEK_LABEL)
+from dataset.threed_front.metadata import (THREED_FRONT_BEDROOM_FURNITURE, THREED_FRONT_LIBRARY_FURNITURE,
+                                           THREED_FRONT_LIVINGROOM_FURNITURE)
 from dataset.threed_front.threed_future_dataset import ThreedFutureDataset
 from dataset.st3d_dataset import ST3DDataset, np_coor2xy, np_coor2xy, ROOM_TYPE_DICT
 from preprocess.prepare_st3d_dataset import vis_scene_mesh
-from misc.equirect_projection import vis_objs3d
-from misc.utils import euler_angle_to_matrix
+from misc.equirect_projection import vis_objs3d, vis_floor_ceiling_simple
+from misc.utils import euler_angle_to_matrix, reconstrcut_floor_ceiling_from_quad_walls
 
 
 def parse_args():
@@ -128,9 +130,9 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
 
     if room_type == 'bedroom':
         class_labels_lst = (ST3D_BEDROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_BEDROOM_FURNITURE
-    elif room_type == 'living_room':
+    elif room_type == 'livingroom':
         class_labels_lst = (ST3D_LIVINGROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_LIVINGROOM_FURNITURE
-    elif room_type == 'dining_room':
+    elif room_type == 'diningroom':
         class_labels_lst = (ST3D_DININGROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_LIVINGROOM_FURNITURE
     else:
         raise NotImplementedError
@@ -167,12 +169,9 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         # The direction of all camera is always along the negative y-axis.
         rotation_matrix = euler_angle_to_matrix(quad_wall_dict['angles'])
         wall_normal = rotation_matrix.dot(np.array([0, -1, 0]))
-        wall_size = [wall_size[0], wall_size[2]]
-        wall_size = [
-            wall_size[0] * max(room_layout_bbox_size[0], room_layout_bbox_size[1]), 0.01,
-            wall_size[1] * room_layout_bbox_size[2]
-        ]
-        quad_wall_dict['size'] = wall_size
+        wall_size = np.array([wall_size[0], 0.01, wall_size[2]])
+        wall_size = wall_size * room_layout_bbox_size
+        quad_wall_dict['size'] = wall_size.tolist()
         # print(f' wall {class_label} centroid: {wall_center} size: {wall_size} noraml: {wall_normal}')
         quad_wall_dict_list.append(quad_wall_dict)
     print(f'quad walls num: {len(quad_wall_dict_list)}')
@@ -212,7 +211,6 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         obj_bbox_dict_list.append(obj_bbox_dict)
     print(f'object num: {len(obj_bbox_dict_list)}')
 
-    # quad_wall_dict_list.extend(obj_bbox_dict_list)
     return quad_wall_dict_list, obj_bbox_dict_list
 
 
@@ -283,7 +281,7 @@ if __name__ == "__main__":
     b_vis_mesh_from_corners = False
     b_vis_mesh_from_diffusion = True
 
-    # load sample results: Bx3x1024
+    # load sample results: BxNxChannel
     sample_result_lst = np.load(args.samples_filepath)
 
     for idx in range(len(sample_result_lst['arr_0'])):
@@ -291,15 +289,19 @@ if __name__ == "__main__":
         # print(f'scene_sample_result: {scene_sample_result.shape}')
         # scene_sample_label = sample_result_lst['arr_1'][idx]
         # scene_sample_label = [key for key in ROOM_TYPE_DICT.keys() if ROOM_TYPE_DICT[key] == scene_sample_label][0]
-        scene_sample_label = 'bedroom'
-        scene_sample_label = scene_sample_label.replace(' ', '_')
+        scene_sample_label = args.room_type
         print(f'scene_sample_label: {scene_sample_label}')
 
-        room_layout_size = np.array([3.64073229, 3.73553261, 2.81591231])
+        if args.room_type == 'bedroom':
+            room_layout_size = np.array([3.64073229, 3.73553261, 2.81591231])  # bedroom
+            wall_max_num = ST3D_BEDROOM_QUAD_WALL_MAX_LEN
+        elif args.room_type == 'livingroom':
+            room_layout_size = np.array([7.239328956952291, 7.6231320936720675, 2.857928654068745])  # livingroom
+            wall_max_num = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
         # quad walls
-        quad_wall_lst = scene_sample_result[:10, :]
+        quad_wall_lst = scene_sample_result[:wall_max_num, :]
         # objects
-        obj_bbox_lst = scene_sample_result[10:, :]
+        obj_bbox_lst = scene_sample_result[wall_max_num:, :]
 
         if b_vis_mesh_from_corners:
             layout_ply_points, layout_ply_faces, layout_corner_lst, cam_pos_lst = dataset.get_gt_layout_mesh(idx)
@@ -324,14 +326,17 @@ if __name__ == "__main__":
         #                                       cam_position=cam_pos_lst)
         out_img = np.zeros((512, 1024, 3), np.uint8)
         cam_position = np.zeros((3,), np.float32)
+        # floor_points, ceiling_points = reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst=wall_dict_lst)
+        out_img = vis_floor_ceiling_simple(image=out_img, color_to_labels=COLOR_TO_ADEK_LABEL)
         out_img = vis_objs3d(out_img,
                              v_bbox3d=(wall_dict_lst + obj_bbox_dict_lst),
                              camera_position=cam_position,
-                             color_to_labels=None,
+                             color_to_labels=COLOR_TO_ADEK_LABEL,
                              b_show_axes=False,
                              b_show_centroid=False,
-                             b_show_bbox3d=True,
-                             b_show_info=True)
+                             b_show_bbox3d=False,
+                             b_show_info=False,
+                             b_show_polygen=True)
         save_img_filepath = os.path.join(args.out_dir, img_fname)
         Image.fromarray(out_img).save(save_img_filepath)
 

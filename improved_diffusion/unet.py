@@ -15,7 +15,6 @@ from .nn import (SiLU, conv_nd, linear, avg_pool_nd, zero_module, normalization,
                  get_activation_fn, FixedPositionalEncoding, LearnedPositionEmbedding)
 
 from . import dist_util, logger
-# from .clip_util import CLIP
 from .attention import SpatialTransformer
 
 
