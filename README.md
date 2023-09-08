@@ -186,5 +186,8 @@ We would like to thank Kujiale.com for providing the database of house designs a
 
 可用模型:
 29. ST3D数据集:  livingroom, text condition训练: log/ST3D_livingroom_textcondition_openai-2023-08-14-18-13-22-588311/ema_0.9999_200000.pt
+                bedroom, text condition训练: log/openai-2023-09-08-15-04-50-375770
     3D_FRONT数据集: bedroom, uncondition训练: log/TDFRONT_bedroom_uncondition_openai-2023-07-26-16-17-12-692249/ema_0.9999_200000.pt 可用
                             text condition训练: log/TDFRONT_bedroom_openai-2023-08-05-18-47-48-302753/ema_0.9999_200000.pt 出现label错误问题???
+
+30. 重新整理3D_FRONT数据集: bedroom/livingroom/diningroom, 重新处理quad_wall, 暂未分train/test, 暂未重新训练3d_front模型;

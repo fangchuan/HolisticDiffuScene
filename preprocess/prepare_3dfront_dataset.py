@@ -166,6 +166,7 @@ def parse_room_layout(room: Room, all_class_labels: List, R: np.array = np.eye(3
         wall_normal = np.array(wall_dict['normal'])
         wall_width = float(wall_dict['width'])
         wall_height = float(wall_dict['height'])
+        wall_corners = np.array(wall_dict['corners']) - scene_bbox_center
         original_angle = wall.z_angle
         if np.isnan(original_angle):
             print(f'room {room.uid} wall {wall_dict["ID"]} angle is nan, wall normal: {wall_normal}')
@@ -178,6 +179,7 @@ def parse_room_layout(room: Room, all_class_labels: List, R: np.array = np.eye(3
 
         new_center = R @ wall_center
         new_normal = R @ wall_normal
+        new_corners = (R @ (wall_corners).T).T
         # The forward direction is negative y-axis.
         cos_angle = np.array(new_normal).dot(np.array([0, -1, 0]))
         new_angle = np.arccos(cos_angle)
@@ -186,7 +188,10 @@ def parse_room_layout(room: Room, all_class_labels: List, R: np.array = np.eye(3
         new_wall_dict['angles'] = [0, 0, new_angle]
         new_wall_dict['center'] = new_center
         new_wall_dict['normal'] = new_normal
-        new_wall_dict['size'] = [wall_width, 0.01, wall_height]
+        new_wall_width = np.linalg.norm(new_corners[3] - new_corners[0])
+        new_wall_height = np.linalg.norm(new_corners[1] - new_corners[0])
+        new_wall_dict['size'] = [new_wall_width, 0.01, new_wall_height]
+        new_wall_dict['corners'] = new_corners
 
         # if room.uid == '01805656-e66f-44b1-8bc1-5e722fff3fff_Bedroom-8715':
         #     wall_vertices = (R @ (np.array(wall_dict['corners']) - scene_bbox_center).T).T
@@ -203,8 +208,13 @@ def parse_room_layout(room: Room, all_class_labels: List, R: np.array = np.eye(3
         wall_normalized_dict['center'] = (new_center / scene_bbox_size).tolist()
         wall_normalized_dict['normal'] = new_normal.tolist()
         wall_normalized_dict['angles'] = [np.cos(new_angle), np.sin(new_angle)]
-        wall_normalized_dict['width'] = (wall_width / max(scene_bbox_size[0], scene_bbox_size[1]))
-        wall_normalized_dict['height'] = (wall_height / scene_bbox_size[2])
+        # wall_normalized_dict['angles'] = [0, 0, new_angle]
+        # wall_normalized_dict['width'] = (wall_width / max(scene_bbox_size[0], scene_bbox_size[1]))
+        # wall_normalized_dict['height'] = (wall_height / scene_bbox_size[2])
+        normalized_corners = new_corners / scene_bbox_size
+        wall_normalized_dict['width'] = np.linalg.norm(normalized_corners[3] - normalized_corners[0])
+        wall_normalized_dict['height'] = np.linalg.norm(normalized_corners[1] - normalized_corners[0])
+        wall_normalized_dict['size'] = [wall_normalized_dict['width'], 0.01, wall_normalized_dict['height']]
 
         new_quad_wall_dict_lst.append(new_wall_dict)
         new_quad_wall_normalized_dict_lst.append(wall_normalized_dict)
@@ -550,9 +560,11 @@ def main(argv):
 
         # debug
         debug_bbox_lst = quad_wall_dict['walls'] + obj_bbox_dict['objects']
+        # debug_bbox_lst = quad_wall_n_dict['walls'] + obj_bbox_n_dict['objects']
         vis_pano_img = np.zeros((512, 1024, 3), dtype=np.uint8)
         vis_pano_img = vis_objs3d(image=vis_pano_img,
                                   v_bbox3d=debug_bbox_lst,
+                                  color_to_labels=None,
                                   camera_position=np.array([0, 0, 0]),
                                   b_show_axes=False,
                                   b_show_bbox3d=True,
