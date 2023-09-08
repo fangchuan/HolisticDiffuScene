@@ -530,7 +530,7 @@ class GaussianDiffusion:
         denoised_fn=None,
         model_kwargs=None,
         device=None,
-        progress=False,
+        progress=True,
         eta=0.0,
     ):
         """

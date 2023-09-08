@@ -220,7 +220,7 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, new_labeld_room_f
     def check_bbox_in_room(bbox: Dict, room_layout_mesh: trimesh.Trimesh, layout_bbox_min: np.array,
                            layout_bbox_max: np.array):
         bbox_center = np.array([bbox['center']])
-        margin_dist = 0.5
+        margin_dist = 0.10
         # if object bbox center is outside of room layout
         if bbox_center[:, 0] < layout_bbox_min[0] or bbox_center[:, 0] > layout_bbox_max[0] or \
             bbox_center[:, 1] < layout_bbox_min[1] or bbox_center[:, 1] > layout_bbox_max[1] or \
@@ -804,16 +804,16 @@ def prepare_dataset(raw_dataset_dir: str,
             quad_walls_dict, quad_walls_normalized_dict, room_layout_mesh = parse_wall_corners(
                 scene_anno_3d_dict, room_id, source_cam_pos_path)
             # skip wall number < 4
-            if len(quad_walls_normalized_dict['walls']) < ST3D_BEDROOM_QUAD_WALL_MAX_LEN:
+            if len(quad_walls_normalized_dict['walls']) < 4:
                 print(f'bad scene {room_str} walls number < 4')
                 INVALID_ROOMS_LST.append(room_str)
                 continue
 
             quad_wall_num_lst.append(len(quad_walls_normalized_dict['walls']))
-            if len(quad_walls_normalized_dict['walls']) > ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN:
-                print(f'bad scene {room_str} walls number > 10')
-                ROOM_WALLS_LARGER_THAN_10.append(room_str)
-                continue
+            # if len(quad_walls_normalized_dict['walls']) > ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN:
+            #     print(f'bad scene {room_str} walls number > {ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN}')
+            #     ROOM_WALLS_LARGER_THAN_10.append(room_str)
+            #     continue
 
             # parse 3d bbox of objects in the room
             new_labeld_room_filepath = os.path.join(annotated_labels_dir, room_str + '.json')
@@ -973,9 +973,9 @@ def parse_args():
                         default='/data/dataset/Structured3D/preprocessed/annotations/livingroom/annotated_labels/',
                         help='path to annotated labels')
     parser.add_argument('--out_train_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/debug_livingroom/train')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/text2pano/train')
     parser.add_argument('--out_test_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/debug_livingroom/test')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/text2pano/test')
     return parser.parse_args()
 
 

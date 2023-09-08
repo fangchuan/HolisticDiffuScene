@@ -39,7 +39,7 @@ def parse_args():
                         default='/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/threed_future_model_bedroom.pkl',
                         type=str,
                         help='3D_FURTURE models')
-    parser.add_argument('--dataset_type', default='3d_front', type=str, help='dataset type, [3d_front, st3d]')
+    parser.add_argument('--dataset_type', default='st3d', type=str, help='dataset type, [3d_front, st3d]')
     parser.add_argument('--room_type', default='bedroom', type=str, help='generated room type')
     parser.add_argument('--vis_layout_mesh', action='store_true', help='whether to visualize layout mesh')
     parser.add_argument('--vis_layout_wireframe', action='store_true', help='whether to visualize wireframe of layout')
@@ -327,16 +327,16 @@ if __name__ == "__main__":
         out_img = np.zeros((512, 1024, 3), np.uint8)
         cam_position = np.zeros((3,), np.float32)
         # floor_points, ceiling_points = reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst=wall_dict_lst)
-        out_img = vis_floor_ceiling_simple(image=out_img, color_to_labels=COLOR_TO_ADEK_LABEL)
+        # out_img = vis_floor_ceiling_simple(image=out_img, color_to_labels=COLOR_TO_ADEK_LABEL)
         out_img = vis_objs3d(out_img,
                              v_bbox3d=(wall_dict_lst + obj_bbox_dict_lst),
                              camera_position=cam_position,
-                             color_to_labels=COLOR_TO_ADEK_LABEL,
+                             color_to_labels=COLOR_TO_ADEK_LABEL if args.dataset_type == 'st3d' else None,
                              b_show_axes=False,
                              b_show_centroid=False,
-                             b_show_bbox3d=False,
-                             b_show_info=False,
-                             b_show_polygen=True)
+                             b_show_bbox3d=True,
+                             b_show_info=True,
+                             b_show_polygen=False)
         save_img_filepath = os.path.join(args.out_dir, img_fname)
         Image.fromarray(out_img).save(save_img_filepath)
 

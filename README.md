@@ -183,3 +183,8 @@ We would like to thank Kujiale.com for providing the database of house designs a
 26. text-condition, 无input_encoding, 无attn_mask训练: openai-2023-07-19-18-09-09-644965: 训练40h, 13W步, 在ST3D测试集上效果明显;
 27. 3D_FRONT数据集: unconditional训练, 无input_encoding, 无attn_mask, openai-2023-07-30-20-12-28-373197训练效果明显;
 28. 3D_FRONT数据集: text condition训练, 无input_encoding, 无attn_mask, openai-2023-07-30-21-29-55-294343训练, 还未在测试集上测试，只在随机文本上测试, 生成效果还凑活; 
+
+可用模型:
+29. ST3D数据集:  livingroom, text condition训练: log/ST3D_livingroom_textcondition_openai-2023-08-14-18-13-22-588311/ema_0.9999_200000.pt
+    3D_FRONT数据集: bedroom, uncondition训练: log/TDFRONT_bedroom_uncondition_openai-2023-07-26-16-17-12-692249/ema_0.9999_200000.pt 可用
+                            text condition训练: log/TDFRONT_bedroom_openai-2023-08-05-18-47-48-302753/ema_0.9999_200000.pt 出现label错误问题???
