@@ -774,7 +774,8 @@ class ST3DDataset(data.Dataset):
             normcor=False,
             max_text_sentences=4,  #  max number of text_prompt sentences
             shard=0,  #  support parallel training
-            num_shards=1):
+            num_shards=1,
+            return_scene_name=False):
         self.img_dir = os.path.join(root_dir, 'img')
         self.cor_dir = os.path.join(root_dir, 'label_cor')
         self.quad_wall_dir = os.path.join(root_dir, 'quad_walls')
@@ -806,6 +807,7 @@ class ST3DDataset(data.Dataset):
         self.normcor = normcor
         self.max_text_sentences = max_text_sentences
         self.local_classes = None
+        self.return_scene_name = return_scene_name
 
         # The direction of all camera is always along the negative y-axis.
         self.cam_R = np.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]], np.float32)
@@ -929,7 +931,12 @@ class ST3DDataset(data.Dataset):
                 text_desc_lst = text_desc_lst[:self.max_text_sentences]
             cond_dict["text"] = ''.join(text_desc_lst)
         cond_dict["context"] = np.squeeze(text_emb, axis=0)
-        return out_lst, cond_dict
+
+        if self.return_scene_name:
+            scene_name = self.local_txt_fnames[idx][:-4]
+            return out_lst, cond_dict, scene_name
+        else:
+            return out_lst, cond_dict
 
     def get_gt_layout_mesh(self,
                            idx: int,

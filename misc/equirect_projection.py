@@ -319,6 +319,7 @@ def vis_objs3d(image,
     image = image.copy()
     wall_ids = [i for i, o in enumerate(v_bbox3d) if o['class'] == 'wall']
     if b_show_polygen:
+        # ignore curtain to visualize window
         obj_ids = [i for i, o in enumerate(v_bbox3d) if (o['class'] not in ['wall', 'curtain'])]
     else:
         obj_ids = [i for i, o in enumerate(v_bbox3d) if (o['class'] not in ['wall'])]
