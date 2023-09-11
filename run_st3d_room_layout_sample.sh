@@ -11,3 +11,6 @@ python scripts/st3d_room_layout_sample.py --data_dir /mnt/nas_3dv/hdd1/datasets/
  $MODEL_FLAGS \
  $DIFFUSION_FLAGS \
  --room_type 'livingroom'
+
+# bedroom --model_path log/openai-2023-09-08-15-04-50-375770/ema_0.9999_180000.pt \
+# livingroom --model_path log/ST3D_livingroom_textcondition_openai-2023-08-14-18-13-22-588311/ema_0.9999_200000.pt \

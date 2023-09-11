@@ -169,9 +169,24 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         # The direction of all camera is always along the negative y-axis.
         rotation_matrix = euler_angle_to_matrix(quad_wall_dict['angles'])
         wall_normal = rotation_matrix.dot(np.array([0, -1, 0]))
+        # print(f'wall_normal: {wall_normal}')
         wall_size = np.array([wall_size[0], 0.01, wall_size[2]])
         wall_size = wall_size * room_layout_bbox_size
+        wall_corners = np.array([
+            [-wall_size[0] / 2, 0, -wall_size[2] / 2],  # left-bottom
+            [-wall_size[0] / 2, 0, wall_size[2] / 2],  # left-top
+            [wall_size[0] / 2, 0, wall_size[2] / 2],  # right-top
+            [wall_size[0] / 2, 0, -wall_size[2] / 2]
+        ])  # right-bottom
+        wall_corners = wall_corners.dot(rotation_matrix.T)
+        wall_corners = wall_corners + wall_center
         quad_wall_dict['size'] = wall_size.tolist()
+        quad_wall_dict['corners'] = wall_corners.tolist()
+        quad_wall_dict['normal'] = wall_normal.tolist()
+        test_width = np.linalg.norm(wall_corners[0] - wall_corners[3])
+        test_height = np.linalg.norm(wall_corners[0] - wall_corners[1])
+        # print(f'with: {wall_size[0]} height: {wall_size[2]}')
+        # print(f'test_width: {test_width} test_height: {test_height}')
         # print(f' wall {class_label} centroid: {wall_center} size: {wall_size} noraml: {wall_normal}')
         quad_wall_dict_list.append(quad_wall_dict)
     print(f'quad walls num: {len(quad_wall_dict_list)}')
@@ -326,7 +341,7 @@ if __name__ == "__main__":
         #                                       cam_position=cam_pos_lst)
         out_img = np.zeros((512, 1024, 3), np.uint8)
         cam_position = np.zeros((3,), np.float32)
-        # floor_points, ceiling_points = reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst=wall_dict_lst)
+        reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst=wall_dict_lst)
         # out_img = vis_floor_ceiling_simple(image=out_img, color_to_labels=COLOR_TO_ADEK_LABEL)
         out_img = vis_objs3d(out_img,
                              v_bbox3d=(wall_dict_lst + obj_bbox_dict_lst),
@@ -334,9 +349,9 @@ if __name__ == "__main__":
                              color_to_labels=COLOR_TO_ADEK_LABEL if args.dataset_type == 'st3d' else None,
                              b_show_axes=False,
                              b_show_centroid=False,
-                             b_show_bbox3d=True,
-                             b_show_info=True,
-                             b_show_polygen=False)
+                             b_show_bbox3d=False,
+                             b_show_info=False,
+                             b_show_polygen=True)
         save_img_filepath = os.path.join(args.out_dir, img_fname)
         Image.fromarray(out_img).save(save_img_filepath)
 

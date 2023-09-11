@@ -255,7 +255,7 @@ def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
     """
     assert len(quad_walls_lst) > 0, 'No quad walls detected!!!'
 
-    all_corners = np.concatenate([wall_dict['corners'] for wall_dict in quad_walls_lst], axis=0)
+    all_corners = np.concatenate([np.array(wall_dict['corners']) for wall_dict in quad_walls_lst], axis=0)
     floor_z = np.min(all_corners[:, 2])
     floor_normal = np.array([0, 0, 1])
 
@@ -264,8 +264,6 @@ def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
 
     gt_floor_points_lst = all_corners[all_corners[:, 2] == floor_z]
     gt_ceil_points_lst = all_corners[all_corners[:, 2] == ceiling_z]
-    floor_points_lst = []
-    ceiling_points_lst = []
 
     # build wall meshes
     wall_mesh_lst = []
@@ -275,7 +273,12 @@ def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
         wall_mesh, _ = create_spatial_quad_polygen(corners, normal, camera_center=None)
         wall_mesh_lst.append(wall_mesh)
 
+    # room_wall_mesh = trimesh.util.concatenate(wall_mesh_lst)
+    # room_wall_mesh.export('room_wall_mesh.ply')
+
     for i, wall_dict in enumerate(quad_walls_lst):
+        wall_floor_points_lst = []
+        wall_ceiling_points_lst = []
 
         i_center = np.array(wall_dict['center'])
         i_normal = np.array(wall_dict['normal'])
@@ -289,7 +292,7 @@ def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
         # dists[i] = np.inf
         dists = [check_mesh_distance(wall_mesh_lst[i], wall_mesh_lst[j]) for j in range(len(wall_mesh_lst))]
         dists[i] = np.inf
-        print(f'to Wall {i} dists: {dists}')
+        # print(f'to Wall {i} dists: {dists}')
         closest_wall_idx = np.argmin(dists)
         dists[closest_wall_idx] = np.inf
         # find the second closest wall to current wall
@@ -309,9 +312,9 @@ def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
                 print(f'i_normal: {i_normal}, j_normal: {j_normal}')
                 continue
 
-            print(f'Wall {i} and Wall {idx} are adjacent:')
+            # print(f'Wall {i} and Wall {idx} are adjacent:')
             intersect_line = threeD_plane_intersect(plane_i, plane_j)
-            print('intersect_line', intersect_line)
+            # print('intersect_line', intersect_line)
             intersect_normal = intersect_line[:3]
             intersect_point = intersect_line[3:]
 
@@ -319,7 +322,7 @@ def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
             assert np.allclose(abs(np.dot(intersect_normal, floor_normal)), 1,
                                atol=1e-2), 'intersect_normal should be vertical to floor_normal!!!'
             point_on_floor = intersect_point + np.array([0, 0, floor_z - intersect_point[2]])
-            print(f'point_on_floor: {point_on_floor}')
+            # print(f'point_on_floor: {point_on_floor}')
             floor_corners.append(point_on_floor)
 
             # ceiling
@@ -330,16 +333,23 @@ def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
             ceiling_corners.append(point_on_ceiling)
 
         assert len(floor_corners) == len(ceiling_corners) == 2, 'floor/ceiling_corners should have two points!!!'
-        floor_points_lst.append(np.array(floor_corners))
-        ceiling_points_lst.append(np.array(ceiling_corners))
+        wall_floor_points_lst.append(np.array(floor_corners))
+        wall_ceiling_points_lst.append(np.array(ceiling_corners))
 
-    floor_points_lst = np.concatenate(floor_points_lst).reshape(-1, 3)
-    ceiling_points_lst = np.concatenate(ceiling_points_lst).reshape(-1, 3)
-    print(f'floor_points_lst: {floor_points_lst}')
-    print(f'gt_floor_points_lst: {gt_floor_points_lst}')
-    print(f'ceiling_points_lst: {ceiling_points_lst}')
-    print(f'gt_ceil_points_lst: {gt_ceil_points_lst}')
-    return floor_points_lst, ceiling_points_lst
+        new_width = np.linalg.norm(floor_corners[0] - floor_corners[1])
+        new_height = np.linalg.norm(floor_corners[0] - ceiling_corners[0])
+        wall_dict['size'] = [new_width, 0.05, new_height]
+
+        # print(f'wall_floor_points_lst: {wall_floor_points_lst}')
+        # print(f'wall_ceiling_points_lst: {wall_ceiling_points_lst}')
+
+    # floor_points_lst = np.concatenate(floor_points_lst).reshape(-1, 3)
+    # ceiling_points_lst = np.concatenate(ceiling_points_lst).reshape(-1, 3)
+    # print(f'floor_points_lst: {floor_points_lst}')
+    # print(f'gt_floor_points_lst: {gt_floor_points_lst}')
+    # print(f'ceiling_points_lst: {ceiling_points_lst}')
+    # print(f'gt_ceil_points_lst: {gt_ceil_points_lst}')
+    # return floor_points_lst, ceiling_points_lst
 
 
 def recover_floor_ceiling_points_from_quad_walls(quad_walls_lst: List[Dict]):

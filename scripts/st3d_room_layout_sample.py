@@ -178,7 +178,7 @@ def main():
         # save synthesis results as image
         out_img = np.zeros((512, 1024, 3), np.uint8)
         cam_position = np.zeros((3,), np.float32)
-        floor_points, ceiling_points = reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst=wall_dict_lst)
+        reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst=wall_dict_lst)
         out_img = vis_floor_ceiling_simple(image=out_img, color_to_labels=COLOR_TO_ADEK_LABEL)
         out_img = vis_objs3d(out_img,
                              v_bbox3d=(wall_dict_lst + obj_bbox_dict_lst),
