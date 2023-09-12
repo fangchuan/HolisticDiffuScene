@@ -55,7 +55,8 @@ def main():
     args = create_argparser().parse_args()
 
     dist_util.setup_dist()
-    log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    # log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    log_dir = args.log_dir
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
     text_encoder = FrozenCLIPEmbedder(device=dist_util.dev())
