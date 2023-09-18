@@ -83,7 +83,7 @@ def heading2rotmat(heading_angle_rad):
     return rotmat
 
 
-def convert_oriented_box_to_trimesh_fmt(box):
+def convert_oriented_box_to_trimesh_fmt(box: Dict, color_to_labels: Dict = None):
     box_center = box['center']
     box_lengths = box['size']
     transform_matrix = np.eye(4)
@@ -91,11 +91,20 @@ def convert_oriented_box_to_trimesh_fmt(box):
     # only use z angle, rad
     transform_matrix[0:3, 0:3] = heading2rotmat(box['angles'][-1])
     box_trimesh_fmt = trimesh.creation.box(box_lengths, transform_matrix)
+    if color_to_labels is not None:
+        labels_lst = list(color_to_labels.values())
+        colors_lst = list(color_to_labels.keys())
+        color = colors_lst[labels_lst.index(box['class'])]
+    else:
+        color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+        # pass
+    box_trimesh_fmt.visual.face_colors = color
     return box_trimesh_fmt
 
 
 def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
                    obj_bbox_lst: List[Dict],
+                   color_to_labels: Dict = None,
                    room_layout_bbox=None) -> trimesh.Trimesh:
 
     def create_oriented_bbox(scene_bbox: List[Dict]) -> trimesh.Trimesh:
@@ -109,7 +118,7 @@ def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
         """
         scene = trimesh.scene.Scene()
         for box in scene_bbox:
-            scene.add_geometry(convert_oriented_box_to_trimesh_fmt(box))
+            scene.add_geometry(convert_oriented_box_to_trimesh_fmt(box, color_to_labels))
 
         mesh_list = trimesh.util.concatenate(scene.dump())
         return mesh_list
@@ -732,7 +741,10 @@ def save_visualization_and_mesh(
     # convert BGR to RGB
     debug_bbox_img = sem_bbox_img
 
-    debug_bbox_trimesh = vis_scene_mesh(room_layout_mesh=None, obj_bbox_lst=objects_lst_cp, room_layout_bbox=None)
+    debug_bbox_trimesh = vis_scene_mesh(room_layout_mesh=None,
+                                        obj_bbox_lst=objects_lst_cp,
+                                        color_to_labels=COLOR_TO_ADEK_LABEL,
+                                        room_layout_bbox=None)
 
     return debug_bbox_img, debug_bbox_trimesh
 
@@ -973,9 +985,9 @@ def parse_args():
                         default='/data/dataset/Structured3D/preprocessed/annotations/livingroom/annotated_labels/',
                         help='path to annotated labels')
     parser.add_argument('--out_train_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/text2pano/train')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/for_iclr2024/train')
     parser.add_argument('--out_test_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/text2pano/test')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/for_iclr2024/test')
     return parser.parse_args()
 
 

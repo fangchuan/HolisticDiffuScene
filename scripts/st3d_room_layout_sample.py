@@ -11,6 +11,7 @@ sys.path.append("..")  # Adds higher directory to python modules path.
 import argparse
 import datetime
 import time
+import json
 
 import numpy as np
 import torch as th
@@ -193,7 +194,7 @@ def main():
 
         curr_sample_folder = os.path.join(sample_result_folder, f'{idx}')
         os.makedirs(curr_sample_folder, exist_ok=True)
-        save_img_filepath = os.path.join(curr_sample_folder, f'{scene_name}.png')
+        save_img_filepath = os.path.join(curr_sample_folder, f'{scene_name}_sem.png')
         Image.fromarray(out_img).save(save_img_filepath)
 
         # save synthetic object and room_layout as ply
@@ -201,8 +202,15 @@ def main():
         scene_bbox_ply_filepath = os.path.join(curr_sample_folder, scene_bbox_ply_fname)
         scene_mesh = vis_scene_mesh(room_layout_mesh=None,
                                     obj_bbox_lst=(wall_dict_lst + obj_bbox_dict_lst),
+                                    color_to_labels=COLOR_TO_ADEK_LABEL,
                                     room_layout_bbox=None)
         scene_mesh.export(scene_bbox_ply_filepath)
+
+        # scene layout file
+        scene_layout_fname = f'{scene_name}.json'
+        scene_layout_filepath = os.path.join(curr_sample_folder, scene_layout_fname)
+        with open(scene_layout_filepath, 'w') as f:
+            json.dump({'walls': wall_dict_lst, 'objects': obj_bbox_dict_lst}, f, indent=4)
 
     logger.log("sampling complete")
 

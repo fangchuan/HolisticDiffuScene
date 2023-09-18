@@ -47,7 +47,15 @@ def main():
     schedule_sampler = create_named_schedule_sampler(args.schedule_sampler, diffusion_model)
 
     logger.log("creating data loader...")
+    if args.room_type == 'bedroom':
+        room_type = 'bedroom'
+    elif args.room_type == 'livingroom':
+        room_type = 'living room'
+    elif args.room_type == 'diningroom':
+        room_type = 'dining room'
     train_dataset = ThreedFrontDataset(root_dir=args.data_dir,
+                                       room_type=room_type,
+                                       is_train=True,
                                        max_text_sentences=4,
                                        shard=MPI.COMM_WORLD.Get_rank(),
                                        num_shards=MPI.COMM_WORLD.Get_size())
@@ -100,6 +108,7 @@ def create_argparser():
         resume_checkpoint="",
         use_fp16=False,
         fp16_scale_growth=1e-3,
+        room_type="bedroom",
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()

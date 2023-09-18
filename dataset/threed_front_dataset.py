@@ -186,11 +186,14 @@ class ThreedFrontDataset(data.Dataset):
     def __init__(
             self,
             root_dir,
+            room_type='bedroom',
+            is_train=True,
+            is_test=False,
             max_text_sentences=4,  #  max number of text_prompt sentences
             shard=0,  #  support parallel training
             num_shards=1):
         self.img_dir = os.path.join(root_dir, 'img')
-        
+
         # quad walls folder
         self.quad_wall_dir = os.path.join(root_dir, 'quad_walls')
         # room centroid
@@ -224,6 +227,10 @@ class ThreedFrontDataset(data.Dataset):
         self.local_obj_bbox_lst = []
         self.local_wall_bbox_lst = []
 
+        self.room_type = room_type
+        self.is_train = is_train
+        self.is_test = is_test
+
         self._preload_()
 
     def _check_dataset(self):
@@ -245,9 +252,8 @@ class ThreedFrontDataset(data.Dataset):
             #     room_type = f.readline().strip()
             #     assert room_type in ROOM_TYPE_DICT.keys(), room_type_filepath
             #     room_type = ROOM_TYPE_DICT[room_type]
-            room_type = ROOM_TYPE_DICT['bedroom']
+            room_type = ROOM_TYPE_DICT[self.room_type]
             self.local_room_type_lst.append(room_type)
-
 
             self.local_text_lst.append(self._load_text(idx))
 
@@ -277,8 +283,8 @@ class ThreedFrontDataset(data.Dataset):
         text_emb_filepath = os.path.join(self.text_emb_dir, self.local_npy_fnames[idx])
         text_emb = np.load(text_emb_filepath).astype(np.float32)
         return np.squeeze(text_emb, axis=0)
-    
-    def _load_wall_bbox(self, idx: int, room_type:int=2) -> np.ndarray:
+
+    def _load_wall_bbox(self, idx: int, room_type: int = 2) -> np.ndarray:
         # read wall bbox
         wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_json_fnames[idx])
         wall_bbox_lst = []
@@ -302,8 +308,8 @@ class ThreedFrontDataset(data.Dataset):
                                                       wall_bbox_lst=np.array(wall_bbox_lst),
                                                       bbox_dim=wall_property_encode_dim)
         return wall_bbox_lst
-    
-    def _load_object_bbox(self, idx: int, room_type:int =2) -> np.ndarray:
+
+    def _load_object_bbox(self, idx: int, room_type: int = 2) -> np.ndarray:
         # read object bbox file
         object_bbox_filepath = os.path.join(self.bbox_3d_dir, self.local_json_fnames[idx])
         object_bbox_lst = []
@@ -444,4 +450,7 @@ class ThreedFrontDataset(data.Dataset):
         #         text_desc_lst = text_desc_lst[:self.max_text_sentences]
         cond_dict["text"] = text_prompt
         cond_dict["context"] = text_emb
-        return out_lst, cond_dict
+        if self.is_test:
+            return out_lst, cond_dict, self.local_img_fnames[idx][:-4]
+        else:
+            return out_lst, cond_dict

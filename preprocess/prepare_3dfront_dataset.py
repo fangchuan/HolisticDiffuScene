@@ -20,7 +20,7 @@ sys.path.append('..')
 import copy
 
 import numpy as np
-# from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter
 from tqdm import tqdm
 from typing import List, Dict
 
@@ -39,13 +39,19 @@ from dataset.threed_front.threed_front_dataset import dataset_encoding_factory
 from dataset.threed_front.threed_front_scene import Room
 from dataset.gen_scene_text import get_scene_description
 
-from misc.equirect_projection import vis_objs3d
+from misc.equirect_projection import vis_objs3d, vis_floor_ceiling_simple
 from misc.utils import euler_angle_to_matrix, matrix_to_euler_angles
 from improved_diffusion.clip_util import FrozenCLIPEmbedder
+from dataset.threed_front.metadata import TDFRONT_COLOR_TO_ADEK_LABEL
+
+ALL_SCENE = ['train', 'val', 'test']
+TRAIN_SCENE = ['train', 'val']
+TEST_SCENE = ['test']
 
 
 def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
                    obj_bbox_lst: List[Dict],
+                   color_to_labels: Dict = None,
                    heading_axis: int = 2,
                    room_layout_bbox=None) -> trimesh.Trimesh:
 
@@ -75,7 +81,7 @@ def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
                 raise NotImplementedError
             return rotmat
 
-        def convert_oriented_box_to_trimesh_fmt(box):
+        def convert_oriented_box_to_trimesh_fmt(box, color_to_labels: Dict = None):
             box_center = box['center']
             box_lengths = box['size']
             transform_matrix = np.eye(4)
@@ -83,11 +89,18 @@ def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
             # only use Y angle, rad
             transform_matrix[0:3, 0:3] = heading2rotmat(box['angles'][heading_axis])
             box_trimesh_fmt = trimesh.creation.box(box_lengths, transform_matrix)
+            if color_to_labels is not None:
+                labels_lst = list(color_to_labels.values())
+                colors_lst = list(color_to_labels.keys())
+                color = colors_lst[labels_lst.index(box['class'])]
+            else:
+                color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+            box_trimesh_fmt.visual.face_colors = color
             return box_trimesh_fmt
 
         scene = trimesh.scene.Scene()
         for box in scene_bbox:
-            scene.add_geometry(convert_oriented_box_to_trimesh_fmt(box))
+            scene.add_geometry(convert_oriented_box_to_trimesh_fmt(box, color_to_labels))
 
         mesh_list = trimesh.util.concatenate(scene.dump())
         return mesh_list
@@ -374,84 +387,7 @@ def parse_bbox_in_room(room: Room, all_class_labels: List, R: np.array = np.eye(
     return {'objects': obj_dict_lst}, {'objects': obj_normalized_dict_lst}
 
 
-def main(argv):
-    parser = argparse.ArgumentParser(description="Prepare the 3D-FRONT scenes to train our model")
-    parser.add_argument("--output_directory",
-                        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/",
-                        help="Path to output directory")
-    parser.add_argument("--path_to_3d_front_dataset_directory",
-                        default="/data/dataset/3D_FRONT_FUTURE/3D_Front/3D-FRONT/",
-                        help="Path to the 3D-FRONT dataset")
-    parser.add_argument("--path_to_3d_future_dataset_directory",
-                        default="/data/dataset/3D_FRONT_FUTURE/3D_Future/3D-FUTURE-model",
-                        help="Path to the 3D-FUTURE dataset")
-    parser.add_argument("--path_to_model_info",
-                        default="/data/dataset/3D_FRONT_FUTURE/3D_Future/3D-FUTURE-model/model_info.json",
-                        help="Path to the 3D-FUTURE model_info.json file")
-    parser.add_argument("--path_to_floor_plan_textures",
-                        default="/home/hkust/fangchuan/codes/ATISS/demo/",
-                        help="Path to floor texture images")
-    parser.add_argument("--path_to_invalid_scene_ids",
-                        default="../config/invalid_threed_front_rooms.txt",
-                        help="Path to invalid scenes")
-    parser.add_argument("--path_to_invalid_bbox_jids",
-                        default="../config/threed_front_black_list.txt",
-                        help="Path to objects that ae blacklisted")
-    parser.add_argument("--annotation_file",
-                        default="../config/bedroom_threed_front_splits.csv",
-                        help="Path to the train/test splits file")
-    parser.add_argument("--room_side", type=float, default=3.1, help="The size of the room along a side (default:3.1)")
-    parser.add_argument(
-        "--dataset_filtering",
-        default="threed_front_bedroom",
-        choices=["threed_front_bedroom", "threed_front_livingroom", "threed_front_diningroom", "threed_front_library"],
-        help="The type of dataset filtering to be used")
-    parser.add_argument("--without_lamps", action="store_true", help="If set ignore lamps when rendering the room")
-    parser.add_argument("--up_vector",
-                        type=lambda x: tuple(map(float, x.split(","))),
-                        default="0,0,-1",
-                        help="Up vector of the scene")
-    parser.add_argument("--background",
-                        type=lambda x: list(map(float, x.split(","))),
-                        default="0,0,0,1",
-                        help="Set the background of the scene")
-    parser.add_argument("--camera_target",
-                        type=lambda x: tuple(map(float, x.split(","))),
-                        default="0,0,0",
-                        help="Set the target for the camera")
-    parser.add_argument("--camera_position",
-                        type=lambda x: tuple(map(float, x.split(","))),
-                        default="0,4,0",
-                        help="Camer position in the scene")
-    parser.add_argument("--window_size",
-                        type=lambda x: tuple(map(int, x.split(","))),
-                        default="256,256",
-                        help="Define the size of the scene and the window")
-
-    args = parser.parse_args(argv)
-    logging.getLogger("trimesh").setLevel(logging.ERROR)
-
-    # Check if output directory exists and if it doesn't create it
-    if not os.path.exists(args.output_directory):
-        os.makedirs(args.output_directory)
-
-    config = {
-        "filter_fn": args.dataset_filtering,
-        "min_n_boxes": -1,
-        "max_n_boxes": -1,
-        "path_to_invalid_scene_ids": args.path_to_invalid_scene_ids,
-        "path_to_invalid_bbox_jids": args.path_to_invalid_bbox_jids,
-        "annotation_file": args.annotation_file
-    }
-
-    dataset = ThreedFront.from_dataset_directory(dataset_directory=args.path_to_3d_front_dataset_directory,
-                                                 path_to_model_info=args.path_to_model_info,
-                                                 path_to_models=args.path_to_3d_future_dataset_directory,
-                                                 filter_fn=filter_function(config, ["train", "val", "test"],
-                                                                           args.without_lamps))
-
-    print("Loading train/val/test dataset with {} rooms".format(len(dataset)))
-
+def process_dataset(dataset: ThreedFront, args: argparse.Namespace, split: str = 'train'):
     lack_window_room_num = 0
     lack_door_room_num = 0
 
@@ -478,7 +414,7 @@ def main(argv):
     else:
         raise NotImplementedError
 
-    base_folder_path = os.path.join(args.output_directory, room_type_str)
+    base_folder_path = os.path.join(args.output_directory, split, room_type_str)
     quad_walls_folder_path = os.path.join(base_folder_path, "quad_walls")
     cam_pose_folder_path = os.path.join(base_folder_path, "cam_pose")
     objects_bbox_folder_path = os.path.join(base_folder_path, "bbox_3d")
@@ -551,7 +487,7 @@ def main(argv):
             object_dict=copy.deepcopy(obj_bbox_dict),
             glove_model=text_encoder,
         )
-        print(f'room {room_name} scene_desc_text: {scene_desc_text}')
+        # print(f'room {room_name} scene_desc_text: {scene_desc_text}')
         # write text description
         with open(save_text_desc_filepath, 'w') as f:
             f.write(scene_desc_text)
@@ -562,22 +498,27 @@ def main(argv):
         debug_bbox_lst = quad_wall_dict['walls'] + obj_bbox_dict['objects']
         # debug_bbox_lst = quad_wall_n_dict['walls'] + obj_bbox_n_dict['objects']
         vis_pano_img = np.zeros((512, 1024, 3), dtype=np.uint8)
+        vis_pano_img = vis_floor_ceiling_simple(vis_pano_img, color_to_labels=TDFRONT_COLOR_TO_ADEK_LABEL)
         vis_pano_img = vis_objs3d(image=vis_pano_img,
                                   v_bbox3d=debug_bbox_lst,
-                                  color_to_labels=None,
+                                  color_to_labels=TDFRONT_COLOR_TO_ADEK_LABEL,
                                   camera_position=np.array([0, 0, 0]),
                                   b_show_axes=False,
-                                  b_show_bbox3d=True,
+                                  b_show_bbox3d=False,
                                   b_show_centroid=False,
-                                  b_show_info=True)
-        cv2.imwrite(save_rendered_image_filepath, vis_pano_img)
+                                  b_show_info=False,
+                                  b_show_polygen=True)
+        Image.fromarray(vis_pano_img).save(save_rendered_image_filepath)
 
         new_room_layout_vertices = (rotation_to_nerf @ (ss.wall_meshes.vertices - ss.scene_bbox_centroid).T).T
         new_room_layout_normals = (rotation_to_nerf @ (ss.wall_meshes.vertex_normals.T)).T
         trans_room_layout_mesh = trimesh.Trimesh(vertices=new_room_layout_vertices,
                                                  faces=ss.wall_meshes.faces,
                                                  vertex_normals=new_room_layout_normals)
-        scene_bbox = vis_scene_mesh(room_layout_mesh=None, obj_bbox_lst=debug_bbox_lst)
+
+        scene_bbox = vis_scene_mesh(room_layout_mesh=None,
+                                    color_to_labels=TDFRONT_COLOR_TO_ADEK_LABEL,
+                                    obj_bbox_lst=debug_bbox_lst)
         scene_bbox.export(save_debug_scene_bbox_filepath)
 
         # debug furniture mesh
@@ -659,6 +600,97 @@ def main(argv):
     dataset_stat_filepath = os.path.join(base_folder_path, "dataset_stats.json")
     with open(dataset_stat_filepath, "w") as f:
         json.dump(dataset_stats, f, indent=4)
+
+    return lack_door_room_num, lack_window_room_num
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description="Prepare the 3D-FRONT scenes to train our model")
+    parser.add_argument("--output_directory",
+                        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/",
+                        help="Path to output directory")
+    parser.add_argument("--path_to_3d_front_dataset_directory",
+                        default="/data/dataset/3D_FRONT_FUTURE/3D_Front/3D-FRONT/",
+                        help="Path to the 3D-FRONT dataset")
+    parser.add_argument("--path_to_3d_future_dataset_directory",
+                        default="/data/dataset/3D_FRONT_FUTURE/3D_Future/3D-FUTURE-model",
+                        help="Path to the 3D-FUTURE dataset")
+    parser.add_argument("--path_to_model_info",
+                        default="/data/dataset/3D_FRONT_FUTURE/3D_Future/3D-FUTURE-model/model_info.json",
+                        help="Path to the 3D-FUTURE model_info.json file")
+    parser.add_argument("--path_to_floor_plan_textures",
+                        default="/home/hkust/fangchuan/codes/ATISS/demo/",
+                        help="Path to floor texture images")
+    parser.add_argument("--path_to_invalid_scene_ids",
+                        default="../config/invalid_threed_front_rooms.txt",
+                        help="Path to invalid scenes")
+    parser.add_argument("--path_to_invalid_bbox_jids",
+                        default="../config/threed_front_black_list.txt",
+                        help="Path to objects that ae blacklisted")
+    parser.add_argument("--annotation_file",
+                        default="../config/bedroom_threed_front_splits.csv",
+                        help="Path to the train/test splits file")
+    parser.add_argument("--room_side", type=float, default=3.1, help="The size of the room along a side (default:3.1)")
+    parser.add_argument(
+        "--dataset_filtering",
+        default="threed_front_bedroom",
+        choices=["threed_front_bedroom", "threed_front_livingroom", "threed_front_diningroom", "threed_front_library"],
+        help="The type of dataset filtering to be used")
+    parser.add_argument("--without_lamps", action="store_true", help="If set ignore lamps when rendering the room")
+    parser.add_argument("--up_vector",
+                        type=lambda x: tuple(map(float, x.split(","))),
+                        default="0,0,-1",
+                        help="Up vector of the scene")
+    parser.add_argument("--background",
+                        type=lambda x: list(map(float, x.split(","))),
+                        default="0,0,0,1",
+                        help="Set the background of the scene")
+    parser.add_argument("--camera_target",
+                        type=lambda x: tuple(map(float, x.split(","))),
+                        default="0,0,0",
+                        help="Set the target for the camera")
+    parser.add_argument("--camera_position",
+                        type=lambda x: tuple(map(float, x.split(","))),
+                        default="0,4,0",
+                        help="Camer position in the scene")
+    parser.add_argument("--window_size",
+                        type=lambda x: tuple(map(int, x.split(","))),
+                        default="256,256",
+                        help="Define the size of the scene and the window")
+
+    args = parser.parse_args(argv)
+    logging.getLogger("trimesh").setLevel(logging.ERROR)
+
+    # Check if output directory exists and if it doesn't create it
+    if not os.path.exists(args.output_directory):
+        os.makedirs(args.output_directory)
+
+    config = {
+        "filter_fn": args.dataset_filtering,
+        "min_n_boxes": -1,
+        "max_n_boxes": -1,
+        "path_to_invalid_scene_ids": args.path_to_invalid_scene_ids,
+        "path_to_invalid_bbox_jids": args.path_to_invalid_bbox_jids,
+        "annotation_file": args.annotation_file
+    }
+
+    train_dataset = ThreedFront.from_dataset_directory(dataset_directory=args.path_to_3d_front_dataset_directory,
+                                                       path_to_model_info=args.path_to_model_info,
+                                                       path_to_models=args.path_to_3d_future_dataset_directory,
+                                                       filter_fn=filter_function(config, TRAIN_SCENE,
+                                                                                 args.without_lamps))
+    test_dataset = ThreedFront.from_dataset_directory(dataset_directory=args.path_to_3d_front_dataset_directory,
+                                                      path_to_model_info=args.path_to_model_info,
+                                                      path_to_models=args.path_to_3d_future_dataset_directory,
+                                                      filter_fn=filter_function(config, TEST_SCENE, args.without_lamps))
+
+    print("Loading train/val dataset with {} rooms".format(len(train_dataset)))
+    print("Loading test dataset with {} rooms".format(len(test_dataset)))
+
+    lack_door_n1, lack_window_n1 = process_dataset(train_dataset, args, split='train')
+    lack_door_n2, lack_window_n2 = process_dataset(test_dataset, args, split='test')
+    lack_door_room_num = lack_door_n1 + lack_door_n2
+    lack_window_room_num = lack_window_n1 + lack_window_n2
 
     print(f"lack door room num: {lack_door_room_num}")
     print(f"lack window room num: {lack_window_room_num}")

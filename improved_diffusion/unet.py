@@ -410,8 +410,15 @@ class UNetModel(nn.Module):
     :param dims: determines if the signal is 1D, 2D, or 3D.
     :param num_classes: if specified (as an int), then this model will be
         class-conditional with `num_classes` classes.
+    :param text_emb_dim: dimension of input text embedding.
     :param use_checkpoint: use gradient checkpointing to reduce memory usage.
     :param num_heads: the number of attention heads in each attention layer.
+    :param use_input_encoding: if True, use an encoding network before the UNet
+    :param class_label_feat_size: size of the class label embedding.
+    :param bbox_center_feat_size: size of the bounding box center embedding.
+    :param bbox_size_feat_size: size of the bounding box size embedding.
+    :param bbox_angle_feat_size: size of the bounding box angle embedding.
+    :param attn_block_depth: depth of the attention block.
     """
 
     def __init__(

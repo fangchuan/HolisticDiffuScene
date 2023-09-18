@@ -332,13 +332,16 @@ def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
             # print(f'point_on_ceiling: {point_on_ceiling}')
             ceiling_corners.append(point_on_ceiling)
 
-        assert len(floor_corners) == len(ceiling_corners) == 2, 'floor/ceiling_corners should have two points!!!'
-        wall_floor_points_lst.append(np.array(floor_corners))
-        wall_ceiling_points_lst.append(np.array(ceiling_corners))
+        if len(floor_corners) == len(ceiling_corners) == 2:
+            wall_floor_points_lst.append(np.array(floor_corners))
+            wall_ceiling_points_lst.append(np.array(ceiling_corners))
 
-        new_width = np.linalg.norm(floor_corners[0] - floor_corners[1])
-        new_height = np.linalg.norm(floor_corners[0] - ceiling_corners[0])
-        wall_dict['size'] = [new_width, 0.05, new_height]
+            new_width = np.linalg.norm(floor_corners[0] - floor_corners[1])
+            new_height = np.linalg.norm(floor_corners[0] - ceiling_corners[0])
+            wall_dict['center'] = ((floor_corners[0] + floor_corners[1] + ceiling_corners[0] + ceiling_corners[1]) / 4).tolist()
+            wall_dict['size'] = [float(new_width), 0.05, float(new_height)]
+        else:
+            print('WARNING: floor/ceiling_corners should have two points!!!')
 
         # print(f'wall_floor_points_lst: {wall_floor_points_lst}')
         # print(f'wall_ceiling_points_lst: {wall_ceiling_points_lst}')

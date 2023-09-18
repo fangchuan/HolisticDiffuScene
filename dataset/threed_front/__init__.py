@@ -7,7 +7,11 @@
 #
 
 from .metadata import THREED_FRONT_BEDROOM_FURNITURE_MAP, \
-    THREED_FRONT_LIVINGROOM_FURNITURE_MAP, THREED_FRONT_LIBRARY_FURNITURE_MAP
+    THREED_FRONT_LIVINGROOM_FURNITURE_MAP, THREED_FRONT_LIBRARY_FURNITURE_MAP, \
+    THREED_FRONT_BEDROOM_MIN_FURNITURE_NUM, THREED_FRONT_BEDROOM_MAX_FURNITURE_NUM, \
+    THREED_FRONT_LIVINGROOM_MIN_FURNITURE_NUM, THREED_FRONT_LIVINGROOM_MAX_FURNITURE_NUM, \
+    THREED_FRONT_BEDROOM_MAX_WALL_NUM, THREED_FRONT_LIVINGROOM_MAX_WALL_NUM
+
 from .base import BaseDataset
 from .threed_front import ThreedFront, CachedThreedFront
 from .threed_front_dataset import dataset_encoding_factory
@@ -67,7 +71,8 @@ def filter_function(config, split=["train", "val"], without_lamps=False):
 
     if "threed_front_bedroom" in config["filter_fn"]:
         return BaseDataset.filter_compose(
-            BaseDataset.with_room("bed"), BaseDataset.at_least_boxes(3), BaseDataset.at_most_boxes(13),
+            BaseDataset.with_room("bed"), BaseDataset.at_least_boxes(THREED_FRONT_BEDROOM_MIN_FURNITURE_NUM),
+            BaseDataset.at_most_boxes(THREED_FRONT_BEDROOM_MAX_FURNITURE_NUM),
             BaseDataset.with_object_types(list(THREED_FRONT_BEDROOM_FURNITURE_MAP.keys())),
             BaseDataset.with_generic_classes(THREED_FRONT_BEDROOM_FURNITURE_MAP),
             BaseDataset.with_valid_scene_ids(invalid_scene_ids), BaseDataset.with_valid_bbox_jids(invalid_bbox_jids),
@@ -75,19 +80,20 @@ def filter_function(config, split=["train", "val"], without_lamps=False):
             BaseDataset.room_smaller_than_along_axis(4.0, axis=1),
             BaseDataset.room_larger_than_along_axis(-0.005, axis=1),
             BaseDataset.floor_plan_with_limits(6, 6, axis=[0, 2]),
-            BaseDataset.walls_num_with_limits(min_wall_num=4, max_wall_num=10),
+            BaseDataset.walls_num_with_limits(min_wall_num=4, max_wall_num=THREED_FRONT_BEDROOM_MAX_WALL_NUM),
             BaseDataset.without_box_types(["ceiling_lamp", "pendant_lamp"] if without_lamps else [""]),
             BaseDataset.with_scene_ids(split_scene_ids))
     elif "threed_front_livingroom" in config["filter_fn"]:
         return BaseDataset.filter_compose(
-            BaseDataset.with_room("living"), BaseDataset.at_least_boxes(3), BaseDataset.at_most_boxes(21),
+            BaseDataset.with_room("living"), BaseDataset.at_least_boxes(THREED_FRONT_LIVINGROOM_MIN_FURNITURE_NUM),
+            BaseDataset.at_most_boxes(THREED_FRONT_LIVINGROOM_MAX_FURNITURE_NUM),
             BaseDataset.with_object_types(list(THREED_FRONT_LIVINGROOM_FURNITURE_MAP.keys())),
             BaseDataset.with_generic_classes(THREED_FRONT_LIVINGROOM_FURNITURE_MAP),
             BaseDataset.with_valid_scene_ids(invalid_scene_ids), BaseDataset.with_valid_bbox_jids(invalid_bbox_jids),
             BaseDataset.contains_doors(), BaseDataset.room_smaller_than_along_axis(4.0, axis=1),
             BaseDataset.room_larger_than_along_axis(-0.005, axis=1),
             BaseDataset.floor_plan_with_limits(12, 12, axis=[0, 2]),
-            BaseDataset.walls_num_with_limits(min_wall_num=4, max_wall_num=20),
+            BaseDataset.walls_num_with_limits(min_wall_num=4, max_wall_num=THREED_FRONT_LIVINGROOM_MAX_WALL_NUM),
             BaseDataset.without_box_types(["ceiling_lamp", "pendant_lamp"] if without_lamps else [""]),
             BaseDataset.with_scene_ids(split_scene_ids))
     elif "threed_front_diningroom" in config["filter_fn"]:
@@ -99,7 +105,7 @@ def filter_function(config, split=["train", "val"], without_lamps=False):
             BaseDataset.contains_doors(), BaseDataset.room_smaller_than_along_axis(4.0, axis=1),
             BaseDataset.room_larger_than_along_axis(-0.005, axis=1),
             BaseDataset.floor_plan_with_limits(12, 12, axis=[0, 2]),
-            BaseDataset.walls_num_with_limits(min_wall_num=4, max_wall_num=20),
+            BaseDataset.walls_num_with_limits(min_wall_num=4, max_wall_num=THREED_FRONT_LIVINGROOM_MAX_WALL_NUM),
             BaseDataset.without_box_types(["ceiling_lamp", "pendant_lamp"] if without_lamps else [""]),
             BaseDataset.with_scene_ids(split_scene_ids))
     elif "threed_front_library" in config["filter_fn"]:

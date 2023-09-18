@@ -15,6 +15,8 @@ import time
 import numpy as np
 import torch as th
 import torch.distributed as dist
+import json
+from PIL import Image
 
 from improved_diffusion import dist_util, logger
 from improved_diffusion.script_util import (
@@ -25,8 +27,15 @@ from improved_diffusion.script_util import (
     args_to_dict,
 )
 
-from dataset.threed_front_dataset import ThreedFrontDataset
+from dataset.threed_front_dataset import ThreedFrontDataset, ROOM_TYPE_DICT
 from improved_diffusion.clip_util import FrozenCLIPEmbedder
+from dataset.threed_front.metadata import THREED_FRONT_BEDROOM_FURNITURE_CNTS, THREED_FRONT_LIVINGROOM_FURNITURE_CNTS, \
+                                            THREED_FRONT_BEDROOM_MAX_WALL_NUM, THREED_FRONT_LIVINGROOM_MAX_WALL_NUM
+
+from dataset.threed_front.metadata import TDFRONT_COLOR_TO_ADEK_LABEL
+from postprocess.gen_room_layout_mesh import recover_quad_wall_layout_mesh, reconstrcut_floor_ceiling_from_quad_walls
+from misc.equirect_projection import vis_objs3d, vis_floor_ceiling_simple
+from preprocess.prepare_st3d_dataset import vis_scene_mesh
 
 TEXT_PROMPT_LST = [
     "The bedroom has five walls. The room has a door, a bed and a nightstand. The nightstand is beside the door.",
@@ -50,7 +59,11 @@ def main():
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
     text_encoder = FrozenCLIPEmbedder(device=dist_util.dev())
-    dataset = ThreedFrontDataset(root_dir=args.data_dir, max_text_sentences=4)
+    dataset = ThreedFrontDataset(root_dir=args.data_dir,
+                                 room_type=args.room_type,
+                                 is_train=False,
+                                 is_test=True,
+                                 max_text_sentences=4)
 
     logger.log("creating UNet model and diffusion model ...")
     model, diffusion = create_model_and_diffusion(**args_to_dict(args, model_and_diffusion_defaults().keys()))
@@ -65,6 +78,7 @@ def main():
     all_layout_type_lst = []
 
     cond_text_prompt_lst = []
+    scene_names_lst = []
     while len(all_layout_lst) * args.batch_size < args.num_samples:
         begin_tms = time.time()
         model_kwargs = {}
@@ -72,17 +86,22 @@ def main():
             # ignore 'undefined' class
             max_layout_types = (NUM_CLASSES - 1)
             layout_type_lst = th.randint(low=0, high=max_layout_types, size=(args.batch_size,), device=dist_util.dev())
-            layout_type_lst = th.full((args.batch_size,), 2, device=dist_util.dev())
+            layout_type_lst = th.full((args.batch_size,),
+                                      ROOM_TYPE_DICT[args.room_type.replace(' ', '')],
+                                      device=dist_util.dev())
             model_kwargs["y"] = layout_type_lst
+            scene_names_lst.append(f'{args.room_type}_{len(scene_names_lst)}')
         if args.b_text_cond:
             cond_data_lst = []
             for i in range(args.batch_size):
                 scene_idx = np.random.choice(len(dataset))
-                gt_scene, gt_cond_dict = dataset[scene_idx]
+                gt_scene, gt_cond_dict, scene_name = dataset[scene_idx]
                 # text prompt from eval dataset
                 cond_data_lst.append(gt_cond_dict['context'])
                 text_prompt = gt_cond_dict['text']
                 cond_text_prompt_lst.append(text_prompt)
+                scene_names_lst.append(scene_name)
+
                 logger.log('text_prompt: {}'.format(text_prompt))
 
                 # text prompt from predefined list
@@ -114,8 +133,10 @@ def main():
 
     arr = np.concatenate(all_layout_lst, axis=0)
     arr = arr[:args.num_samples]
-    arr = np.transpose(arr, (0, 2, 1))
+    samples_arr = np.transpose(arr, (0, 2, 1))
 
+    sample_result_folder = os.path.join(logger.get_dir(), f'{args.room_type}')
+    os.makedirs(sample_result_folder, exist_ok=True)
     cond_text_prompt_lst = cond_text_prompt_lst[:args.num_samples]
     if args.b_class_cond:
         label_arr = np.concatenate(all_layout_type_lst, axis=0)
@@ -127,13 +148,70 @@ def main():
                 f.write(f'{cond_text_prompt_lst[i]}\n')
 
     if dist.get_rank() == 0:
-        shape_str = "x".join([str(x) for x in arr.shape])
-        out_path = os.path.join(logger.get_dir(), f"samples_{shape_str}.npz")
+        shape_str = "x".join([str(x) for x in samples_arr.shape])
+        out_path = os.path.join(sample_result_folder, f"samples_{shape_str}.npz")
         logger.log(f"saving to {out_path}")
         if args.b_class_cond:
-            np.savez(out_path, arr, label_arr)
+            np.savez(out_path, samples_arr, label_arr)
         else:
-            np.savez(out_path, arr)
+            np.savez(out_path, samples_arr)
+
+    for idx, scene_name in enumerate(scene_names_lst):
+        scene_sample_result = samples_arr[idx]
+        scene_sample_label = args.room_type
+        print(f'scene_sample_label: {scene_sample_label}')
+
+        if args.room_type == 'bedroom':
+            room_layout_size = np.array([3.64073229, 3.73553261, 2.81591231])  # bedroom
+            wall_max_num = THREED_FRONT_BEDROOM_MAX_WALL_NUM
+        elif args.room_type == 'livingroom':
+            room_layout_size = np.array([7.239328956952291, 7.6231320936720675, 2.857928654068745])  # livingroom
+            wall_max_num = THREED_FRONT_LIVINGROOM_MAX_WALL_NUM
+        # quad walls
+        quad_wall_lst = scene_sample_result[:wall_max_num, :]
+        # objects
+        obj_bbox_lst = scene_sample_result[wall_max_num:, :]
+
+        wall_dict_lst, obj_bbox_dict_lst = recover_quad_wall_layout_mesh(dataset_type='3d_front',
+                                                                         room_type=args.room_type,
+                                                                         quad_wall_lst=quad_wall_lst,
+                                                                         object_bbox_lst=obj_bbox_lst,
+                                                                         room_layout_bbox_size=room_layout_size)
+
+        # save synthesis results as image
+        out_img = np.zeros((512, 1024, 3), np.uint8)
+        cam_position = np.zeros((3,), np.float32)
+        reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst=wall_dict_lst)
+        out_img = vis_floor_ceiling_simple(image=out_img, color_to_labels=TDFRONT_COLOR_TO_ADEK_LABEL)
+        out_img = vis_objs3d(out_img,
+                             v_bbox3d=(wall_dict_lst + obj_bbox_dict_lst),
+                             camera_position=cam_position,
+                             color_to_labels=TDFRONT_COLOR_TO_ADEK_LABEL,
+                             b_show_axes=False,
+                             b_show_centroid=False,
+                             b_show_bbox3d=False,
+                             b_show_info=False,
+                             b_show_polygen=True)
+
+        curr_sample_folder = os.path.join(sample_result_folder, f'{idx}')
+        os.makedirs(curr_sample_folder, exist_ok=True)
+        save_img_filepath = os.path.join(curr_sample_folder, f'{scene_name}_sem.png')
+        Image.fromarray(out_img).save(save_img_filepath)
+
+        # save synthetic object and room_layout as ply
+        scene_bbox_ply_fname = f'{scene_name}.ply'
+        scene_bbox_ply_filepath = os.path.join(curr_sample_folder, scene_bbox_ply_fname)
+        scene_mesh = vis_scene_mesh(room_layout_mesh=None,
+                                    obj_bbox_lst=(wall_dict_lst + obj_bbox_dict_lst),
+                                    color_to_labels=TDFRONT_COLOR_TO_ADEK_LABEL,
+                                    room_layout_bbox=None)
+        scene_mesh.export(scene_bbox_ply_filepath)
+
+        # scene layout file
+        scene_layout_fname = f'{scene_name}.json'
+        scene_layout_filepath = os.path.join(curr_sample_folder, scene_layout_fname)
+        with open(scene_layout_filepath, 'w') as f:
+            json.dump({'walls': wall_dict_lst, 'objects': obj_bbox_dict_lst}, f, indent=4)
 
     dist.barrier()
     logger.log("sampling complete")
@@ -148,6 +226,7 @@ def create_argparser():
         batch_size=1,
         use_ddim=False,
         model_path="",
+        room_type='bedroom',
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()

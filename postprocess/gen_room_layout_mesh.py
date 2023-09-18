@@ -15,6 +15,7 @@ from tqdm import tqdm
 from PIL import Image
 import open3d as o3d
 import trimesh
+import json
 
 # from misc.panorama import draw_boundary_from_cor_id
 # from misc.colors import colormap_255
@@ -165,7 +166,7 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         angle_1 = np.arcsin(wall_normal_angle[1])
         angle = angle_1 if abs(wall_normal_angle[0]) < 5e-3 else angle_0
 
-        quad_wall_dict['angles'] = [0, 0, angle]
+        quad_wall_dict['angles'] = [0, 0, float(angle)]
         # The direction of all camera is always along the negative y-axis.
         rotation_matrix = euler_angle_to_matrix(quad_wall_dict['angles'])
         wall_normal = rotation_matrix.dot(np.array([0, -1, 0]))
@@ -193,6 +194,8 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
 
     # recover object bbox
     obj_bbox_dict_list = []
+    door_cnt = 0
+    table_cnt = 0
     for i in range(len(object_bbox_lst)):
         # print(f'predict object bbox feature: {object_bbox_lst[i]}')
         obj_bbox_dict = {}
@@ -206,6 +209,12 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         class_label = class_labels_lst[class_label_prob.argmax()]
         if class_label == 'empty':
             continue
+        # if class_label == 'door':
+        #     door_cnt += 1
+        #     if door_cnt < 3:
+        #         continue
+        # if class_label == 'shelves':
+        #         continue
         obj_bbox_dict['class'] = class_label
 
         # recover centroid
@@ -221,7 +230,7 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         angle_0 = np.arccos(cs_angle_value[0])
         angle_1 = np.arcsin(cs_angle_value[1])
         angle = angle_1 if abs(cs_angle_value[0]) < 5e-3 else angle_0
-        obj_bbox_dict['angles'] = [0, 0, angle]
+        obj_bbox_dict['angles'] = [0, 0, float(angle)]
         # print(f' object {class_label} centroid: {centroid} size: {size} angle: {angle_0}')
         obj_bbox_dict_list.append(obj_bbox_dict)
     print(f'object num: {len(obj_bbox_dict_list)}')
@@ -301,9 +310,6 @@ if __name__ == "__main__":
 
     for idx in range(len(sample_result_lst['arr_0'])):
         scene_sample_result = sample_result_lst['arr_0'][idx]
-        # print(f'scene_sample_result: {scene_sample_result.shape}')
-        # scene_sample_label = sample_result_lst['arr_1'][idx]
-        # scene_sample_label = [key for key in ROOM_TYPE_DICT.keys() if ROOM_TYPE_DICT[key] == scene_sample_label][0]
         scene_sample_label = args.room_type
         print(f'scene_sample_label: {scene_sample_label}')
 
@@ -342,7 +348,7 @@ if __name__ == "__main__":
         out_img = np.zeros((512, 1024, 3), np.uint8)
         cam_position = np.zeros((3,), np.float32)
         reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst=wall_dict_lst)
-        # out_img = vis_floor_ceiling_simple(image=out_img, color_to_labels=COLOR_TO_ADEK_LABEL)
+        out_img = vis_floor_ceiling_simple(image=out_img, color_to_labels=COLOR_TO_ADEK_LABEL)
         out_img = vis_objs3d(out_img,
                              v_bbox3d=(wall_dict_lst + obj_bbox_dict_lst),
                              camera_position=cam_position,
@@ -355,12 +361,19 @@ if __name__ == "__main__":
         save_img_filepath = os.path.join(args.out_dir, img_fname)
         Image.fromarray(out_img).save(save_img_filepath)
 
+        # scene layout file
+        scene_layout_fname = f'{scene_sample_label}_{idx}.json'
+        scene_layout_filepath = os.path.join(args.out_dir, scene_layout_fname)
+        with open(scene_layout_filepath, 'w') as f:
+            json.dump({'walls': wall_dict_lst, 'objects': obj_bbox_dict_lst}, f, indent=4)
+
         # save synthetic object and room_layout as ply
         scene_bbox_ply_fname = f'{scene_sample_label}_{idx}.ply'
         scene_bbox_ply_filepath = os.path.join(args.out_dir, scene_bbox_ply_fname)
         # save_layout_mesh(save_ply_filepath, layout_ply_points, layout_ply_faces)
         scene_mesh = vis_scene_mesh(room_layout_mesh=None,
                                     obj_bbox_lst=(wall_dict_lst + obj_bbox_dict_lst),
+                                    color_to_labels=COLOR_TO_ADEK_LABEL,
                                     room_layout_bbox=None)
         scene_mesh.export(scene_bbox_ply_filepath)
 

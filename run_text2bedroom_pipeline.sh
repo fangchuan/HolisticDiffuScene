@@ -1,5 +1,6 @@
-NUM_SAMPLES=20
-OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2023-09-11-16-34-26-991550/
+export CUDA_VISIBLE_DEVICES=1
+NUM_SAMPLES=10
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2023-09-15-09-37-27-991550/
 
 eval "$(conda shell.bash hook)"
 conda activate structured3d

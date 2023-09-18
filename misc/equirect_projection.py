@@ -351,7 +351,7 @@ def vis_objs3d(image,
         if b_show_bbox3d:
             draw_bdb3d(image, bdb3d, color, thickness=thickness)
         if b_show_info:
-            draw_objinfo(image, centroid, obj_label, color)
+            draw_objinfo(image, centroid, f'{obj_label}_{i_obj}', color)
         if b_show_polygen:
             draw_Poly3d(image, bdb3d, color, object_label=obj_label)
     return image
