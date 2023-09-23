@@ -1,5 +1,5 @@
 NUM_SAMPLES=10
-OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2023-09-12-15-42-26-991550/
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/mesh_generation_experiments/text2light_results/
 
 eval "$(conda shell.bash hook)"
 
@@ -16,6 +16,6 @@ cd /mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/scripts
 #                                                         --outdir output_img_1 \
 #                                                         --ddpm_steps 200 --dec_w 0.5 --colorfix_type adain
 # run panoramic reconstrcution
-python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER
+python st3d_panorama_recons.py --input_folder $OUTPUT_FOLDER
 
 

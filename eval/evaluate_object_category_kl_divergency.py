@@ -1,9 +1,11 @@
 """Script used for estimating the KL-divergence between the object categories
 of real and generated scenes."""
-import argparse
 import os
 import sys
-import time
+sys.path.append('.')
+sys.path.append('..')
+
+import argparse
 
 import numpy as np
 import torch
@@ -20,7 +22,9 @@ from improved_diffusion.script_util import (
     args_to_dict,
 )
 from dataset.st3d_dataset import ST3DDataset
+from dataset.threed_front_dataset import ThreedFrontDataset
 from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE
+from dataset.threed_front.metadata import THREED_FRONT_BEDROOM_FURNITURE, THREED_FRONT_LIVINGROOM_FURNITURE, THREED_FRONT_DININGROOM_FURNITURE
 import datetime
 
 
@@ -29,6 +33,8 @@ def categorical_kl(p, q):
 
 
 def main():
+    b_skip_synthetic = True
+
     args = create_argparser().parse_args()
     dist_util.setup_dist()
 
@@ -36,13 +42,28 @@ def main():
     log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
-    logger.log("creating UNet model and diffusion model ...")
-    model, diffusion = create_model_and_diffusion(**args_to_dict(args, model_and_diffusion_defaults().keys()))
-    model.load_state_dict(dist_util.load_state_dict(args.model_path, map_location="cpu"))
-    model.to(dist_util.dev())
-    model.eval()
+    if not b_skip_synthetic:
+        logger.log("creating UNet model and diffusion model ...")
+        model, diffusion = create_model_and_diffusion(**args_to_dict(args, model_and_diffusion_defaults().keys()))
+        model.load_state_dict(dist_util.load_state_dict(args.model_path, map_location="cpu"))
+        model.to(dist_util.dev())
+        model.eval()
 
-    dataset = ST3DDataset(root_dir=args.dataset_dir, flip=False, rotate=False, gamma=False, return_path=True)
+    if args.room_type == 'bedroom':
+        room_type = 'bedroom'
+    elif args.room_type == 'livingroom':
+        room_type = 'living room'
+    elif args.room_type == 'diningroom':
+        room_type = 'dining room'
+
+    if args.dataset_type == "3d_front":
+        dataset = ThreedFrontDataset(root_dir=args.dataset_dir,
+                                 room_type=room_type,
+                                 is_train=False,
+                                 is_test=True,
+                                 max_text_sentences=4)
+    elif args.dataset_type == "st3d":
+        dataset = ST3DDataset(root_dir=args.dataset_dir, flip=False, rotate=False, gamma=False, return_path=True)
 
     # Generate synthetic rooms with the pre-trained model
     layout_channel_size = args.layout_channels
@@ -59,11 +80,10 @@ def main():
 
     synthesized_scenes_type_lst = []
     synthesized_scenes_lst = []
-    b_skip_synthetic = False
-    while len(synthesized_scenes_lst) * args.batch_size < args.num_samples:
-        # for i in tqdm(range(args.num_samples)):
+    # while len(synthesized_scenes_lst) * args.batch_size < args.num_samples:
+    for i in tqdm(range(args.num_samples)):
         scene_idx = np.random.choice(len(dataset))
-        gt_scene, gt_scene_type = dataset[scene_idx]
+        gt_scene, gt_scene_type, scene_name = dataset[scene_idx]
         ground_truth_scenes_lst.append(gt_scene)
         ground_truth_scenes_type_lst.append(gt_scene_type['y'])
 
@@ -96,14 +116,15 @@ def main():
                 synthesized_scenes_type_lst.extend([labels.cpu().numpy() for labels in gathered_labels])
             logger.log(f"created {len(synthesized_scenes_lst) * batch_size} samples")
 
-    # samples_filepath = 'sample_results/openai-2023-07-16-14-38-49-759043/samples_1000x23x32.npz'
-    # samples_result = np.load(samples_filepath)
-    # synthesized_scenes = samples_result['arr_0']
-
-    # num x 32 x 23
-    synthesized_scenes = np.concatenate(synthesized_scenes_lst, axis=0)
-    synthesized_scenes = synthesized_scenes[:args.num_samples]
-    synthesized_scenes = np.transpose(synthesized_scenes, (0, 2, 1))
+    if b_skip_synthetic:
+        samples_filepath = '../sample_results/openai-2023-09-22-22-54-20-584989/diningroom/samples_1000x45x36.npz'
+        samples_result = np.load(samples_filepath)
+        synthesized_scenes = samples_result['arr_0']
+    else:
+        # num x 32 x 23
+        synthesized_scenes = np.concatenate(synthesized_scenes_lst, axis=0)
+        synthesized_scenes = synthesized_scenes[:args.num_samples]
+    # synthesized_scenes = np.transpose(synthesized_scenes, (0, 2, 1))
     logger.info(f"synthesized_scenes.shape: {synthesized_scenes.shape}")
 
     if not b_skip_synthetic:
@@ -125,17 +146,18 @@ def main():
     ground_truth_scenes = np.stack(ground_truth_scenes_lst, axis=0)
     ground_truth_scenes = ground_truth_scenes[:args.num_samples]
     ground_truth_scenes = np.transpose(ground_truth_scenes, (0, 2, 1))
+    logger.info(f"ground_truth_scenes.shape: {ground_truth_scenes.shape}")
 
     # Firstly compute the frequencies of the class labels
     # TODO: should skip empty!
     def discard_empty_objects(scenes: np.ndarray, scene_type: str):
         new_scenes = []
         if scene_type == 'bedroom':
-            class_labels_lst = (ST3D_BEDROOM_FURNITURE)
-        elif scene_type == 'living_room':
-            class_labels_lst = (ST3D_LIVINGROOM_FURNITURE)
-        elif scene_type == 'dining_room':
-            class_labels_lst = (ST3D_DININGROOM_FURNITURE)
+            class_labels_lst = (ST3D_BEDROOM_FURNITURE) if args.dataset_type == 'st3d' else THREED_FRONT_BEDROOM_FURNITURE
+        elif scene_type == 'living room':
+            class_labels_lst = (ST3D_LIVINGROOM_FURNITURE) if args.dataset_type == 'st3d' else THREED_FRONT_LIVINGROOM_FURNITURE
+        elif scene_type == 'dining room':
+            class_labels_lst = (ST3D_DININGROOM_FURNITURE) if args.dataset_type == 'st3d' else THREED_FRONT_DININGROOM_FURNITURE
         else:
             raise NotImplementedError
 
@@ -156,13 +178,13 @@ def main():
             new_scenes.append(np.stack(new_scene, axis=0))
         return np.array(new_scenes)
 
-    ground_truth_scenes = discard_empty_objects(ground_truth_scenes, 'bedroom')
-    synthesized_scenes = discard_empty_objects(synthesized_scenes, 'bedroom')
+    ground_truth_scenes = discard_empty_objects(ground_truth_scenes, room_type)
+    synthesized_scenes = discard_empty_objects(synthesized_scenes, room_type)
 
-    gt_class_labels = sum([d[:, :class_label_dim - 2].sum(0) for d in ground_truth_scenes]) / sum(
-        [d[:, :class_label_dim - 2].shape[0] for d in ground_truth_scenes])
-    syn_class_labels = sum([d[:, :class_label_dim - 2].sum(0) for d in synthesized_scenes]) / sum(
-        [d[:, :class_label_dim - 2].shape[0] for d in synthesized_scenes])
+    gt_class_labels = sum([d[:, :class_label_dim - 1].sum(0) for d in ground_truth_scenes]) / sum(
+        [d[:, :class_label_dim - 1].shape[0] for d in ground_truth_scenes])
+    syn_class_labels = sum([d[:, :class_label_dim - 1].sum(0) for d in synthesized_scenes]) / sum(
+        [d[:, :class_label_dim - 1].shape[0] for d in synthesized_scenes])
 
     print(f'gt_class_labels.shape: {gt_class_labels.shape}')
     print(f'gt_class_labels: {gt_class_labels.sum()}')
@@ -176,10 +198,10 @@ def main():
     stats_filepath = os.path.join(args.log_dir, "kl_divergency_stats.npz")
 
     dataset_class_labels = {
-        'bedroom': ST3D_BEDROOM_FURNITURE,
-        'living_room': ST3D_LIVINGROOM_FURNITURE,
-        'dining_room': ST3D_DININGROOM_FURNITURE
-    }['bedroom']
+        'bedroom': ST3D_BEDROOM_FURNITURE if args.dataset_type == 'st3d' else THREED_FRONT_BEDROOM_FURNITURE,
+        'livingroom': ST3D_LIVINGROOM_FURNITURE if args.dataset_type == 'st3d' else THREED_FRONT_LIVINGROOM_FURNITURE,
+        'diningroom': ST3D_DININGROOM_FURNITURE if args.dataset_type == 'st3d' else THREED_FRONT_DININGROOM_FURNITURE,
+    }[args.room_type]
     for c, gt_cp, syn_cp in zip(dataset_class_labels, gt_class_labels, syn_class_labels):
         logger.info("{}: target: {} / synth: {}".format(c, gt_cp, syn_cp))
 
@@ -213,13 +235,15 @@ def main():
 
 def create_argparser():
     defaults = dict(
-        dataset_dir='/home/fangchuan/datasets/Structured3d/preprocessed/debug_quad_walls/bedroom',
+        dataset_type="3d_front",
+        dataset_dir='/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/test/bedroom/',
         log_dir='sample_results',
         clip_denoised=True,
         num_samples=1000,
         batch_size=1,
         use_ddim=False,
         model_path="",
+        room_type='bedroom',
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()

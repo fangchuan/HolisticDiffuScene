@@ -22,7 +22,7 @@ import json
 from dataset.metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE,
                               ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, COLOR_TO_ADEK_LABEL)
 from dataset.threed_front.metadata import (THREED_FRONT_BEDROOM_FURNITURE, THREED_FRONT_LIBRARY_FURNITURE,
-                                           THREED_FRONT_LIVINGROOM_FURNITURE)
+                                           THREED_FRONT_LIVINGROOM_FURNITURE, THREED_FRONT_BEDROOM_MAX_WALL_NUM, THREED_FRONT_LIVINGROOM_MAX_WALL_NUM)
 from dataset.threed_front.threed_future_dataset import ThreedFutureDataset
 from dataset.st3d_dataset import ST3DDataset, np_coor2xy, np_coor2xy, ROOM_TYPE_DICT
 from preprocess.prepare_st3d_dataset import vis_scene_mesh
@@ -238,7 +238,7 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
     return quad_wall_dict_list, obj_bbox_dict_list
 
 
-def get_textured_objects(bbox_params_dict, objects_dataset):
+def get_textured_objects(bbox_params_dict, objects_dataset: ThreedFutureDataset, color_to_labels: dict = None):
     # For each one of the boxes replace them with an object
     renderables = []
     trimesh_meshes = []
@@ -265,7 +265,6 @@ def get_textured_objects(bbox_params_dict, objects_dataset):
         # everything as a single scene
         tr_mesh = trimesh.load(furniture.raw_model_path, force="mesh")
         centroid = tr_mesh.bounding_box.centroid
-        tr_mesh.visual.material.image = Image.open(furniture.texture_image_path)
         tr_mesh.vertices *= furniture.scale
         tr_mesh.vertices -= centroid
         # rotate the coordinate system to x-right, y-forward, z-up
@@ -276,8 +275,16 @@ def get_textured_objects(bbox_params_dict, objects_dataset):
                                   faces=tr_mesh.faces,
                                   vertex_normals=new_tr_mesh_vertex_normals,
                                   face_normals=new_tr_mesh_face_normals)
-        # tr_mesh.visual.material.image = Image.open(furniture.texture_image_path)
+
         tr_mesh.vertices[...] = tr_mesh.vertices.dot(query_rotation) + query_translation
+        if color_to_labels is not None:
+            labels_lst = list(color_to_labels.values())
+            colors_lst = list(color_to_labels.keys())
+            color = colors_lst[labels_lst.index(query_label)]
+            # tr_mesh.visual.face_colors = color
+            tr_mesh.visual.vertex_colors = color
+        else:
+            tr_mesh.visual.material.image = Image.open(furniture.texture_image_path)
 
         trimesh_meshes.append(tr_mesh)
 
@@ -313,12 +320,25 @@ if __name__ == "__main__":
         scene_sample_label = args.room_type
         print(f'scene_sample_label: {scene_sample_label}')
 
-        if args.room_type == 'bedroom':
-            room_layout_size = np.array([3.64073229, 3.73553261, 2.81591231])  # bedroom
-            wall_max_num = ST3D_BEDROOM_QUAD_WALL_MAX_LEN
-        elif args.room_type == 'livingroom':
-            room_layout_size = np.array([7.239328956952291, 7.6231320936720675, 2.857928654068745])  # livingroom
-            wall_max_num = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
+        if args.dataset_type == 'st3d':
+            if args.room_type == 'bedroom':
+                room_layout_size = np.array([3.64073229, 3.73553261, 2.81591231])  # bedroom
+                wall_max_num = ST3D_BEDROOM_QUAD_WALL_MAX_LEN
+            elif args.room_type == 'livingroom':
+                room_layout_size = np.array([7.239328956952291, 7.6231320936720675, 2.857928654068745])  # livingroom
+                wall_max_num = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
+        
+        if args.dataset_type == '3d_front':
+            if args.room_type == 'bedroom':
+                room_layout_size = np.array([3.5491398691635867,3.8409623633141603, 2.651076370213072])  # bedroom
+                wall_max_num = THREED_FRONT_BEDROOM_MAX_WALL_NUM
+            elif args.room_type == 'livingroom':
+                room_layout_size = np.array([5.578468844343161, 6.169652242321863, 2.635967136258661])  # livingroom
+                wall_max_num = THREED_FRONT_LIVINGROOM_MAX_WALL_NUM
+            elif args.room_type == 'diningroom':
+                room_layout_size = np.array([5.190448841484693, 5.507005307872562, 2.6443791106290626]) # diningroom
+                wall_max_num = THREED_FRONT_LIVINGROOM_MAX_WALL_NUM
+
         # quad walls
         quad_wall_lst = scene_sample_result[:wall_max_num, :]
         # objects

@@ -135,7 +135,7 @@ def add_description(room_type: str, object_dict: Dict, eval=False):
 
     for ndx in range(1, len(obj_names)):
         # higher prob of describing the 2nd object
-        prob_thresh = 0.1
+        prob_thresh = 0.01
 
         if eval:
             random_num = 1.0

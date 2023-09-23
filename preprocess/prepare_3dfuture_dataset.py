@@ -42,13 +42,13 @@ def main(argv):
                         default="/home/hkust/fangchuan/codes/ATISS/demo/",
                         help="Path to floor texture images")
     parser.add_argument("--path_to_invalid_scene_ids",
-                        default="config/invalid_threed_front_rooms.txt",
+                        default="../config/invalid_threed_front_rooms.txt",
                         help="Path to invalid scenes")
     parser.add_argument("--path_to_invalid_bbox_jids",
-                        default="config/threed_front_black_list.txt",
+                        default="../config/threed_front_black_list.txt",
                         help="Path to objects that ae blacklisted")
     parser.add_argument("--annotation_file",
-                        default="config/bedroom_threed_front_splits.csv",
+                        default="../config/bedroom_threed_front_splits.csv",
                         help="Path to the train/test splits file")
     parser.add_argument(
         "--dataset_filtering",

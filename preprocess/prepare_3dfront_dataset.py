@@ -486,8 +486,9 @@ def process_dataset(dataset: ThreedFront, args: argparse.Namespace, split: str =
             wall_dict=copy.deepcopy(quad_wall_dict),
             object_dict=copy.deepcopy(obj_bbox_dict),
             glove_model=text_encoder,
+            eval= split == 'test',
         )
-        # print(f'room {room_name} scene_desc_text: {scene_desc_text}')
+        print(f'room {room_name} scene_desc_text: {scene_desc_text}')
         # write text description
         with open(save_text_desc_filepath, 'w') as f:
             f.write(scene_desc_text)
@@ -532,13 +533,28 @@ def process_dataset(dataset: ThreedFront, args: argparse.Namespace, split: str =
                                           faces=obj_mesh.faces,
                                           vertex_normals=new_object_normals,
                                           face_normals=new_object_face_normals)
+            labels_lst = list(TDFRONT_COLOR_TO_ADEK_LABEL.values())
+            colors_lst = list(TDFRONT_COLOR_TO_ADEK_LABEL.keys())
+            color = colors_lst[labels_lst.index(object.label)]
+            tr_obj_mesh.visual.face_colors = color
+
             obj_mesh_lst.append(tr_obj_mesh)
         obj_mesh = trimesh.util.concatenate(obj_mesh_lst) if len(obj_mesh_lst) > 0 else None
         if obj_mesh is not None:
-            debug_bbox_lst = quad_wall_dict['walls']
-            quad_wall_bbox = vis_scene_mesh(room_layout_mesh=None, obj_bbox_lst=debug_bbox_lst)
-            obj_mesh = trimesh.util.concatenate([obj_mesh, quad_wall_bbox])
-            obj_mesh.export(save_debug_scene_mesh_filepath)
+            # debug_bbox_lst = quad_wall_dict['walls'] + [
+            #     obj for obj in obj_bbox_dict['objects'] if obj['class'] in ['door', 'window']
+            # ]
+            # quad_wall_bbox = vis_scene_mesh(room_layout_mesh=None,
+            #                                 color_to_labels=TDFRONT_COLOR_TO_ADEK_LABEL,
+            #                                 obj_bbox_lst=debug_bbox_lst)
+            # obj_mesh = trimesh.util.concatenate([obj_mesh, quad_wall_bbox])
+            # obj_mesh.export(save_debug_scene_mesh_filepath)
+            o3d_mesh = o3d.geometry.TriangleMesh(vertices=o3d.utility.Vector3dVector(obj_mesh.vertices),
+                                                 triangles=o3d.utility.Vector3iVector(obj_mesh.faces))
+            o3d_mesh.vertex_normals = o3d.utility.Vector3dVector(obj_mesh.vertex_normals)
+            o3d_mesh.compute_triangle_normals()
+            o3d_mesh.vertex_colors = o3d.utility.Vector3dVector(obj_mesh.visual.vertex_colors[:, :3] / 255.0)
+            o3d.io.write_triangle_mesh(save_debug_scene_mesh_filepath, o3d_mesh)
 
         # save mesh in 3D-Front coordinate system
         # # save room floor plan as a mesh

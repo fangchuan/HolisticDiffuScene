@@ -1,6 +1,6 @@
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 NUM_SAMPLES=30
-OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2023-09-13-16-06-26-991550/
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/mesh_generation_experiments/
 
 eval "$(conda shell.bash hook)"
 conda activate structured3d
@@ -17,7 +17,7 @@ conda activate structured3d
 
 
 # run panorama sampling
-PANO_INPUT_FOLDER=$OUTPUT_FOLDER/livingroom
+PANO_INPUT_FOLDER=$OUTPUT_FOLDER/text2light_results/
 CKPT_PATH="/mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/ckpts/control_v11p_sd15_seg_livingroom_fullres_40000.ckpt"
 conda activate control-v11
 cd /mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/scripts

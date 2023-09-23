@@ -613,7 +613,8 @@ class Room(BaseScene):
     def wall_meshes(self) -> trimesh.Trimesh:
         if self._original_walls is None:
             wall_lst = [ei for ei in self.extras if ei.model_type == "WallInner"]
-
+            if len(wall_lst) == 0:
+                print(f"room {self.uid} has no wall!!!!")
             # walls_mesh = o3d.geometry.TriangleMesh()
             walls_mesh_lst = []
             for wall in wall_lst:
@@ -826,7 +827,7 @@ class Room(BaseScene):
         """
         window_lst = [v for k, v in self.windows_dict.items()]
         if len(window_lst) == 0:
-            return None
+            return list()
 
         room_walls = self.wall_meshes
         if room_walls is None:
@@ -842,7 +843,8 @@ class Room(BaseScene):
             if check_mesh_attachment(mesh, room_walls):
                 windows_mesh_lst.append(mesh)
 
-        return windows_mesh_lst if len(windows_mesh_lst) else None
+        # return windows_mesh_lst if len(windows_mesh_lst) else None
+        return windows_mesh_lst
 
     @property
     @lru_cache(maxsize=512)
@@ -903,11 +905,12 @@ class Room(BaseScene):
         """
         door_lst = [v for k, v in self.doors_dict.items()]
         if len(door_lst) == 0:
-            return None
+            return list()
 
         room_walls = self.wall_meshes
         if room_walls is None:
-            return None
+            print(f'room {self.uid} has no wall mesh')
+            return list()
         doors_mesh_lst = []
         for door in door_lst:
             mesh = trimesh.Trimesh(vertices=door["mesh_xyz"], faces=door["mesh_faces"])
@@ -932,7 +935,8 @@ class Room(BaseScene):
 
             new_doors_mesh_lst.append(doors_mesh_lst[i])
 
-        return new_doors_mesh_lst if len(new_doors_mesh_lst) else None
+        # return new_doors_mesh_lst if len(new_doors_mesh_lst) else None
+        return new_doors_mesh_lst
 
     @property
     def object_types(self):

@@ -589,4 +589,8 @@ LivingDiningRoom-9804
 LivingRoom-21464
 LivingDiningRoom-44943
 DiningRoom-31759
-DiningRoom-50256 
+DiningRoom-50256
+DiningRoom-35093
+DiningRoom-39011
+DiningRoom-9450
+LivingDiningRoom-42436 
