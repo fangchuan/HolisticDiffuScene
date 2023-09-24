@@ -18,7 +18,7 @@ import trimesh
 import torch.utils.data as data
 
 from .threed_front.metadata import THREED_FRONT_BEDROOM_FURNITURE, THREED_FRONT_BEDROOM_FURNITURE_CNTS, \
-    THREED_FRONT_LIVINGROOM_FURNITURE, THREED_FRONT_LIVINGROOM_FURNITURE_CNTS, \
+    THREED_FRONT_LIVINGROOM_FURNITURE, THREED_FRONT_DININGROOM_FURNITURE, THREED_FRONT_LIVINGROOM_FURNITURE_CNTS, \
     THREED_FRONT_BEDROOM_MIN_FURNITURE_NUM, THREED_FRONT_BEDROOM_MAX_FURNITURE_NUM, \
     THREED_FRONT_LIVINGROOM_MIN_FURNITURE_NUM, THREED_FRONT_LIVINGROOM_MAX_FURNITURE_NUM, \
     THREED_FRONT_BEDROOM_MAX_WALL_NUM, THREED_FRONT_LIVINGROOM_MAX_WALL_NUM
@@ -61,7 +61,7 @@ def ClassLabelsEncode(room_type: int, obj_bbox_label: str) -> np.array:
     elif room_type == ROOM_TYPE_DICT['living room']:
         classes = THREED_FRONT_LIVINGROOM_FURNITURE
     elif room_type == ROOM_TYPE_DICT['dining room']:
-        classes = THREED_FRONT_LIVINGROOM_FURNITURE
+        classes = THREED_FRONT_DININGROOM_FURNITURE
 
     def one_hot_label(all_labels, current_label):
         return np.eye(len(all_labels))[all_labels.index(current_label)]
@@ -133,7 +133,7 @@ def padding_and_reshape_object_bbox(room_type: int, object_bbox_lst: np.array, b
         class_num = len(THREED_FRONT_LIVINGROOM_FURNITURE)
     elif room_type == ROOM_TYPE_DICT['dining room']:
         max_len = THREED_FRONT_LIVINGROOM_MAX_FURNITURE_NUM
-        class_num = len(THREED_FRONT_LIVINGROOM_FURNITURE)
+        class_num = len(THREED_FRONT_DININGROOM_FURNITURE)
 
     # Pad the end label in the end of each sequence, and convert the class labels to -1, 1
     if L < max_len:
@@ -164,13 +164,10 @@ def padding_and_reshape_wall_bbox(room_type: int, wall_bbox_lst: np.array, bbox_
         class_num = len(THREED_FRONT_LIVINGROOM_FURNITURE)
         max_len = THREED_FRONT_LIVINGROOM_MAX_WALL_NUM
     elif room_type == ROOM_TYPE_DICT['dining room']:
-        class_num = len(THREED_FRONT_LIVINGROOM_FURNITURE)
+        class_num = len(THREED_FRONT_DININGROOM_FURNITURE)
         max_len = THREED_FRONT_LIVINGROOM_MAX_WALL_NUM
 
     assert L <= max_len, f'The length of the wall bbox list should be less than {max_len}.'
-    # if L > max_len:
-    #     print(f'The length of the wall bbox list {L} should be less than {max_len}.')
-    #     return wall_bbox_lst[:max_len, :]
 
     # Pad the end label in the end of each sequence, and convert the class labels to -1, 1
     empty_label = np.eye(class_num)[-1]
@@ -442,7 +439,7 @@ class ThreedFrontDataset(data.Dataset):
         assert wall_bbox_lst.shape[-1] == object_bbox_lst.shape[-1]
         out_lst = np.concatenate([wall_bbox_lst, object_bbox_lst], axis=0)
         out_lst = out_lst.transpose(1, 0)
-
+        
         cond_dict = {}
         if room_type is not None:
             cond_dict["y"] = np.array(room_type, dtype=np.int64)

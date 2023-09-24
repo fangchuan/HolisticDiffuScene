@@ -706,8 +706,6 @@ class GaussianDiffusion:
 
                 terms["loss"] = terms["vb"] + terms["iou"]
 
-                # logger.info(f"total loss: {terms['loss']}")
-
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE or self.loss_type == LossType.RESCALED_MSE_IOU:
             model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
             logger.debug(f"training_losses: model_output.shape: {model_output.shape}")
@@ -719,6 +717,9 @@ class GaussianDiffusion:
                 B, C = x_t.shape[:2]
                 assert model_output.shape == (B, C * 2, *x_t.shape[2:])
                 model_output, model_var_values = th.split(model_output, C, dim=1)
+                # if th.any(th.isnan(model_output)):
+                #     logger.debug(f"model_output: {mean_flat(model_output)}")
+                #     raise Exception("model_output is nan")
                 # Learn the variance using the variational bound, but don't let
                 # it affect our mean prediction.
                 frozen_out = th.cat([model_output.detach(), model_var_values], dim=1)
@@ -735,6 +736,7 @@ class GaussianDiffusion:
                     # Divide by 1000 for equivalence with initial implementation.
                     # Without a factor of 1/1000, the VB term hurts the MSE term.
                     terms["vb"] *= self.num_timesteps / 1000.0
+                    # logger.debug(f"loss type: RESCALED_MSE")
                 if self.loss_type == LossType.RESCALED_MSE_IOU:
                     terms["vb"] *= self.num_timesteps / 1000.0
 
@@ -748,6 +750,7 @@ class GaussianDiffusion:
                                                 means=pred_x_start,
                                                 weights=alpha_bar)
                     terms["iou"] = mean_flat(iou_loss)
+                    logger.debug(f"loss type: RESCALED_MSE_IOU")
 
             target = {
                 ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(x_start=x_start, x_t=x_t, t=t)[0],
@@ -756,6 +759,11 @@ class GaussianDiffusion:
             }[self.model_mean_type]
             assert model_output.shape == target.shape == x_start.shape
             terms["mse"] = mean_flat((target - model_output)**2)
+            # if th.any(th.isnan(terms["mse"])):
+            #     logger.debug(f"target: {mean_flat(target)}")
+            #     logger.debug(f"model_output: {mean_flat(model_output)}")
+            #     logger.debug(f"mse: {terms['mse']}")
+            #     raise Exception("mse is nan")
 
             if "vb" in terms:
                 terms["loss"] = terms["mse"] + terms["vb"]

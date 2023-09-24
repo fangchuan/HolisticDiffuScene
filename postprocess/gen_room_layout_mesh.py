@@ -21,7 +21,7 @@ import json
 # from misc.colors import colormap_255
 from dataset.metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE,
                               ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, COLOR_TO_ADEK_LABEL)
-from dataset.threed_front.metadata import (THREED_FRONT_BEDROOM_FURNITURE, THREED_FRONT_LIBRARY_FURNITURE,
+from dataset.threed_front.metadata import (THREED_FRONT_BEDROOM_FURNITURE, THREED_FRONT_DININGROOM_FURNITURE,
                                            THREED_FRONT_LIVINGROOM_FURNITURE, THREED_FRONT_BEDROOM_MAX_WALL_NUM, THREED_FRONT_LIVINGROOM_MAX_WALL_NUM)
 from dataset.threed_front.threed_future_dataset import ThreedFutureDataset
 from dataset.st3d_dataset import ST3DDataset, np_coor2xy, np_coor2xy, ROOM_TYPE_DICT
@@ -134,7 +134,7 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
     elif room_type == 'livingroom':
         class_labels_lst = (ST3D_LIVINGROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_LIVINGROOM_FURNITURE
     elif room_type == 'diningroom':
-        class_labels_lst = (ST3D_DININGROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_LIVINGROOM_FURNITURE
+        class_labels_lst = (ST3D_DININGROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_DININGROOM_FURNITURE
     else:
         raise NotImplementedError
 

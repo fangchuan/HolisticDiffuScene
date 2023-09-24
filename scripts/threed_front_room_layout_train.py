@@ -38,7 +38,7 @@ def main():
     dist_util.setup_dist()
     log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
-    logger.set_level(logger.DEBUG)
+    logger.set_level(logger.INFO)
 
     logger.log("creating UNet model and diffusion model...")
     unet_model, diffusion_model = create_model_and_diffusion(**args_to_dict(args,

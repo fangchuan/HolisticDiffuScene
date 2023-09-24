@@ -520,7 +520,13 @@ def process_dataset(dataset: ThreedFront, args: argparse.Namespace, split: str =
         scene_bbox = vis_scene_mesh(room_layout_mesh=None,
                                     color_to_labels=TDFRONT_COLOR_TO_ADEK_LABEL,
                                     obj_bbox_lst=debug_bbox_lst)
-        scene_bbox.export(save_debug_scene_bbox_filepath)
+        # scene_bbox.export(save_debug_scene_bbox_filepath)
+        o3d_scene_bbox = o3d.geometry.TriangleMesh(vertices=o3d.utility.Vector3dVector(scene_bbox.vertices),
+                                                triangles=o3d.utility.Vector3iVector(scene_bbox.faces))
+        o3d_scene_bbox.vertex_normals = o3d.utility.Vector3dVector(scene_bbox.vertex_normals)
+        o3d_scene_bbox.compute_triangle_normals()
+        o3d_scene_bbox.vertex_colors = o3d.utility.Vector3dVector(scene_bbox.visual.vertex_colors[:, :3] / 255.0)
+        o3d.io.write_triangle_mesh(save_debug_scene_bbox_filepath, o3d_scene_bbox)
 
         # debug furniture mesh
         obj_mesh_lst = []
