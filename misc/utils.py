@@ -338,8 +338,9 @@ def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
 
             new_width = np.linalg.norm(floor_corners[0] - floor_corners[1])
             new_height = np.linalg.norm(floor_corners[0] - ceiling_corners[0])
-            wall_dict['center'] = ((floor_corners[0] + floor_corners[1] + ceiling_corners[0] + ceiling_corners[1]) / 4).tolist()
-            wall_dict['size'] = [float(new_width), 0.05, float(new_height)]
+            wall_dict['center'] = ((floor_corners[0] + floor_corners[1] + ceiling_corners[0] + ceiling_corners[1]) /
+                                   4).tolist()
+            wall_dict['size'] = [float(new_width), 0.01, float(new_height)]
         else:
             print('WARNING: floor/ceiling_corners should have two points!!!')
 
@@ -470,3 +471,17 @@ def check_mesh_distance(object_mesh: trimesh.Trimesh, room_mesh: trimesh.Trimesh
     result = fcl.DistanceResult()
     ret = fcl.distance(o1, o2, request, result)
     return ret
+
+
+def my_compute_box_3d(center, size, heading_angle):
+    R = np.array([[np.cos(-heading_angle), -np.sin(-heading_angle), 0],
+                  [np.sin(-heading_angle), np.cos(-heading_angle), 0], [0, 0, 1]])
+    l, w, h = size
+    x_corners = [-l, l, l, -l, -l, l, l, -l]
+    y_corners = [w, w, -w, -w, w, w, -w, -w]
+    z_corners = [h, h, h, h, -h, -h, -h, -h]
+    corners_3d = np.dot(R, np.vstack([x_corners, y_corners, z_corners]))
+    corners_3d[0, :] += center[0]
+    corners_3d[1, :] += center[1]
+    corners_3d[2, :] += center[2]
+    return np.transpose(corners_3d)

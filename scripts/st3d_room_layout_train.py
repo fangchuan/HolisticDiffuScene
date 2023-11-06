@@ -27,8 +27,7 @@ from dataset.st3d_dataset import ST3DDataset
 
 def make_dataloader_cycle(iterable):
     while True:
-        for x in iterable:
-            yield x
+        yield from iterable
 
 
 def main():
@@ -37,7 +36,7 @@ def main():
     # set up distributed training and logging
     dist_util.setup_dist()
     log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
-    logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
+    logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout'])
     logger.set_level(logger.INFO)
 
     logger.log("creating UNet model and diffusion model...")
@@ -52,13 +51,14 @@ def main():
                                 shard=MPI.COMM_WORLD.Get_rank(),
                                 num_shards=MPI.COMM_WORLD.Get_size())
     logger.info(f"train_dataset length: {len(train_dataset)}")
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2, drop_last=False)
 
     logger.log("training...")
     TrainLoop(
         model=unet_model,
         diffusion=diffusion_model,
-        data=iter(make_dataloader_cycle(train_loader)),
+        # data=iter(make_dataloader_cycle(train_loader)),
+        data=make_dataloader_cycle(train_loader),
         batch_size=args.batch_size,
         microbatch=args.microbatch,
         lr=args.lr,

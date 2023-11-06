@@ -191,3 +191,7 @@ We would like to thank Kujiale.com for providing the database of house designs a
                             text condition训练: log/TDFRONT_bedroom_openai-2023-08-05-18-47-48-302753/ema_0.9999_200000.pt 出现label错误问题???
 
 30. 重新整理3D_FRONT数据集: bedroom/livingroom/diningroom, 重新处理quad_wall, 暂未分train/test, 暂未重新训练3d_front模型;
+31. 2023-10-11: ST3D_livingroom_textcondition_openai-2023-10-11-10-10-00-00在ST3D训练text condition模型, 打开input_encoding; 定性效果良好, 缺定量测评;
+32. 2023-10-13: ST3D_livingroom_textcondition_openai-2023-10-13-22-20-00-00在ST3D训练text condition模型, 打开input_encoding, layout_IOU_3D, 定性结果好像变差了,缺乏定量评估;
+33. 2023-10-13: ST3D_liveingroom_textcondition_openai-2023-10-13-22-50-00-00在ST3D训练text condition模型, 打开input_encoding, object_IOU_3D：定性效果不明显,缺乏定量评估;
+34. 2023-10-14: ST3D数据集的object bbox angle没有归一化!!!

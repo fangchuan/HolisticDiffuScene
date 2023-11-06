@@ -20,24 +20,20 @@ from PIL import Image
 
 import open3d as o3d
 from panda3d.core import Triangulator
-
 from typing import List, Tuple, Dict, Any, Union
 
-from misc.utils import (matrix_to_euler_angles, reconstrcut_floor_ceiling_from_quad_walls,
-                        recover_floor_ceiling_points_from_quad_walls, check_mesh_attachment, check_mesh_distance)
+from misc.utils import (matrix_to_euler_angles, reconstrcut_floor_ceiling_from_quad_walls, my_compute_box_3d,
+                        check_mesh_attachment, check_mesh_distance)
 from misc.equirect_projection import vis_objs3d, vis_floor_ceiling
-from dataset.metadata import (INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS, COLOR_TO_LABEL,
-                              COLOR_TO_ADEK_LABEL, ST3D_LIVINGROOM_MIN_LEN, ST3D_BEDROOM_MIN_LEN,
-                              ST3D_DININGROOM_MIN_LEN)
-from dataset.metadata import ROOM_WALLS_LARGER_THAN_10, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_QUAD_WALL_MAX_LEN
+from dataset.metadata import (INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS, ROOM_WALLS_LARGER_THAN_10,
+                              COLOR_TO_ADEK_LABEL, ST3D_LIVINGROOM_MIN_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN,
+                              ST3D_BEDROOM_QUAD_WALL_MAX_LEN)
 
 from dataset.st3d_dataset import get_mesh_from_corners, np_coorx2u, np_coory2v, find_occlusion, corners_to_1d_boundary
 from dataset.gen_scene_text import get_scene_description
 
 from visualize_mesh import verify_normal, create_spatial_quad_polygen
 from visualize_3d import convert_lines_to_vertices
-
-# import torchtext
 '''
 Assume datas is extracted by `misc/structured3d_extract_zip.py`.
 That is to said, assuming following structure:
@@ -193,7 +189,7 @@ def vis_color_pointcloud(rgb_img_filepath, depth_img_filepath, saved_color_pcl_f
     return o3d_pointcloud
 
 
-def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, new_labeld_room_filepath: str = None):
+def parse_bbox_in_room(room_folderpath: str, room_layout_mesh: trimesh.Trimesh, new_labeld_room_filepath: str = None):
     """ parse object bounding box in room
 
     Args:
@@ -277,6 +273,7 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, new_labeld_room_f
             obj_bbox_dict['angles'] = angles.tolist()
             obj_bbox_dict['center'] = bbox_center.tolist()
             obj_bbox_dict['size'] = bbox_size.tolist()
+            obj_bbox_dict['corners'] = my_compute_box_3d(bbox_center, bbox_size / 2, -angles[2]).tolist()
             if check_bbox_in_room(obj_bbox_dict, room_layout_mesh, layout_bbox_min, layout_bbox_max):
                 obj_bbox_lst.append(obj_bbox_dict)
 
@@ -320,6 +317,8 @@ def parse_bbox_in_room(room_folderpath: str, room_layout_mesh, new_labeld_room_f
             obj_bbox_dict['center'] = bbox_center.tolist()
             bbox_size = coeffs * 0.001 * 2
             obj_bbox_dict['size'] = bbox_size.tolist()
+            obj_bbox_dict['corners'] = my_compute_box_3d(bbox_center, bbox_size / 2,
+                                                         -rotation_euler_angles_rad[2]).tolist()
             if check_bbox_in_room(obj_bbox_dict, room_layout_mesh, layout_bbox_min, layout_bbox_max):
                 obj_bbox_lst.append(obj_bbox_dict)
 
@@ -606,41 +605,21 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
         # all the coordinates are in camera frame
         wall_dict['center'] = wall_center_in_cam.tolist()
         wall_dict['normal'] = wall_normal.tolist()
-        wall_dict['angles'] = [np.cos(angle), np.sin(angle)]
+        wall_dict['angles'] = [0, 0, angle]
         wall_dict['width'] = wall_width
         wall_dict['height'] = wall_height
         wall_dict['corners'] = ((quad_corners - cam_position) * 0.001).tolist()
         quad_wall_lst.append(wall_dict)
 
-    # # sort walls by attaching order
-    # mesh_orders = [0]
-    # for i, mesh in enumerate(quad_wall_mesh_lst):
-    #     attached_ids = [
-    #         id for id, wall in enumerate(quad_wall_mesh_lst) if id != i and check_mesh_attachment(mesh, wall)
-    #     ]
-    #     assert len(attached_ids) == 2, f'wall {i} should have 2 attached walls'
-    #     if attached_ids[0] not in mesh_orders and attached_ids[1] not in mesh_orders:
-    #         mesh_orders.append(attached_ids[0])
-    #     if attached_ids[0] in mesh_orders and attached_ids[1] not in mesh_orders:
-    #         mesh_orders.append(attached_ids[1])
-    #     if attached_ids[1] in mesh_orders and attached_ids[0] not in mesh_orders:
-    #         mesh_orders.append(attached_ids[0])
-    # print(f'mesh orders: {mesh_orders}')
-    # for i, idx in enumerate(mesh_orders):
-    #     if i != idx:
-    #         quad_wall_lst[i], quad_wall_lst[idx] = quad_wall_lst[idx], quad_wall_lst[i]
-    #         quad_wall_mesh_lst[i], quad_wall_mesh_lst[idx] = quad_wall_mesh_lst[idx], quad_wall_mesh_lst[i]
-
     # quad_wall_lst = merge_walls(quad_wall_lst, quad_wall_mesh_lst)
     room_layout_mesh = trimesh.util.concatenate(quad_wall_mesh_lst)
-    corner_floor = junctions[wall_floor]
+
     # compute the bounding box of the layout
     layout_bbox_min = trimesh.bounds.corners(room_layout_mesh.bounding_box_oriented.bounds).min(axis=0)
     layout_bbox_max = trimesh.bounds.corners(room_layout_mesh.bounding_box_oriented.bounds).max(axis=0)
     layout_bbox_size = layout_bbox_max - layout_bbox_min
     for wall_dict in quad_wall_lst:
         wall_center_in_cam = np.array(wall_dict['center'])
-        wall_normal = np.array(wall_dict['normal'])
         wall_angles = wall_dict['angles']
         # angle = np.arcsin(wall_angles[1]) if abs(wall_angles[0]) < 5e-3 else np.arccos(wall_angles[0])
 
@@ -649,13 +628,12 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
         wall_width_normalized = np.linalg.norm(wall_corners_normalized[0] - wall_corners_normalized[3])
         wall_height_normalized = float(wall_dict['height']) / layout_bbox_size[2]
 
-        # if layout_bbox_size is not None:
         wall_normalized_dict = {}
         wall_normalized_dict['ID'] = wall_dict['ID']
         wall_normalized_dict['class'] = wall_dict['class']
         wall_normalized_dict['center'] = (wall_center_in_cam / layout_bbox_size).tolist()
-        wall_normalized_dict['normal'] = wall_normal.tolist()
-        wall_normalized_dict['angles'] = wall_angles
+        wall_normalized_dict['normal'] = wall_dict['normal']
+        wall_normalized_dict['angles'] = [np.cos(wall_angles[2]), np.sin(wall_angles[2])]
         # the width could be weird if the layout is nor square
         wall_normalized_dict['width'] = wall_width_normalized
         wall_normalized_dict['height'] = wall_height_normalized
@@ -754,6 +732,7 @@ def prepare_dataset(raw_dataset_dir: str,
                     scene_ids: List,
                     out_dir: str,
                     annotated_labels_dir: str,
+                    split: str = 'train',
                     b_save_debug_files=False):
     """
     Prepare the dataset for training and testing.
@@ -822,10 +801,16 @@ def prepare_dataset(raw_dataset_dir: str,
                 continue
 
             quad_wall_num_lst.append(len(quad_walls_normalized_dict['walls']))
-            # if len(quad_walls_normalized_dict['walls']) > ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN:
-            #     print(f'bad scene {room_str} walls number > {ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN}')
-            #     ROOM_WALLS_LARGER_THAN_10.append(room_str)
-            #     continue
+            if target_room_type == 'bedroom':
+                if len(quad_walls_normalized_dict['walls']) > ST3D_BEDROOM_QUAD_WALL_MAX_LEN:
+                    print(f'bad scene {room_str} walls number > {ST3D_BEDROOM_QUAD_WALL_MAX_LEN}')
+                    ROOM_WALLS_LARGER_THAN_10.append(room_str)
+                    continue
+            elif target_room_type == 'livingroom':
+                if len(quad_walls_normalized_dict['walls']) > ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN:
+                    print(f'bad scene {room_str} walls number > {ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN}')
+                    ROOM_WALLS_LARGER_THAN_10.append(room_str)
+                    continue
 
             # parse 3d bbox of objects in the room
             new_labeld_room_filepath = os.path.join(annotated_labels_dir, room_str + '.json')
@@ -853,6 +838,7 @@ def prepare_dataset(raw_dataset_dir: str,
                 wall_dict=quad_walls_dict.copy(),
                 object_dict=obj_bbox_3d_dict.copy(),
                 glove_model=glove_model,
+                eval=(split == 'test'),
             )
             # print(f'room {room_str} scene_desc_text: {scene_desc_text}')
 
@@ -985,9 +971,9 @@ def parse_args():
                         default='/data/dataset/Structured3D/preprocessed/annotations/livingroom/annotated_labels/',
                         help='path to annotated labels')
     parser.add_argument('--out_train_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/for_iclr2024/train')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/0919_new_livingroom/train')
     parser.add_argument('--out_test_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/for_iclr2024/test')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/0919_new_livingroom/test')
     return parser.parse_args()
 
 
@@ -1008,12 +994,14 @@ def main():
                                                                                          TRAIN_SCENE,
                                                                                          args.out_train_path,
                                                                                          args.annotated_labels_path,
+                                                                                         split='train',
                                                                                          b_save_debug_files=True)
     test_furniture_stats, _, _, _ = prepare_dataset(args.dataset_path,
                                                     room_type_str,
                                                     TEST_SCENE,
                                                     args.out_test_path,
                                                     args.annotated_labels_path,
+                                                    split='test',
                                                     b_save_debug_files=True)
     # print('*' * 20 + ' invalid rooms ids: ' + '*' * 20)
     # print(INVALID_ROOMS_LST)
@@ -1052,6 +1040,17 @@ def main():
                                           room_type_str.replace(' ', '_') + '_dataset_stats.json')
     with open(dataset_stats_filepath, 'w') as f:
         json.dump(dataset_stats, f, indent=4)
+
+    # get train.json and test.json
+    train_test_split_filepath = os.path.join(os.path.dirname(args.out_test_path), 'splits.json')
+    valid_train_scene_ids = [s[:-4] for s in os.listdir(os.path.join(args.out_train_path, room_type_str, 'img'))]
+    valid_test_scene_ids = [s[:-4] for s in os.listdir(os.path.join(args.out_test_path, room_type_str, 'img'))]
+
+    with open(train_test_split_filepath, 'w') as f:
+        for i, scene_id in enumerate(valid_train_scene_ids):
+            f.write(scene_id + ',' + 'train' + '\n')
+        for i, scene_id in enumerate(valid_test_scene_ids):
+            f.write(scene_id + ',' + 'test' + '\n')
 
 
 if __name__ == "__main__":

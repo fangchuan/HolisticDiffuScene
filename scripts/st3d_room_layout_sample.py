@@ -28,7 +28,7 @@ from improved_diffusion.script_util import (
 )
 
 from dataset.st3d_dataset import ST3DDataset
-from improved_diffusion.clip_util import FrozenCLIPEmbedder
+# from improved_diffusion.clip_util import FrozenCLIPEmbedder
 from dataset.metadata import ST3D_BEDROOM_QUAD_WALL_MAX_LEN, \
                             ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, \
                             COLOR_TO_ADEK_LABEL
@@ -56,11 +56,10 @@ def main():
     args = create_argparser().parse_args()
 
     dist_util.setup_dist()
-    # log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
-    log_dir = args.log_dir
+    log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
-    text_encoder = FrozenCLIPEmbedder(device=dist_util.dev())
+    # text_encoder = FrozenCLIPEmbedder(device=dist_util.dev())
     dataset = ST3DDataset(root_dir=args.data_dir, max_text_sentences=4, return_scene_name=True)
 
     logger.log("creating UNet model and diffusion model ...")

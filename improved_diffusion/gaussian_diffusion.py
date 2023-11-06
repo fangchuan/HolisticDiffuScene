@@ -750,7 +750,7 @@ class GaussianDiffusion:
                                                 means=pred_x_start,
                                                 weights=alpha_bar)
                     terms["iou"] = mean_flat(iou_loss)
-                    logger.debug(f"loss type: RESCALED_MSE_IOU")
+                    # logger.debug(f"loss type: RESCALED_MSE_IOU")
 
             target = {
                 ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(x_start=x_start, x_t=x_t, t=t)[0],

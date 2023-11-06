@@ -9,7 +9,9 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch as th
 
 from dataset.st3d_dataset import get_room_type
-from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE
+from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, \
+    ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_MAX_LEN, \
+     ST3D_LIVINGROOM_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
 from . import logger
 from shapely.geometry.polygon import Polygon
 from misc.utils import euler_angle_to_matrix
@@ -283,24 +285,39 @@ def verify_object_box_on_wall(points: th.Tensor, wall_center: th.Tensor, wall_no
 
 def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.Tensor, invalid_masks: th.Tensor,
                                            iou_loss_weights: th.Tensor):
+    """_summary_
+
+    Args:
+        x_pred (th.Tensor): _description_
+        room_type_lst (th.Tensor): _description_
+        invalid_masks (th.Tensor): _description_
+        iou_loss_weights (th.Tensor): _description_
+
+    Raises:
+        NotImplementedError: _description_
+
+    Returns:
+        physical_violation_loss: (B, 1, 1)
+    """
     # quad_walls: x_pred[:, :10, :]
     # object_bbox: x_pred[:, 10:, :]
     B, C, feat_size = x_pred.shape
-    object_chann_idx = 10
     assert th.all(room_type_lst == room_type_lst[0]), "The input room types should be equal"
-    assert iou_loss_weights.shape == (B, C, feat_size), "The loss weights tensor should be (B, 23, 32)"
+    assert iou_loss_weights.shape == (B, C, feat_size), f"The loss weights tensor should be ({B}, {C}, {feat_size})"
 
     if get_room_type(room_type_lst[0]) == 'bedroom':
         class_labels_lst = ST3D_BEDROOM_FURNITURE
-        max_wall_num, max_obj_num, obj_feat_dim = 10, 13, 32
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_MAX_LEN, 32
     elif get_room_type(room_type_lst[0]) == 'living room':
         class_labels_lst = ST3D_LIVINGROOM_FURNITURE
-        max_wall_num, max_obj_num, obj_feat_dim = 10, 23, 32
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, 34
     elif get_room_type(room_type_lst[0]) == 'dining room':
         class_labels_lst = ST3D_DININGROOM_FURNITURE
-        max_wall_num, max_obj_num, obj_feat_dim = 10, 23, 32
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, 34
     else:
         raise NotImplementedError
+
+    object_chann_idx = max_wall_num
 
     class_idx = 0
     centroid_idx = class_idx + len(class_labels_lst)
@@ -449,49 +466,73 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     return batch_iou_loss
 
 
-def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
-    # quad_walls: x_pred[:, :10, :]
-    # object_bbox: x_pred[:, 10:, :]
+def iou_among_predicted_3d_bbox(x_pred:th.Tensor, room_type_lst:th.Tensor, invalid_masks:th.Tensor, iou_loss_weights:th.Tensor):
+    """_summary_
+
+    Args:
+        x_pred (th.Tensor): denoised x_t_minus_1 (B, obj_num, feat_size)
+        room_type_lst (th.Tensor): condition types  (B)
+        invalid_masks (th.Tensor): invalid object masks (B, obj_num, 1)
+        iou_loss_weights (th.Tensor): weights, (B, obj_num, feat_size)
+
+    Raises:
+        NotImplementedError: _description_
+
+    Returns:
+        3D_IoU loss: (B, 1, obj_numxobj_num)
+    """
     B, C, feat_size = x_pred.shape
-    object_chann_idx = 10
     assert th.all(room_type_lst == room_type_lst[0]), "The input room types should be equal"
-    assert iou_loss_weights.shape == (B, C, feat_size), "The loss weights tensor should be (B, 23, 32)"
+    assert iou_loss_weights.shape == (B, C, feat_size), f"The loss weights tensor should be ({B}, {C}, {feat_size})"
 
     if get_room_type(room_type_lst[0]) == 'bedroom':
         class_labels_lst = ST3D_BEDROOM_FURNITURE
-        max_obj_num, obj_feat_dim = 13, 32
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_MAX_LEN, 32
     elif get_room_type(room_type_lst[0]) == 'living room':
         class_labels_lst = ST3D_LIVINGROOM_FURNITURE
-        max_obj_num, obj_feat_dim = 23, 32
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, 34
     elif get_room_type(room_type_lst[0]) == 'dining room':
         class_labels_lst = ST3D_DININGROOM_FURNITURE
-        max_obj_num, obj_feat_dim = 23, 32
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, 34
     else:
         raise NotImplementedError
+
+    object_chann_idx = max_wall_num
 
     class_idx = 0
     centroid_idx = class_idx + len(class_labels_lst)
     size_idx = 3 + centroid_idx
     angle_idx = 3 + size_idx
 
-    # Bx13x30
+    # B x wall_num x feat_size
+    pred_quad_wall_bbox = x_pred[:, 0:object_chann_idx, :].reshape(B, max_wall_num, obj_feat_dim)
+    no_wall_mask = invalid_masks[:, 0:object_chann_idx, :]
+
+    # get valid object bbox
     pred_object_bbox = x_pred[:, object_chann_idx:, :].reshape(B, max_obj_num, obj_feat_dim)
-    pred_object_class_prob = th.where(pred_object_bbox[:, :, :centroid_idx] > 0.5, 1, 0)
-    # logger.debug(f'pred_object_class_prob: {pred_object_class_prob.shape}')
+    no_object_mask = invalid_masks[:, object_chann_idx:, :]
+
+    pred_quad_wall_class_prob = th.where(pred_quad_wall_bbox[:, :, 0:centroid_idx] > 0.5, 1, 0)
+    pred_object_class_prob = th.where(pred_object_bbox[:, :, 0:centroid_idx] > 0.5, 1, 0)
     # skip probability of empty object
-    no_object_mask = th.all(pred_object_class_prob == 0, dim=2, keepdim=True)
+    no_wall_mask = th.logical_or(no_wall_mask, th.all(pred_quad_wall_class_prob == 0, dim=2, keepdim=True))
+    no_object_mask = th.logical_or(no_object_mask, th.all(pred_object_class_prob == 0, dim=2, keepdim=True))
+    pred_quad_wall_class = th.argmax(pred_quad_wall_class_prob, dim=2, keepdim=True)
     pred_object_class = th.argmax(pred_object_class_prob, dim=2, keepdim=True)
-    # logger.debug(f'pred_object_class: {pred_object_class.shape}')
-    # skip empty object
+
+    # skip empty object, door, window, curtain
+    no_wall_mask = th.logical_or(no_wall_mask,
+                                 th.all(pred_quad_wall_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
     no_object_mask = th.logical_or(no_object_mask,
                                    th.all(pred_object_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
-    # skip curtain and window
-    curtain_mask = th.all(pred_object_class == class_labels_lst.index('curtain'), dim=2, keepdim=True)
-    window_mask = th.all(pred_object_class == class_labels_lst.index('window'), dim=2, keepdim=True)
+    
+    # # skip curtain and window
+    # curtain_mask = th.all(pred_object_class == class_labels_lst.index('curtain'), dim=2, keepdim=True)
+    # window_mask = th.all(pred_object_class == class_labels_lst.index('window'), dim=2, keepdim=True)
 
-    # skip bed and pillow
-    bed_mask = th.all(pred_object_class == class_labels_lst.index('bed'), dim=2, keepdim=True)
-    pillow_mask = th.all(pred_object_class == class_labels_lst.index('pillow'), dim=2, keepdim=True)
+    # # skip bed and pillow
+    # bed_mask = th.all(pred_object_class == class_labels_lst.index('bed'), dim=2, keepdim=True)
+    # pillow_mask = th.all(pred_object_class == class_labels_lst.index('pillow'), dim=2, keepdim=True)
 
     # BxCx1
     # logger.debug(f'no_object_mask[0,...]: {no_object_mask[0, ...]}')
@@ -529,14 +570,14 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
         # ignore empty object
         iou_3d = is_object_mask[batch_idx, ...] * iou_3d
         # ignore iou between curtain and window
-        if th.any(curtain_mask[batch_idx, ...]) and th.any(window_mask[batch_idx, ...]):
-            curtain_window_mask = th.mm(curtain_mask[batch_idx, ...].float(), window_mask[batch_idx, ...].t().float())
-            iou_3d = (1 - curtain_window_mask) * iou_3d
+        # if th.any(curtain_mask[batch_idx, ...]) and th.any(window_mask[batch_idx, ...]):
+        #     curtain_window_mask = th.mm(curtain_mask[batch_idx, ...].float(), window_mask[batch_idx, ...].t().float())
+        #     iou_3d = (1 - curtain_window_mask) * iou_3d
 
-        # ignore iou between bed and pillow
-        if th.any(bed_mask[batch_idx, ...]) and th.any(pillow_mask[batch_idx, ...]):
-            bed_pillow_mask = th.mm(bed_mask[batch_idx, ...].float(), pillow_mask[batch_idx, ...].t().float())
-            iou_3d = (1 - bed_pillow_mask) * iou_3d
+        # # ignore iou between bed and pillow
+        # if th.any(bed_mask[batch_idx, ...]) and th.any(pillow_mask[batch_idx, ...]):
+        #     bed_pillow_mask = th.mm(bed_mask[batch_idx, ...].float(), pillow_mask[batch_idx, ...].t().float())
+        #     iou_3d = (1 - bed_pillow_mask) * iou_3d
 
         # ignore self-intersection
         iou_3d = self_intersect_mask * iou_3d
@@ -549,7 +590,7 @@ def iou_among_predicted_3d_bbox(x_pred, room_type_lst, iou_loss_weights):
     iou_loss_shape = batch_pred_bbox_iou_loss.shape[-1]
     # logger.debug(f'batch_pred_bbox_iou_loss berfore weighting: {batch_pred_bbox_iou_loss}')
     batch_iou_loss = batch_pred_bbox_iou_loss * iou_loss_weights.reshape(B, 1, -1)[..., :iou_loss_shape]
-    # logger.debug(f'batch_pred_bbox_iou_loss after weighting: {batch_pred_bbox_iou_loss}')
+    logger.debug(f'batch_pred_bbox_iou_loss after weighting: {batch_pred_bbox_iou_loss.shape}')
 
     return batch_iou_loss
 
@@ -576,7 +617,7 @@ def pred_3d_iou_loss(x_gt, y, invalid_masks, means, weights):
     loss_weights = weights.transpose(1, 2)
     pyhsical_violation_weight = 0.01
     # #  calculate object iou loss
-    # batch_object_iou_loss = iou_among_predicted_3d_bbox(x_pred, y, weights)
+    # batch_object_iou_loss = iou_among_predicted_3d_bbox(x_pred=x_pred, room_type_lst=y, invalid_masks=masks, iou_loss_weights=loss_weights)
     # calculate object-layout iou
     batch_layout_iou_loss = iou_among_layout_and_predicted_3d_bbox(x_pred, y, masks, loss_weights)
     # Bx1

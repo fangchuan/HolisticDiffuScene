@@ -181,6 +181,7 @@ dependencies:
       - mdurl==0.1.2
       - ml-dtypes==0.1.0
       - mmcv==2.0.0
+      - mmcv-full==1.7.1
       - mmengine==0.7.4
       - model-index==0.1.11
       - mpi4py==3.1.4

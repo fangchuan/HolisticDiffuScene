@@ -35,7 +35,7 @@ def visualize_bbox_annotations(rgb_imgs_folderpath, labels_folderpath):
             room_annos = json.load(file)
             room_annos = room_annos['objects']
 
-        output_vis_folderpath = os.path.join(os.path.dirname(labels_folderpath), '0817_debug_annotations')
+        output_vis_folderpath = os.path.join(os.path.dirname(labels_folderpath), '0919_debug_annotations')
         if not os.path.exists(output_vis_folderpath):
             os.makedirs(output_vis_folderpath, exist_ok=True)
 
@@ -82,7 +82,7 @@ def parse_args():
                         help="raw dataset path",
                         metavar="DIR")
     parser.add_argument("--labels_path",
-                        default="/data/dataset/Structured3D/preprocessed/annotations/livingroom/0817_annotated_labels",
+                        default="/data/dataset/Structured3D/preprocessed/annotations/livingroom/0919_annotated_labels",
                         help="debug folder path for object bbox annotations",
                         metavar="DIR")
     return parser.parse_args()
