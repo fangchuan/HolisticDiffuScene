@@ -1,1 +1,3 @@
-from . import logger
+"""
+Codebase for "Improved Denoising Diffusion Probabilistic Models".
+"""

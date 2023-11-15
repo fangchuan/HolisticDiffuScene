@@ -485,3 +485,16 @@ def my_compute_box_3d(center, size, heading_angle):
     corners_3d[1, :] += center[1]
     corners_3d[2, :] += center[2]
     return np.transpose(corners_3d)
+
+
+import yaml
+try:
+    from yaml import CLoader as Loader
+except ImportError:
+    from yaml import Loader
+
+
+def load_config(config_file):
+    with open(config_file, "r") as f:
+        config = yaml.load(f, Loader=Loader)
+    return config

@@ -699,10 +699,10 @@ class UNetModel(nn.Module):
             assert y is not None, "must specify y if and only if the model is class-conditional"
 
         hs = []
-        logger.debug(f"UNetModel::forward: input x: {x.shape}")
-        logger.debug(f"UNetModel::forward: input timesteps shape: {timesteps.shape}")
+        # logger.debug(f"UNetModel::forward: input x: {x.shape}")
+        # logger.debug(f"UNetModel::forward: input timesteps shape: {timesteps.shape}")
         time_emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
-        logger.debug(f"UNetModel::forward: output timesteps embedding shape: {time_emb.shape}")
+        # logger.debug(f"UNetModel::forward: output timesteps embedding shape: {time_emb.shape}")
 
         X = x
         if self.use_input_encoding:
@@ -731,23 +731,22 @@ class UNetModel(nn.Module):
             X = th.cat([object_class_feat, object_pos_feat, object_size_feat, object_angle_feat], dim=-1)
             X = X.transpose(1, 2)
 
-        logger.debug(f"UNetModel::forward: output X shape: {X.shape}")
+        # logger.debug(f"UNetModel::forward: output X shape: {X.shape}")
 
         context_emb = None
         if self.num_classes is not None:
             assert y.shape == (X.shape[0],)
             time_emb = time_emb + self.label_emb(y)
-            logger.debug(f"UNetModel::forward: input y shape: {y.shape}")
+            # logger.debug(f"UNetModel::forward: input y shape: {y.shape}")
 
         elif context is not None:
-            logger.debug(f"UNetModel::forward: input context shape: {context.shape}")
             assert context.shape == (
                 X.shape[0], 77,
                 self.text_emb_dim), f" expected input context.shape: {(X.shape[0],77, self.text_emb_dim)}"
             context_emb = context
             while len(context_emb.shape) < len(X.shape):
                 context_emb = context_emb.unsqueeze(1)
-            logger.debug(f"UNetModel::forward: context embedding shape: {context_emb.shape}")
+            # logger.debug(f"UNetModel::forward: context embedding shape: {context_emb.shape}")
 
         h = X.type(self.inner_dtype)
 

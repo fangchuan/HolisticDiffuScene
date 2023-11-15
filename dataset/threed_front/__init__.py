@@ -34,6 +34,18 @@ def get_raw_dataset(config, filter_fn=lambda s: s, path_to_bounds=None, split=["
     return dataset
 
 
+def get_cached_dataset(config, filter_fn=lambda s: s, path_to_bounds=None, split=["train", "val"]) -> CachedThreedFront:
+    dataset_type = config["dataset_type"]
+    assert "cached" in dataset_type
+
+    # Make the train/test/validation splits
+    splits_builder = CSVSplitsBuilder(config["annotation_file"])
+    split_scene_ids = splits_builder.get_splits(split)
+
+    dataset = CachedThreedFront(config["dataset_directory"], config=config, scene_ids=split_scene_ids)
+    return dataset
+
+
 def get_dataset_raw_and_encoded(config,
                                 filter_fn=lambda s: s,
                                 path_to_bounds=None,

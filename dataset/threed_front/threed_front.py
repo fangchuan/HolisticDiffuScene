@@ -283,15 +283,15 @@ class CachedThreedFront(ThreedFront):
 
         self._path_to_renders = sorted([os.path.join(self._base_dir, pi, rendered_scene) for pi in self._tags])
 
-        # load text prompt
-        text_prompt_json_path = config['text_prompt_file']
-        if (os.path.exists(text_prompt_json_path)):
-            with open(text_prompt_json_path, 'r') as openfile:
-                # Reading from json file
-                self.text_prompt_json = json.load(openfile)
-        else:
-            print("text prompt: {} is not exist! Please set right filepath.")
-            exit()
+        # # load text prompt
+        # text_prompt_json_path = config['text_prompt_file']
+        # if (os.path.exists(text_prompt_json_path)):
+        #     with open(text_prompt_json_path, 'r') as openfile:
+        #         # Reading from json file
+        #         self.text_prompt_json = json.load(openfile)
+        # else:
+        #     print("text prompt: {} is not exist! Please set right filepath.")
+        #     exit()
 
     def _get_room_layout(self, room_layout):
         # Resize the room_layout if needed
@@ -300,12 +300,12 @@ class CachedThreedFront(ThreedFront):
         D = np.asarray(img).astype(np.float32) / np.float32(255)
         return D
 
-    def _get_room_text(self, uid):
-        room_text_list = self.text_prompt_json[uid]['text_prompt']
-        room_text = ''.join(room_text_list)
-        if (len(room_text.split(' ')) > 77):
-            room_text = room_text[:77]
-        return room_text
+    # def _get_room_text(self, uid):
+    #     room_text_list = self.text_prompt_json[uid]['text_prompt']
+    #     room_text = ''.join(room_text_list)
+    #     if (len(room_text.split(' ')) > 77):
+    #         room_text = room_text[:77]
+    #     return room_text
 
     @lru_cache(maxsize=32)
     def __getitem__(self, i):
@@ -326,11 +326,13 @@ class CachedThreedFront(ThreedFront):
 
         room = self._get_room_layout(D["room_layout"])
         room = np.transpose(room[:, :, None], (2, 0, 1))
-        room_text = self._get_room_text(str(D["scene_uid"]))
+        # room_text = self._get_room_text(str(D["scene_uid"]))
+        room_text_emb = D["desc_emb"]
+        print(f'room_text_emb: {room_text_emb.shape}')
 
         return {
             "room_layout": room,
-            "room_text": room_text,
+            "room_text_emb": room_text_emb,
             "class_labels": D["class_labels"],
             "translations": D["translations"],
             "sizes": D["sizes"],

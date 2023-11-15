@@ -240,8 +240,6 @@ class GaussianDiffusion:
         if 'invalid_masks' not in model_kwargs and invalid_masks is not None:
             model_kwargs['invalid_masks'] = invalid_masks
 
-        logger.debug(f'input tensor shape: {x.shape}')
-        logger.debug(f'input timestep shape: {t.shape}')
         B, C = x.shape[:2]
         # timestep shape: (B,)
         assert t.shape == (B,)
@@ -252,7 +250,7 @@ class GaussianDiffusion:
         )
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
-            logger.debug(f'model_output shape: {model_output.shape}')
+            # logger.debug(f'model_output shape: {model_output.shape}')
 
             assert model_output.shape == (B, C * 2, *x.shape[2:])
             model_output, model_var_values = th.split(model_output, C, dim=1)
@@ -708,7 +706,7 @@ class GaussianDiffusion:
 
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE or self.loss_type == LossType.RESCALED_MSE_IOU:
             model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
-            logger.debug(f"training_losses: model_output.shape: {model_output.shape}")
+            # logger.debug(f"training_losses: model_output.shape: {model_output.shape}")
 
             if self.model_var_type in [
                     ModelVarType.LEARNED,

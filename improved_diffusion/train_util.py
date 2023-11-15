@@ -161,8 +161,8 @@ class TrainLoop:
             # push dataloader range
             # if self.step >= self.warmup_steps:
             #     th.cuda.nvtx.range_pop()
-            # logger.debug(f"batch_data.shape:  {batch_data.shape}")  # BxCxT
-            # logger.debug(f"cond_data:  {cond_data}")  # 'y','context': B x max_sentence
+            # logger.debug(f"batch_data[0,:,-1]:  {batch_data[0,:,-1]}")  # BxCxT
+            # logger.debug(f"cond_data:  {cond_data['context'].shape}")
 
             self.run_step(batch_data, cond_data)
             # # pop iteration range
@@ -210,7 +210,7 @@ class TrainLoop:
             micro_cond_data = {
                 k: v[i:i + self.microbatch].to(dist_util.dev()) for k, v in cond_data.items() if k != 'text'
             }
-            logger.debug(f"micro_batch_data.shape:  {micro_batch_data.shape}")  # BxCxT
+            # logger.debug(f"micro_batch_data.shape:  {micro_batch_data.shape}")  # BxCxT
             last_batch = (i + self.microbatch) >= batch_data.shape[0]
             # timestep sampling
             tms_indices, weights = self.schedule_sampler.sample(micro_batch_data.shape[0], dist_util.dev())

@@ -111,6 +111,12 @@ THREED_FRONT_BEDROOM_FURNITURE = [
     'double_bed', 'dressing_chair', 'dressing_table', 'kids_bed', 'nightstand', 'pendant_lamp', 'shelf', 'single_bed',
     'sofa', 'stool', 'table', 'tv_stand', 'wall', 'wardrobe', 'window', 'empty'
 ]
+THREED_FRONT_BEDROOM_WO_DOOR_WINDOW_WALL_FURNITURE = [
+    "armchair", "bookshelf", "cabinet", "ceiling_lamp", "chair", "children_cabinet", "coffee_table", "desk",
+    "double_bed", "dressing_chair", "dressing_table", "kids_bed", "nightstand", "pendant_lamp", "shelf", "single_bed",
+    "sofa", "stool", "table", "tv_stand", "wardrobe", "end"
+]
+
 THREED_FRONT_BEDROOM_FURNITURE_CNTS = {
     "wall": 11072,
     "nightstand": 2931,
@@ -242,8 +248,15 @@ THREED_FRONT_LIVINGROOM_FURNITURE = [
     "armchair", "bookshelf", "cabinet", "ceiling_lamp", "chaise_longue_sofa", "chinese_chair", "coffee_table",
     "console_table", "corner_side_table", "desk", "dining_chair", "dining_table", "door", "l_shaped_sofa", "lazy_sofa",
     "lounge_chair", "loveseat_sofa", "multi_seat_sofa", "pendant_lamp", "round_end_table", "shelf", "stool", "tv_stand",
-     "wardrobe", "window", "wine_cabinet", "wall", 'empty'
+    "wardrobe", "window", "wine_cabinet", "wall", 'empty'
 ]
+THREED_FRONT_LIVINGROOM_WO_DOOR_WINDOW_WALL_FURNITURE = [
+    "armchair", "bookshelf", "cabinet", "ceiling_lamp", "chaise_longue_sofa", "chinese_chair", "coffee_table",
+    "console_table", "corner_side_table", "desk", "dining_chair", "dining_table", "l_shaped_sofa", "lazy_sofa",
+    "lounge_chair", "loveseat_sofa", "multi_seat_sofa", "pendant_lamp", "round_end_table", "shelf", "stool", "tv_stand",
+    "wardrobe", "wine_cabinet", "end"
+]
+
 THREED_FRONT_LIVINGROOM_FURNITURE_CNTS = {
     "wall": 4292,
     "dining_chair": 1698,
@@ -283,7 +296,13 @@ THREED_FRONT_DININGROOM_FURNITURE = [
     "armchair", "bookshelf", "cabinet", "ceiling_lamp", "chaise_longue_sofa", "chinese_chair", "coffee_table",
     "console_table", "corner_side_table", "desk", "dining_chair", "dining_table", "door", "l_shaped_sofa", "lazy_sofa",
     "lounge_chair", "loveseat_sofa", "multi_seat_sofa", "pendant_lamp", "round_end_table", "shelf", "stool", "tv_stand",
-     "wardrobe", "window", "wine_cabinet", "wall",'empty'
+    "wardrobe", "window", "wine_cabinet", "wall", 'empty'
+]
+THREED_FRONT_DININGROOM_FURNITURE_WO_DOOR_WINDOW_WALL = [
+    "armchair", "bookshelf", "cabinet", "ceiling_lamp", "chaise_longue_sofa", "chinese_chair", "coffee_table",
+    "console_table", "corner_side_table", "desk", "dining_chair", "dining_table", "l_shaped_sofa", "lazy_sofa",
+    "lounge_chair", "loveseat_sofa", "multi_seat_sofa", "pendant_lamp", "round_end_table", "shelf", "stool", "tv_stand",
+    "wardrobe", "wine_cabinet", "end"
 ]
 THREED_FRONT_DININGROOM_FURNITURE_CNTS = {
     "wall": 4858,

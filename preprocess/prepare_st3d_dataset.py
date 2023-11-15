@@ -76,6 +76,15 @@ def heading2rotmat(heading_angle_rad):
     cosval = np.cos(heading_angle_rad)
     sinval = np.sin(heading_angle_rad)
     rotmat[0:2, 0:2] = np.array([[cosval, -sinval], [sinval, cosval]])
+
+    # rot around y axis
+    rotmat = np.eye(3)
+    cosval = np.cos(heading_angle_rad)
+    sinval = np.sin(heading_angle_rad)
+    rotmat[0, 0] = cosval
+    rotmat[0, 2] = sinval
+    rotmat[2, 0] = -sinval
+    rotmat[2, 2] = cosval
     return rotmat
 
 

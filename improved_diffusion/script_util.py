@@ -154,9 +154,9 @@ def create_model(
         channel_mult = (1, 2, 3, 4)
     elif layout_feature_size == 32:  # for st3d_bedroom
         channel_mult = (1, 2, 2, 2)
-    elif layout_feature_size == 33:  # for 3d_front_bedroom
+    elif layout_feature_size == 33 or layout_feature_size == 30:  # for 3d_front_bedroom
         channel_mult = (1, 2, 2, 2)
-    elif layout_feature_size == 36:  # for 3d_front_livingroom
+    elif layout_feature_size == 36 or layout_feature_size == 33:  # for 3d_front_livingroom
         channel_mult = (1, 2, 2, 2)
     elif layout_feature_size == 34:  # for st3d_livingroom
         channel_mult = (1, 2, 2, 2)
