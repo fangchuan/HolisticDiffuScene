@@ -12,8 +12,10 @@ import numpy as np
 import torch as th
 
 from .nn import mean_flat
-from .losses import normal_kl, discretized_gaussian_log_likelihood, continuous_gaussian_log_likelihood, pred_3d_iou_loss
+from .losses import normal_kl, discretized_gaussian_log_likelihood, pred_3d_iou_loss, aabb_3d_iou_loss
 from . import logger
+
+import json
 
 
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
@@ -122,6 +124,7 @@ class GaussianDiffusion:
         model_var_type,
         loss_type,
         rescale_timesteps=False,
+        dataset_stats_file: str = None,
     ):
         self.model_mean_type = model_mean_type
         self.model_var_type = model_var_type
@@ -135,7 +138,7 @@ class GaussianDiffusion:
         assert (betas > 0).all() and (betas <= 1).all()
 
         self.num_timesteps = int(betas.shape[0])
-        logger.info(f"num_timesteps: {self.num_timesteps}")
+        logger.log(f"num_timesteps: {self.num_timesteps}")
 
         alphas = 1.0 - betas
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
@@ -157,6 +160,25 @@ class GaussianDiffusion:
         self.posterior_log_variance_clipped = np.log(np.append(self.posterior_variance[1], self.posterior_variance[1:]))
         self.posterior_mean_coef1 = (betas * np.sqrt(self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod))
         self.posterior_mean_coef2 = ((1.0 - self.alphas_cumprod_prev) * np.sqrt(alphas) / (1.0 - self.alphas_cumprod))
+
+        if dataset_stats_file is not None:
+            with open(dataset_stats_file, "r") as f:
+                train_stats = json.load(f)
+            self._centroids = train_stats["bounds_translations"]
+            self._centroids = (np.array(self._centroids[:3]), np.array(self._centroids[3:]))
+            self._centroids_min, self._centroids_max = th.from_numpy(self._centroids[0]).float(), th.from_numpy(
+                self._centroids[1]).float()
+            print('load centriods min {} and max {} in Gausssion Diffusion'.format(self._centroids[0],
+                                                                                   self._centroids[1]))
+
+            self._sizes = train_stats["bounds_sizes"]
+            self._sizes = (np.array(self._sizes[:3]), np.array(self._sizes[3:]))
+            self._sizes_min, self._sizes_max = th.from_numpy(self._sizes[0]).float(), th.from_numpy(
+                self._sizes[1]).float()
+            print('load sizes min {} and max {} in Gausssion Diffusion'.format(self._sizes[0], self._sizes[1]))
+
+            self._angles = train_stats["bounds_angles"]
+            self._angles = (np.array(self._angles[0]), np.array(self._angles[1]))
 
     def q_mean_variance(self, x_start, t):
         """
@@ -739,14 +761,18 @@ class GaussianDiffusion:
                     terms["vb"] *= self.num_timesteps / 1000.0
 
                     alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x_start.shape)
-                    # logger.debug(f"tms: {t}")
-                    # logger.debug(f"alpha_bar: {alpha_bar}")
                     # Bx169
-                    iou_loss = pred_3d_iou_loss(x_start,
-                                                y=model_kwargs["y"],
-                                                invalid_masks=model_kwargs["invalid_masks"],
-                                                means=pred_x_start,
-                                                weights=alpha_bar)
+                    # iou_loss = pred_3d_iou_loss(x_start,
+                    #                             y=model_kwargs["y"],
+                    #                             invalid_masks=model_kwargs["invalid_masks"],
+                    #                             means=pred_x_start,
+                    #                             weights=alpha_bar)
+                    iou_loss = aabb_3d_iou_loss(means=pred_x_start,
+                                                weights=alpha_bar,
+                                                centroids_min=self._centroids_min,
+                                                centroids_max=self._centroids_max,
+                                                sizes_min=self._sizes_min,
+                                                sizes_max=self._sizes_max)
                     terms["iou"] = mean_flat(iou_loss)
                     # logger.debug(f"loss type: RESCALED_MSE_IOU")
 

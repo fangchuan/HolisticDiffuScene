@@ -42,6 +42,7 @@ def model_and_diffusion_defaults():
         use_checkpoint=False,
         use_scale_shift_norm=True,
         use_input_encoding=False,
+        dataset_stats_file=None,
     )
 
 
@@ -69,6 +70,7 @@ def create_model_and_diffusion(
     use_checkpoint: bool,
     use_scale_shift_norm: bool,
     use_input_encoding: bool,
+    dataset_stats_file: str = None,
 ):
     """ create UNet model and diffusion, according to the given parameters
 
@@ -128,6 +130,7 @@ def create_model_and_diffusion(
         rescale_learned_sigmas=rescale_learned_sigmas,
         b_use_3d_iou=use_3d_iou,
         timestep_respacing=timestep_respacing,
+        dataset_stats_file=dataset_stats_file,
     )
     return model, diffusion
 
@@ -303,6 +306,7 @@ def create_gaussian_diffusion(
     rescale_learned_sigmas=False,
     b_use_3d_iou=False,
     timestep_respacing="",
+    dataset_stats_file: str = None,
 ):
     betas = gd.get_named_beta_schedule(noise_schedule, steps)
     if use_kl:
@@ -319,7 +323,8 @@ def create_gaussian_diffusion(
         timestep_respacing = [steps]
 
     used_timestamps = space_timesteps(steps, timestep_respacing)
-    # logger.info(f"used_timestamps: {used_timestamps}")
+    logger.log(f"used_timestamps: {used_timestamps}")
+    logger.log(f'dataset_stats_file: {dataset_stats_file}')
     return SpacedDiffusion(
         use_timesteps=used_timestamps,
         betas=betas,
@@ -328,6 +333,7 @@ def create_gaussian_diffusion(
                         if not learn_sigma else gd.ModelVarType.LEARNED_RANGE),
         loss_type=loss_type,
         rescale_timesteps=rescale_timesteps,
+        dataset_stats_file=dataset_stats_file,
     )
 
 

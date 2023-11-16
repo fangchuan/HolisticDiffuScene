@@ -145,6 +145,42 @@ def get_textured_objects(bbox_params_t: np.ndarray,
     return renderables, trimesh_meshes, model_jids
 
 
+def recover_scene_from_bbox_params(
+    bbox_params: np.ndarray,
+    dataset: ThreedFrontDataset,
+):
+
+    # recover oobject bounding box
+    centroid_idx = len(dataset.class_labels)
+    size_idx = centroid_idx + 3
+    angle_idx = size_idx + 3
+    obj_bbox_dict_lst = []
+    for i in range(len(bbox_params)):
+        obj_dict = {}
+        # recover class label
+        class_label_prob = bbox_params[i][:centroid_idx]
+        # print(f'class_label_prob: {class_label_prob}')
+        class_label_prob = np.where(class_label_prob > 0.5, 1, 0)
+        class_label = dataset.class_labels[class_label_prob.argmax()]
+        if class_label == 'end':
+            continue
+        obj_dict['class'] = class_label
+        obj_center = bbox_params[i][centroid_idx:centroid_idx + 3]
+        obj_dict['center'] = obj_center.tolist()
+        obj_size = bbox_params[i][size_idx:size_idx + 3] * 2
+        obj_dict['size'] = obj_size.tolist()
+        obj_angle = bbox_params[i][angle_idx:angle_idx + 1]
+        obj_dict['angles'] = [0, 0, obj_angle[0]]
+
+        obj_bbox_dict_lst.append(obj_dict)
+
+    scene_bbox_mesh = vis_scene_mesh(room_layout_mesh=None,
+                                     obj_bbox_lst=obj_bbox_dict_lst,
+                                     color_to_labels=TDFRONT_COLOR_TO_ADEK_LABEL,
+                                     room_layout_bbox=None)
+    return scene_bbox_mesh
+
+
 def main():
     args = create_argparser().parse_args()
 
@@ -161,6 +197,7 @@ def main():
 
     config = load_config(args.config_file)
     dataset = ThreedFrontDataset(config=config, room_type=room_type, is_train=False, is_test=True)
+    logger.log("loaded {} from test dataset".format(len(dataset)))
 
     # Build the dataset of 3D models
     threed_furture_dataset = ThreedFutureDataset.from_pickled_dataset(args.path_to_pickled_3d_futute_models)
@@ -221,6 +258,12 @@ def main():
 
                 logger.log('text_prompt: {}'.format(text_prompt))
 
+                # debug gt scene
+                gt_scene_bbox_params = dataset.post_process(gt_scene.transpose(1, 0))
+                gt_scene_mesh = recover_scene_from_bbox_params(gt_scene_bbox_params, dataset)
+                gt_scene_bbox_ply_fname = f'{scene_name}_gt_bbox.ply'
+                gt_scene_mesh.export(os.path.join(sample_result_folder, gt_scene_bbox_ply_fname))
+
             model_kwargs["context"] = th.from_numpy(np.stack(cond_data_lst)).to(dist_util.dev(), dtype=th.float32)
         sample_fn = (diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop)
         sample = sample_fn(
@@ -266,11 +309,9 @@ def main():
         scene_sample_result = samples_arr[idx]
         scene_sample_label = args.room_type
         print(f'scene_sample_label: {scene_sample_label}')
-        print(f'scene_sample_result: {scene_sample_result}')
 
         bbox_params = dataset.post_process(scene_sample_result)
         logger.log(f'pose_processed bbox_params: {bbox_params.shape}')
-        print(f'pose_processed bbox_params: {bbox_params}')
 
         # recover oobject bounding box
         centroid_idx = len(dataset.class_labels)
@@ -377,7 +418,6 @@ def main():
 
 def create_argparser():
     defaults = dict(
-        data_dir='data',
         log_dir='sample_results',
         clip_denoised=True,
         num_samples=10,

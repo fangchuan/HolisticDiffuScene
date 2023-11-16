@@ -47,9 +47,8 @@ def load_data(args, room_type, config, is_train=True):
     train_loader = DataLoader(train_dataset,
                               batch_size=args.batch_size,
                               shuffle=True,
-                              num_workers=1,
+                              num_workers=0,
                               pin_memory=True,
-                              prefetch_factor=args.batch_size,
                               drop_last=True)
 
     while True:
@@ -58,6 +57,10 @@ def load_data(args, room_type, config, is_train=True):
 
 def main():
     args = create_argparser().parse_args()
+
+    # Parse the config file
+    config = load_config(args.config_file)
+    args.dataset_stats_file = config['data']['train_stats']
 
     # set up distributed training and logging
     dist_util.setup_dist()
@@ -80,8 +83,6 @@ def main():
     elif args.room_type == 'diningroom':
         room_type = 'dining room'
 
-    # Parse the config file
-    config = load_config(args.config_file)
 
     # # load training data
     # train_dataset = ThreedFrontDataset(
@@ -145,6 +146,7 @@ def create_argparser():
         fp16_scale_growth=1e-3,
         room_type="bedroom",
         config_file="../config/3dfront_bedroom_config.yaml",
+        dataset_stats_file=None,
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()

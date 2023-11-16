@@ -466,7 +466,8 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     return batch_iou_loss
 
 
-def iou_among_predicted_3d_bbox(x_pred:th.Tensor, room_type_lst:th.Tensor, invalid_masks:th.Tensor, iou_loss_weights:th.Tensor):
+def iou_among_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.Tensor, invalid_masks: th.Tensor,
+                                iou_loss_weights: th.Tensor):
     """_summary_
 
     Args:
@@ -525,7 +526,7 @@ def iou_among_predicted_3d_bbox(x_pred:th.Tensor, room_type_lst:th.Tensor, inval
                                  th.all(pred_quad_wall_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
     no_object_mask = th.logical_or(no_object_mask,
                                    th.all(pred_object_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
-    
+
     # # skip curtain and window
     # curtain_mask = th.all(pred_object_class == class_labels_lst.index('curtain'), dim=2, keepdim=True)
     # window_mask = th.all(pred_object_class == class_labels_lst.index('window'), dim=2, keepdim=True)
@@ -579,7 +580,7 @@ def iou_among_predicted_3d_bbox(x_pred:th.Tensor, room_type_lst:th.Tensor, inval
         #     bed_pillow_mask = th.mm(bed_mask[batch_idx, ...].float(), pillow_mask[batch_idx, ...].t().float())
         #     iou_3d = (1 - bed_pillow_mask) * iou_3d
 
-        # ignore self-intersection
+        # ignore -intersection
         iou_3d = self_intersect_mask * iou_3d
         # iou_3d /2, 1x169
         iou_loss_lst = (iou_3d * 0.5).contiguous().view(1, -1)
@@ -624,3 +625,148 @@ def pred_3d_iou_loss(x_gt, y, invalid_masks, means, weights):
     batch_iou_loss = batch_layout_iou_loss.sum(dim=1) * pyhsical_violation_weight
 
     return batch_iou_loss
+
+
+'''
+ https://github.com/open-mmlab/mmdetection3d/blob/master/mmdet3d/core/bbox/iou_calculators/iou3d_calculator.py
+'''
+
+
+def axis_aligned_bbox_overlaps_3d(bboxes1, bboxes2, mode='iou', is_aligned=False, eps=1e-6):
+    """Calculate overlap between two set of axis aligned 3D bboxes. If
+        ``is_aligned`` is ``False``, then calculate the overlaps between each bbox
+        of bboxes1 and bboxes2, otherwise the overlaps between each aligned pair of
+        bboxes1 and bboxes2.
+        Args:
+            bboxes1 (Tensor): shape (B, m, 6) in <x1, y1, z1, x2, y2, z2>
+                format or empty. (x1,y1,z1) is the bottom left corner, and (x2,y2,z2) is the top right corner.
+            bboxes2 (Tensor): shape (B, n, 6) in <x1, y1, z1, x2, y2, z2>
+                format or empty.
+                B indicates the batch dim, in shape (B1, B2, ..., Bn).
+                If ``is_aligned`` is ``True``, then m and n must be equal.
+            mode (str): "iou" (intersection over union) or "giou" (generalized
+                intersection over union).
+            is_aligned (bool, optional): If True, then m and n must be equal.
+                Defaults to False.
+            eps (float, optional): A value added to the denominator for numerical
+                stability. Defaults to 1e-6.
+        Returns:
+            Tensor: shape (m, n) if ``is_aligned`` is False else shape (m,)
+    """
+
+    assert mode in ['iou', 'giou'], f'Unsupported mode {mode}'
+    # Either the boxes are empty or the length of boxes's last dimension is 6
+    assert (bboxes1.size(-1) == 6 or bboxes1.size(0) == 0)
+    assert (bboxes2.size(-1) == 6 or bboxes2.size(0) == 0)
+
+    # Batch dim must be the same
+    # Batch dim: (B1, B2, ... Bn)
+    assert bboxes1.shape[:-2] == bboxes2.shape[:-2]
+    batch_shape = bboxes1.shape[:-2]
+
+    rows = bboxes1.size(-2)
+    cols = bboxes2.size(-2)
+    if is_aligned:
+        assert rows == cols
+
+    if rows * cols == 0:
+        if is_aligned:
+            return bboxes1.new(batch_shape + (rows,))
+        else:
+            return bboxes1.new(batch_shape + (rows, cols))
+
+    area1 = (bboxes1[..., 3] - bboxes1[..., 0]) * (bboxes1[..., 4] - bboxes1[..., 1]) * (bboxes1[..., 5] -
+                                                                                         bboxes1[..., 2])
+    area2 = (bboxes2[..., 3] - bboxes2[..., 0]) * (bboxes2[..., 4] - bboxes2[..., 1]) * (bboxes2[..., 5] -
+                                                                                         bboxes2[..., 2])
+
+    if is_aligned:
+        lb = th.max(bboxes1[..., :3], bboxes2[..., :3])  # [B, rows, 3]
+        rt = th.min(bboxes1[..., 3:], bboxes2[..., 3:])  # [B, rows, 3]
+
+        wh = (rt - lb).clamp(min=0)  # [B, rows, 2]
+        overlap = wh[..., 0] * wh[..., 1] * wh[..., 2]
+
+        if mode in ['iou', 'giou']:
+            union = area1 + area2 - overlap
+        else:
+            union = area1
+        if mode == 'giou':
+            enclosed_lt = th.min(bboxes1[..., :3], bboxes2[..., :3])
+            enclosed_rb = th.max(bboxes1[..., 3:], bboxes2[..., 3:])
+    else:
+        lb = th.max(bboxes1[..., :, None, :3], bboxes2[..., None, :, :3])  # [B, rows, cols, 3]
+        rt = th.min(bboxes1[..., :, None, 3:], bboxes2[..., None, :, 3:])  # [B, rows, cols, 3]
+
+        wh = (rt - lb).clamp(min=0)  # [B, rows, cols, 3]
+        overlap = wh[..., 0] * wh[..., 1] * wh[..., 2]
+
+        if mode in ['iou', 'giou']:
+            union = area1[..., None] + area2[..., None, :] - overlap
+        if mode == 'giou':
+            enclosed_lt = th.min(bboxes1[..., :, None, :3], bboxes2[..., None, :, :3])
+            enclosed_rb = th.max(bboxes1[..., :, None, 3:], bboxes2[..., None, :, 3:])
+
+    eps = union.new_tensor([eps])
+    union = th.max(union, eps)
+    ious = overlap / union
+    if mode in ['iou']:
+        return ious
+    # calculate gious
+    enclose_wh = (enclosed_rb - enclosed_lt).clamp(min=0)
+    enclose_area = enclose_wh[..., 0] * enclose_wh[..., 1] * enclose_wh[..., 2]
+    enclose_area = th.max(enclose_area, eps)
+    gious = ious - (enclose_area - union) / enclose_area
+    return gious
+
+
+def aabb_3d_iou_loss(means, weights, centroids_min, centroids_max, sizes_min, sizes_max):
+
+    def descale_to_origin(self, x, minimum, maximum):
+        '''
+            x shape : BxNx3
+            minimum, maximum shape: 3
+        '''
+        x = (x + 1) / 2
+        x = x * (maximum - minimum)[None, None, :] + minimum[None, None, :]
+        return x
+
+    # get x_recon & valid mask
+    x_recon = means.transpose(1, 2)
+    translation_dim = 3
+    size_dim = 3
+    angle_dim = 2
+    bbox_dim = translation_dim + size_dim + angle_dim
+    class_dim = x_recon.shape[-1] - translation_dim - size_dim - angle_dim
+
+    obj_recon = x_recon[:, :, class_dim - 1:class_dim]
+    trans_recon = x_recon[:, :, class_dim:class_dim + translation_dim]
+    sizes_recon = x_recon[:, :, class_dim + translation_dim:class_dim + translation_dim + size_dim]
+    angles_recon = x_recon[:, :, class_dim + translation_dim + size_dim:class_dim + bbox_dim]
+    valid_mask = (obj_recon <= 0).float().squeeze(2)
+    # descale bounding box to world coordinate system
+    descale_trans = descale_to_origin(trans_recon, centroids_min.to(means.device), centroids_max.to(means.device))
+    descale_sizes = descale_to_origin(sizes_recon, sizes_min.to(means.device), sizes_max.to(means.device))
+    # get the bbox corners
+    axis_aligned_bbox_corn = th.cat([descale_trans - descale_sizes, descale_trans + descale_sizes], dim=-1)
+    assert axis_aligned_bbox_corn.shape[-1] == 6
+    # compute iou
+    bbox_iou = axis_aligned_bbox_overlaps_3d(axis_aligned_bbox_corn, axis_aligned_bbox_corn)
+    logger.debug(f'bbox_iou.shape: {bbox_iou.shape}')
+    bbox_iou_mask = valid_mask[:, :, None] * valid_mask[:, None, :]
+    bbox_iou_valid = bbox_iou * bbox_iou_mask
+    bbox_iou_valid_avg = bbox_iou_valid.sum(dim=list(range(1, len(bbox_iou_valid.shape)))) / (
+        bbox_iou_mask.sum(dim=list(range(1, len(bbox_iou_valid.shape)))) + 1e-6)
+    # get the iou loss weight w.r.t time
+    # original weights shape: BxCxN
+    w_iou = weights.transpose(1, 2)
+    logger.debug(f'weights.shape: {w_iou.shape}')
+    w_iou = w_iou[:, :bbox_iou.shape[-2], :bbox_iou.shape[-1]]
+    logger.debug(f'w_iou.shape: {w_iou.shape}')
+    loss_iou = (w_iou * 0.1 * bbox_iou).mean(dim=list(range(1, len(w_iou.shape))))
+    loss_iou_valid_avg = (w_iou * 0.5 * bbox_iou_valid).sum(dim=list(range(1, len(bbox_iou_valid.shape)))) / (
+        bbox_iou_mask.sum(dim=list(range(1, len(bbox_iou_valid.shape)))) + 1e-6)
+
+    logger.debug(f'loss_iou_valid_avg.shape: {loss_iou_valid_avg.shape}')
+    logger.debug(f'loss_iou_valid_avg: {loss_iou_valid_avg}')
+    return loss_iou_valid_avg

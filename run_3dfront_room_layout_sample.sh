@@ -18,11 +18,11 @@
 
 # MODEL_FLAGS="--layout_channels 30 --layout_size 13 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond False --b_text_cond True --use_input_encoding True"
 
-# DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing 1000"
+# DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing ddim200 --use_ddim True"
 # CONFIG_FILE="/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/config/3dfront_bedroom_config.yaml"
 
 # python scripts/threed_front_room_layout_sample2.py --data_dir /mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/threed_front_bedroom/ \
-#     --model_path log/3dfront_bedroom/openai-2023-11-13-11-03-22-754137/ema_0.9999_200000.pt \
+#     --model_path log/3dfront_bedroom/openai-2023-11-13-11-03-22-754137/ema_0.9999_100000.pt \
 #      $MODEL_FLAGS \
 #      $DIFFUSION_FLAGS \
 #      --num_samples 1000 \
@@ -32,14 +32,15 @@
 
 MODEL_FLAGS="--layout_channels 33 --layout_size 21 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond False --b_text_cond True --use_input_encoding True"
 
-DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing 250"
+DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing ddim200 --use_ddim True"
+# DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine"
 CONFIG_FILE="/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/config/3dfront_livingroom_config.yaml"
 
-python scripts/threed_front_room_layout_sample2.py --data_dir /mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/threed_front_livingroom/ \
-    --model_path log/3dfront_livingroom/openai-2023-11-13-11-59-33-030546/ema_0.9999_170000.pt \
+python scripts/threed_front_room_layout_sample2.py \
+    --model_path log/3dfront_livingroom/openai-2023-11-15-19-59-23-819741/ema_0.9999_120000.pt \
      $MODEL_FLAGS \
      $DIFFUSION_FLAGS \
-     --num_samples 1 \
+     --num_samples 5 \
       --room_type 'livingroom' \
       --path_to_pickled_3d_futute_models /mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/threed_future_model_livingroom.pkl \
       --config_file $CONFIG_FILE \
