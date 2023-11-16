@@ -740,7 +740,10 @@ def padding_and_reshape_wall_bbox(room_type: int, wall_bbox_lst: np.array, bbox_
         class_num = len(ST3D_DININGROOM_FURNITURE)
         max_len = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
 
-    assert L <= max_len, 'The length of the wall bbox list should be less than 10.'
+    # assert L <= max_len, f'The length of the wall bbox list should be less than {max_len}.'
+    if L > max_len:
+        wall_bbox_lst = wall_bbox_lst[:max_len]
+        return wall_bbox_lst
 
     # Pad the end label in the end of each sequence, and convert the class labels to -1, 1
     empty_label = np.eye(class_num)[-1]

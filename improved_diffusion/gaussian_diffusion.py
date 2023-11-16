@@ -12,7 +12,8 @@ import numpy as np
 import torch as th
 
 from .nn import mean_flat
-from .losses import normal_kl, discretized_gaussian_log_likelihood, continuous_gaussian_log_likelihood, pred_3d_iou_loss
+from .losses import normal_kl, discretized_gaussian_log_likelihood
+# from .losses import pred_3d_iou_loss
 from . import logger
 
 

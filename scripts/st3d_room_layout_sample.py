@@ -28,7 +28,7 @@ from improved_diffusion.script_util import (
 )
 
 from dataset.st3d_dataset import ST3DDataset
-from improved_diffusion.clip_util import FrozenCLIPEmbedder
+# from improved_diffusion.clip_util import FrozenCLIPEmbedder
 from dataset.metadata import ST3D_BEDROOM_QUAD_WALL_MAX_LEN, \
                             ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, \
                             COLOR_TO_ADEK_LABEL
@@ -60,7 +60,7 @@ def main():
     log_dir = args.log_dir
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
-    text_encoder = FrozenCLIPEmbedder(device=dist_util.dev())
+    # text_encoder = FrozenCLIPEmbedder(device=dist_util.dev())
     dataset = ST3DDataset(root_dir=args.data_dir, max_text_sentences=4, return_scene_name=True)
 
     logger.log("creating UNet model and diffusion model ...")
@@ -71,6 +71,10 @@ def main():
 
     layout_channel_size = args.layout_channels
     layout_size = args.layout_size
+    # sample all test data
+    if args.num_samples == -1:
+        args.num_samples = len(dataset)
+
     logger.log("sampling layout...")
     all_layout_lst = []
     all_layout_type_lst = []
@@ -89,7 +93,10 @@ def main():
         if args.b_text_cond:
             cond_data_lst = []
             for i in range(args.batch_size):
-                scene_idx = np.random.choice(len(dataset))
+                if args.num_samples < len(dataset):
+                    scene_idx = np.random.choice(len(dataset))
+                else:
+                    scene_idx = len(all_layout_lst) * args.batch_size + i
                 gt_scene, gt_cond_dict, scene_name = dataset[scene_idx]
                 # text prompt from eval dataset
                 cond_data_lst.append(gt_cond_dict['context'])
@@ -97,12 +104,6 @@ def main():
                 cond_text_prompt_lst.append(text_prompt)
                 scene_names_lst.append(scene_name)
                 logger.log('text_prompt: {}'.format(text_prompt))
-
-                # text prompt from predefined list
-                # text_prompt = TEXT_PROMPT_LST[np.random.choice(len(TEXT_PROMPT_LST))]
-                # logger.log('text_prompt: {}'.format(text_prompt))
-                # cond_text_prompt_lst.append(text_prompt)
-                # cond_data_lst.append(text_encoder.get_text_embeds(text_prompt).unsqueeze(0).cpu().numpy())
             model_kwargs["context"] = th.from_numpy(np.stack(cond_data_lst)).to(dist_util.dev(), dtype=th.float32)
         sample_fn = (diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop)
         sample = sample_fn(
