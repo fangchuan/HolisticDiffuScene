@@ -432,7 +432,7 @@ class UNetModel(nn.Module):
         channel_mult=(1, 2, 4, 8),
         conv_resample=True,
         dims=1,
-        num_classes=None,  # number of classes, if None, then use text as condition
+        # num_classes=None,  # number of classes, if None, then use text as condition
         text_emb_dim=768,  # text embedding dimension (77,768) for BERT
         use_checkpoint=False,
         num_heads=1,
@@ -446,6 +446,8 @@ class UNetModel(nn.Module):
         bbox_angle_feat_size=32,
         # attention blocks
         attn_block_depth=1,
+        num_instances=21,
+        instanclass_dim=0,
     ):
         super().__init__()
 
@@ -483,7 +485,7 @@ class UNetModel(nn.Module):
         self.channel_mult = channel_mult
         logger.debug(f"channel_mult: {channel_mult}")
         self.conv_resample = conv_resample
-        self.num_classes = num_classes
+        # self.num_classes = num_classes
         self.text_emb_dim = text_emb_dim
         self.use_checkpoint = use_checkpoint
         self.num_heads = num_heads
@@ -491,6 +493,8 @@ class UNetModel(nn.Module):
 
         # attention blocks
         self.attn_block_depth = attn_block_depth
+        self.num_instances = num_instances
+        self.instance_class_dim = instanclass_dim
 
         # time embedding block
         time_embed_dim = model_channels * 4
@@ -501,10 +505,15 @@ class UNetModel(nn.Module):
         )
 
         # label embedding block
-        if self.num_classes is not None:
-            self.label_emb = nn.Embedding(num_classes, time_embed_dim)
-        elif self.text_emb_dim > 0:
-            self.label_emb = None
+        # if self.num_classes is not None:
+        #     self.label_emb = nn.Embedding(num_classes, time_embed_dim)
+        # elif self.text_emb_dim > 0:
+        #     self.label_emb = None
+        # instance embedding block
+        if self.num_instances is not None:
+            self.instance_emb = nn.Embedding(num_instances, instanclass_dim)
+        else:
+            self.instance_emb = None
 
         # input block
         self.input_blocks = nn.ModuleList([
@@ -734,12 +743,17 @@ class UNetModel(nn.Module):
         # logger.debug(f"UNetModel::forward: output X shape: {X.shape}")
 
         context_emb = None
-        if self.num_classes is not None:
-            assert y.shape == (X.shape[0],)
-            time_emb = time_emb + self.label_emb(y)
-            # logger.debug(f"UNetModel::forward: input y shape: {y.shape}")
+        # if self.num_classes is not None:
+        #     assert y.shape == (X.shape[0],)
+        #     time_emb = time_emb + self.label_emb(y)
+        # logger.debug(f"UNetModel::forward: input y shape: {y.shape}")
+        if self.instance_emb is not None:
+            instance_indices = th.arange(self.num_instances).long().to(self.inner_dtype)[None, :].repeat(x.shape[0], 1)
+            instance_emb = self.instance_emb[instance_indices, :]
+            print(f"instance_emb.shape: {instance_emb.shape}")
+            time_emb = time_emb + instance_emb
 
-        elif context is not None:
+        if context is not None:
             assert context.shape == (
                 X.shape[0], 77,
                 self.text_emb_dim), f" expected input context.shape: {(X.shape[0],77, self.text_emb_dim)}"
@@ -773,7 +787,7 @@ class UNetModel(nn.Module):
 
         h = h.type(X.dtype)
         ret = self.out(h)
-        logger.debug(f"UNetModel::forward: out layer output shape: {ret.shape}")
+        # logger.debug(f"UNetModel::forward: out layer output shape: {ret.shape}")
         # if self.use_input_encoding:
         #     ret = self.proj_out(ret)
         #     logger.debug(f"UNetModel::forward: proj_out layer output shape: {ret.shape}")

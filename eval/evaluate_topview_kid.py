@@ -26,31 +26,54 @@ from torchmetrics.image.kid import KernelInceptionDistance
 kid_fn = KernelInceptionDistance(subset_size=50)
 
 
-
 def main(argv):
     parser = argparse.ArgumentParser(description=("Compute the FID scores between the real and the "
                                                   "synthetic images"))
-    parser.add_argument("--path_to_real_renderings",
-                        type=str,
-                        help="Path to the folder containing the real renderings",
-                        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/test/bedroom/topview/")
+
+    parser.add_argument(
+        "--path_to_real_renderings",
+        type=str,
+        help="Path to the folder containing the real renderings",
+        # default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/test/bedroom/topview/")
+        default=
+        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/text-cond-train-test/openai-2023-11-17-16-32-12-074077/livingroom/"
+    )
     parser.add_argument(
         "--path_to_synthesized_renderings",
         type=str,
         help="Path to the folder containing the synthesized",
+        # default= "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/openai-2023-09-23-12-23-59-306819/topview/")
         default=
-        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/openai-2023-09-23-12-23-59-306819/topview/")
-    parser.add_argument("--path_to_annotations",
-                        type=str,
-                        help="Path to the folder containing the annotations",
-                        default="/data/3dfuture/3dfront/annotations/")
+        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/text-cond-train-test/openai-2023-11-17-16-32-12-074077/livingroom/"
+    )
+
+    parser.add_argument(
+        "--path_to_annotations",
+        type=str,
+        help="Path to the folder containing the annotations",
+        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/splits/diningroom_test.lst")
 
     args = parser.parse_args(argv)
 
     real_img_folderpath = args.path_to_real_renderings
+    # real_images_path_lst = [os.path.join(real_img_folderpath, f) for f in os.listdir(real_img_folderpath) if f.endswith(".png")]
     real_images_path_lst = [
-        os.path.join(real_img_folderpath, f) for f in os.listdir(real_img_folderpath) if f.endswith(".png")
+        os.path.join(real_img_folderpath, f, 'gt_rendered.png')
+        for f in os.listdir(real_img_folderpath)
+        if f.isdigit() and os.path.isdir(os.path.join(real_img_folderpath, f))
     ]
+    # dataset_folderpath = '/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/threed_front_livingroom/'
+    # test_splits_filepath = args.path_to_annotations
+    # test_splits = []
+    # with open(test_splits_filepath, 'r') as f:
+    #     for line in f:
+    #         test_splits.append(line.strip())
+    # real_images_path_lst = [
+    #     os.path.join(dataset_folderpath, f, 'rendered_scene_notexture_256.png')
+    #     for f in os.listdir(dataset_folderpath)
+    #     if f.split('_')[-1] in test_splits
+    # ]
+
     print("Generating temporary a folder with test_real images...")
     path_to_test_real = "/tmp/test_real/"
     if not os.path.exists(path_to_test_real):
@@ -67,8 +90,11 @@ def main(argv):
     print("Number of real images: {}".format(len(real_images_path_lst)))
 
     fake_img_folderpath = args.path_to_synthesized_renderings
+    # fake_images_path_lst = [ os.path.join(fake_img_folderpath, f) for f in os.listdir(fake_img_folderpath) if f.endswith(".png")]
     fake_images_path_lst = [
-        os.path.join(fake_img_folderpath, f) for f in os.listdir(fake_img_folderpath) if f.endswith(".png")
+        os.path.join(fake_img_folderpath, f, 'rendered.png')
+        for f in os.listdir(fake_img_folderpath)
+        if f.isdigit() and os.path.isdir(os.path.join(fake_img_folderpath, f))
     ]
     print("Generating temporary a folder with test_fake images...")
     path_to_test_fake = "/tmp/test_fake/"
@@ -103,4 +129,3 @@ def main(argv):
 
 if __name__ == "__main__":
     main(None)
-

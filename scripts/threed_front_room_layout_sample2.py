@@ -44,10 +44,10 @@ from preprocess.prepare_st3d_dataset import vis_scene_mesh
 from misc.utils import load_config
 
 import seaborn as sns
-from pyrr import Matrix44
-from simple_3dviz import Mesh, Scene
-from simple_3dviz.renderables.textured_mesh import Material, TexturedMesh
-from simple_3dviz.utils import save_frame
+# from pyrr import Matrix44
+# from simple_3dviz import Mesh, Scene
+# from simple_3dviz.renderables.textured_mesh import Material, TexturedMesh
+# from simple_3dviz.utils import save_frame
 
 
 def render_top2down(scene, renderables, color, mode, frame_path=None):
@@ -258,11 +258,11 @@ def main():
 
                 logger.log('text_prompt: {}'.format(text_prompt))
 
-                # debug gt scene
-                gt_scene_bbox_params = dataset.post_process(gt_scene.transpose(1, 0))
-                gt_scene_mesh = recover_scene_from_bbox_params(gt_scene_bbox_params, dataset)
-                gt_scene_bbox_ply_fname = f'{scene_name}_gt_bbox.ply'
-                gt_scene_mesh.export(os.path.join(sample_result_folder, gt_scene_bbox_ply_fname))
+                # # debug gt scene
+                # gt_scene_bbox_params = dataset.post_process(gt_scene.transpose(1, 0))
+                # gt_scene_mesh = recover_scene_from_bbox_params(gt_scene_bbox_params, dataset)
+                # gt_scene_bbox_ply_fname = f'{scene_name}_gt_bbox.ply'
+                # gt_scene_mesh.export(os.path.join(sample_result_folder, gt_scene_bbox_ply_fname))
 
             model_kwargs["context"] = th.from_numpy(np.stack(cond_data_lst)).to(dist_util.dev(), dtype=th.float32)
         sample_fn = (diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop)
@@ -290,7 +290,8 @@ def main():
     arr = arr[:args.num_samples]
     samples_arr = np.transpose(arr, (0, 2, 1))
 
-    cond_text_prompt_lst = cond_text_prompt_lst[:args.num_samples]
+    if args.b_text_cond:
+        cond_text_prompt_lst = cond_text_prompt_lst[:args.num_samples]
     if args.b_class_cond:
         label_arr = np.concatenate(all_layout_type_lst, axis=0)
         label_arr = label_arr[:args.num_samples]
@@ -356,10 +357,11 @@ def main():
         save_img_filepath = os.path.join(curr_sample_folder, f'{scene_name}_sem.png')
         Image.fromarray(out_img).save(save_img_filepath)
 
-        # save text prompt
-        text_prompt_path = os.path.join(curr_sample_folder, f"text_prompt.txt")
-        with open(text_prompt_path, 'w') as f:
-            f.write(f'{cond_text_prompt_lst[idx]}\n')
+        if args.b_text_cond:
+            # save text prompt
+            text_prompt_path = os.path.join(curr_sample_folder, f"text_prompt.txt")
+            with open(text_prompt_path, 'w') as f:
+                f.write(f'{cond_text_prompt_lst[idx]}\n')
 
         # save synthetic object and room_layout as ply
         scene_bbox_ply_fname = f'{scene_name}_bbox.ply'

@@ -722,7 +722,7 @@ def axis_aligned_bbox_overlaps_3d(bboxes1, bboxes2, mode='iou', is_aligned=False
 
 def aabb_3d_iou_loss(means, weights, centroids_min, centroids_max, sizes_min, sizes_max):
 
-    def descale_to_origin(self, x, minimum, maximum):
+    def descale_to_origin(x, minimum, maximum):
         '''
             x shape : BxNx3
             minimum, maximum shape: 3
@@ -752,7 +752,7 @@ def aabb_3d_iou_loss(means, weights, centroids_min, centroids_max, sizes_min, si
     assert axis_aligned_bbox_corn.shape[-1] == 6
     # compute iou
     bbox_iou = axis_aligned_bbox_overlaps_3d(axis_aligned_bbox_corn, axis_aligned_bbox_corn)
-    logger.debug(f'bbox_iou.shape: {bbox_iou.shape}')
+    # logger.debug(f'bbox_iou.shape: {bbox_iou.shape}')
     bbox_iou_mask = valid_mask[:, :, None] * valid_mask[:, None, :]
     bbox_iou_valid = bbox_iou * bbox_iou_mask
     bbox_iou_valid_avg = bbox_iou_valid.sum(dim=list(range(1, len(bbox_iou_valid.shape)))) / (
@@ -760,13 +760,13 @@ def aabb_3d_iou_loss(means, weights, centroids_min, centroids_max, sizes_min, si
     # get the iou loss weight w.r.t time
     # original weights shape: BxCxN
     w_iou = weights.transpose(1, 2)
-    logger.debug(f'weights.shape: {w_iou.shape}')
+    # logger.debug(f'weights.shape: {w_iou.shape}')
     w_iou = w_iou[:, :bbox_iou.shape[-2], :bbox_iou.shape[-1]]
-    logger.debug(f'w_iou.shape: {w_iou.shape}')
+    # logger.debug(f'w_iou.shape: {w_iou.shape}')
     loss_iou = (w_iou * 0.1 * bbox_iou).mean(dim=list(range(1, len(w_iou.shape))))
     loss_iou_valid_avg = (w_iou * 0.5 * bbox_iou_valid).sum(dim=list(range(1, len(bbox_iou_valid.shape)))) / (
         bbox_iou_mask.sum(dim=list(range(1, len(bbox_iou_valid.shape)))) + 1e-6)
 
-    logger.debug(f'loss_iou_valid_avg.shape: {loss_iou_valid_avg.shape}')
-    logger.debug(f'loss_iou_valid_avg: {loss_iou_valid_avg}')
+    # logger.debug(f'loss_iou_valid_avg.shape: {loss_iou_valid_avg.shape}')
+    # logger.debug(f'loss_iou_valid_avg: {loss_iou_valid_avg}')
     return loss_iou_valid_avg

@@ -64,9 +64,9 @@ def main():
 
     # set up distributed training and logging
     dist_util.setup_dist()
-    log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    # log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    log_dir = args.log_dir
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log'])
-    # logger.configure(dir=log_dir)
     logger.set_level(logger.INFO)
 
     logger.log("creating UNet model and diffusion model...")
@@ -82,7 +82,6 @@ def main():
         room_type = 'living room'
     elif args.room_type == 'diningroom':
         room_type = 'dining room'
-
 
     # # load training data
     # train_dataset = ThreedFrontDataset(

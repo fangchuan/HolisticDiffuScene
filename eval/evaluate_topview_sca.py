@@ -1,16 +1,16 @@
-# 
+#
 # Copyright (C) 2021 NVIDIA Corporation.  All rights reserved.
 # Licensed under the NVIDIA Source Code License.
 # See LICENSE at https://github.com/nv-tlabs/ATISS.
 # Authors: Despoina Paschalidou, Amlan Kar, Maria Shugrina, Karsten Kreis,
 #          Andreas Geiger, Sanja Fidler
-# 
-
+#
 """Script used to evaluate the scene classification accuracy between real and
 synthesized scenes.
 """
 import os
 import sys
+
 sys.path.append('.')
 sys.path.append('..')
 import argparse
@@ -20,21 +20,17 @@ from PIL import Image
 import numpy as np
 import torch
 from torchvision import models
-
-
+import shutil
 
 
 class ImageFolderDataset(torch.utils.data.Dataset):
+
     def __init__(self, directory, train=True):
-        images = sorted([
-            os.path.join(directory, f)
-            for f in os.listdir(directory)
-            if f.endswith("png")
-        ])
+        images = sorted([os.path.join(directory, f) for f in os.listdir(directory) if f.endswith("png")])
         N = len(images) // 2
 
         start = 0 if train else N
-        self.images = images[start:start+N]
+        self.images = images[start:start + N]
 
     def __len__(self):
         return len(self.images)
@@ -44,6 +40,7 @@ class ImageFolderDataset(torch.utils.data.Dataset):
 
 
 class ThreedFrontRenderDataset(torch.utils.data.Dataset):
+
     def __init__(self, dataset):
         self.dataset = dataset
 
@@ -55,13 +52,14 @@ class ThreedFrontRenderDataset(torch.utils.data.Dataset):
 
 
 class SyntheticVRealDataset(torch.utils.data.Dataset):
+
     def __init__(self, real, synthetic):
         self.N = min(len(real), len(synthetic))
         self.real = real
         self.synthetic = synthetic
 
     def __len__(self):
-        return 2*self.N
+        return 2 * self.N
 
     def __getitem__(self, idx):
         if idx < self.N:
@@ -79,6 +77,7 @@ class SyntheticVRealDataset(torch.utils.data.Dataset):
 
 
 class AlexNet(torch.nn.Module):
+
     def __init__(self):
         super().__init__()
 
@@ -95,6 +94,7 @@ class AlexNet(torch.nn.Module):
 
 
 class AverageMeter:
+
     def __init__(self):
         self._value = 0
         self._cnt = 0
@@ -113,53 +113,70 @@ class AverageMeter:
         return self._value / self._cnt
 
 
+def mv_images_to_folder(splits_filepath, dataset_root_folderpath, output_folderpath):
+    splits = []
+    with open(splits_filepath, 'r') as f:
+        for line in f:
+            splits.append(line.strip())
+    real_images_path_lst = [
+        os.path.join(dataset_root_folderpath, f, 'rendered_scene_notexture_256.png')
+        for f in os.listdir(dataset_root_folderpath)
+        if f.split('_')[-1] in splits
+    ]
+    if not os.path.exists(output_folderpath):
+        os.makedirs(output_folderpath)
+    for i, img_path in enumerate(real_images_path_lst):
+        shutil.copyfile(img_path, os.path.join(output_folderpath, f'{i:05d}.png'))
+
+    return output_folderpath
+
+
 def main(argv):
-    parser = argparse.ArgumentParser(
-        description=("Train a classifier to discriminate between real "
-                     "and synthetic rooms")
-    )
-    parser.add_argument("--path_to_real_train_renderings",
-                        type=str,
-                        help="Path to the folder containing the real renderings of train split",
-                        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/train/bedroom/topview/")
-    parser.add_argument("--path_to_real_test_renderings",
-                        type=str,
-                        help="Path to the folder containing the real renderings of test split",
-                        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/test/bedroom/topview/")
+    parser = argparse.ArgumentParser(description=("Train a classifier to discriminate between real "
+                                                  "and synthetic rooms"))
+    # parser.add_argument("--path_to_real_train_renderings",
+    #                     type=str,
+    #                     help="Path to the folder containing the real renderings of train split",
+    #                     default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/train/bedroom/topview/")
+    # parser.add_argument("--path_to_real_test_renderings",
+    #                     type=str,
+    #                     help="Path to the folder containing the real renderings of test split",
+    #                     default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/test/bedroom/topview/")
+    parser.add_argument(
+        "--path_to_dataset",
+        type=str,
+        help="Path to the folder of dataset",
+        default='/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/threed_front_diningroom/')
+    # parser.add_argument(
+    #     "--path_to_synthesized_renderings",
+    #     type=str,
+    #     help="Path to the folder containing the synthesized",
+    #     default=
+    #     "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/openai-2023-09-23-12-23-59-306819/topview/")
     parser.add_argument(
         "--path_to_synthesized_renderings",
         type=str,
         help="Path to the folder containing the synthesized",
         default=
-        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/openai-2023-09-23-12-23-59-306819/topview/")
-    parser.add_argument("--path_to_annotations",
-                        type=str,
-                        help="Path to the folder containing the annotations",
-                        default="/data/3dfuture/3dfront/annotations/")
-
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=256,
-        help="Set the batch size for training and evaluating (default: 256)"
+        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_diningroom/text-cond-train-test/openai-2023-11-17-16-26-10-740237/diningroom/"
     )
     parser.add_argument(
-        "--num_workers",
-        type=int,
-        default=0,
-        help="Set the PyTorch data loader workers (default: 0)"
-    )
+        "--path_to_test_annotations",
+        type=str,
+        help="Path to the folder containing the annotations",
+        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/splits/diningroom_test.lst")
     parser.add_argument(
-        "--epochs",
-        type=int,
-        default=10,
-        help="Train for that many epochs (default: 10)"
-    )
-    parser.add_argument(
-        "--output_directory",
-        default="/tmp/",
-        help="Path to the output directory"
-    )
+        "--path_to_train_annotations",
+        type=str,
+        help="Path to the folder containing the annotations",
+        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/splits/diningroom_train.lst")
+    parser.add_argument("--batch_size",
+                        type=int,
+                        default=256,
+                        help="Set the batch size for training and evaluating (default: 256)")
+    parser.add_argument("--num_workers", type=int, default=0, help="Set the PyTorch data loader workers (default: 0)")
+    parser.add_argument("--epochs", type=int, default=10, help="Train for that many epochs (default: 10)")
+    parser.add_argument("--output_directory", default="/tmp/", help="Path to the output directory")
     args = parser.parse_args(argv)
 
     if torch.cuda.is_available():
@@ -172,30 +189,47 @@ def main(argv):
     if not os.path.exists(args.output_directory):
         os.makedirs(args.output_directory)
 
+    dataset_folderpath = args.path_to_dataset
+    train_splits_filepath = args.path_to_train_annotations
+    test_splits_filepath = args.path_to_test_annotations
+
+    real_train_renderings_folder = os.path.join(args.output_directory, 'real_train_renderings')
+    mv_images_to_folder(train_splits_filepath, dataset_folderpath, real_train_renderings_folder)
+
+    real_test_renderings_folder = os.path.join(args.output_directory, 'real_test_renderings')
+    mv_images_to_folder(test_splits_filepath, dataset_folderpath, real_test_renderings_folder)
+
     # Create Real datasets
-    train_real = ImageFolderDataset(directory=args.path_to_real_train_renderings, train=True)
-    test_real = ImageFolderDataset(directory=args.path_to_real_test_renderings, train=False)
+    train_real = ImageFolderDataset(real_train_renderings_folder, train=True)
+    test_real = ImageFolderDataset(real_test_renderings_folder, train=False)
 
     # Create the synthetic datasets
-    train_synthetic = ImageFolderDataset(directory=args.path_to_synthesized_renderings, train=True)
-    test_synthetic = ImageFolderDataset(directory=args.path_to_synthesized_renderings, train=False)
+    fake_img_folderpath = args.path_to_synthesized_renderings
+    fake_images_path_lst = [
+        os.path.join(fake_img_folderpath, f, 'rendered.png')
+        for f in os.listdir(fake_img_folderpath)
+        if f.isdigit() and os.path.isdir(os.path.join(fake_img_folderpath, f))
+    ]
+    path_to_test_fake = "/tmp/test_fake/"
+    if not os.path.exists(path_to_test_fake):
+        os.makedirs(path_to_test_fake)
+    for i, sythesized_img_path in enumerate(fake_images_path_lst):
+        shutil.copyfile(sythesized_img_path, os.path.join(path_to_test_fake, f'{i:05d}.png'))
+    train_synthetic = ImageFolderDataset(directory=path_to_test_fake, train=True)
+    test_synthetic = ImageFolderDataset(directory=path_to_test_fake, train=False)
 
     # Join them in useable datasets
     train_dataset = SyntheticVRealDataset(train_real, train_synthetic)
     test_dataset = SyntheticVRealDataset(test_real, test_synthetic)
 
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers
-    )
-    test_dataloader = torch.utils.data.DataLoader(
-        test_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers
-    )
+    train_dataloader = torch.utils.data.DataLoader(train_dataset,
+                                                   batch_size=args.batch_size,
+                                                   shuffle=True,
+                                                   num_workers=args.num_workers)
+    test_dataloader = torch.utils.data.DataLoader(test_dataset,
+                                                  batch_size=args.batch_size,
+                                                  shuffle=False,
+                                                  num_workers=args.num_workers)
 
     # Create the model
     model = AlexNet()
@@ -215,17 +249,15 @@ def main(argv):
                 optimizer.zero_grad()
                 y_hat = model(x)
                 loss = torch.nn.functional.binary_cross_entropy(y_hat, y)
-                acc = (torch.abs(y-y_hat) < 0.5).float().mean()
+                acc = (torch.abs(y - y_hat) < 0.5).float().mean()
                 loss.backward()
                 optimizer.step()
 
                 loss_meter += loss
                 acc_meter += acc
 
-                msg = "{: 3d} loss: {:.4f} - acc: {:.4f}".format(
-                    i, loss_meter.value, acc_meter.value
-                )
-                print(msg + "\b"*len(msg), end="", flush=True)
+                msg = "{: 3d} loss: {:.4f} - acc: {:.4f}".format(i, loss_meter.value, acc_meter.value)
+                print(msg + "\b" * len(msg), end="", flush=True)
             print()
 
             if (e + 1) % 5 == 0:
@@ -237,20 +269,16 @@ def main(argv):
                         x = x.to(device)
                         y = y.to(device)
                         y_hat = model(x)
-                        loss = torch.nn.functional.binary_cross_entropy(
-                            y_hat, y
-                        )
-                        acc = (torch.abs(y-y_hat) < 0.5).float().mean()
+                        loss = torch.nn.functional.binary_cross_entropy(y_hat, y)
+                        acc = (torch.abs(y - y_hat) < 0.5).float().mean()
 
                         loss_meter += loss
                         acc_meter += acc
 
                         msg_pre = "{: 3d} val_loss: {:.4f} - val_acc: {:.4f}"
 
-                        msg = msg_pre.format(
-                            i, loss_meter.value, acc_meter.value
-                        )
-                        print(msg + "\b"*len(msg), end="", flush=True)
+                        msg = msg_pre.format(i, loss_meter.value, acc_meter.value)
+                        print(msg + "\b" * len(msg), end="", flush=True)
                     print()
         scores.append(acc_meter.value)
     print(sum(scores) / len(scores))
