@@ -83,30 +83,13 @@ def main():
     elif args.room_type == 'diningroom':
         room_type = 'dining room'
 
-    # # load training data
-    # train_dataset = ThreedFrontDataset(
-    #     room_type=room_type,
-    #     is_train=True,
-    #     shard=MPI.COMM_WORLD.Get_rank(),
-    #     num_shards=MPI.COMM_WORLD.Get_size(),
-    #     config=config,
-    # )
-    # logger.info(f"train_dataset length: {len(train_dataset)}")
-    # train_loader = DataLoader(
-    #     train_dataset,
-    #     batch_size=args.batch_size,
-    #     shuffle=True,
-    #     num_workers=1,
-    #     #   pin_memory=True,
-    #     drop_last=True)
+    # load training data
     data = load_data(args, room_type, config, is_train=True)
 
     logger.log("training...")
     TrainLoop(
         model=unet_model,
         diffusion=diffusion_model,
-        # data=iter(make_dataloader_cycle(train_loader)),
-        # data=make_dataloader_cycle(train_loader),
         data=data,
         batch_size=args.batch_size,
         microbatch=args.microbatch,

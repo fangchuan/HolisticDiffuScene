@@ -190,8 +190,12 @@ class ResBlock(TimestepBlock):
     def _forward(self, x, emb):
         h = self.in_layers(x)
         emb_out = self.emb_layers(emb).type(h.dtype)
-        while len(emb_out.shape) < len(h.shape):
+        # logger.debug(f"ResBlock::_forward: h.shape: {h.shape}, emb_out.shape: {emb_out.shape}")
+        if len(emb_out.shape) == 2:
             emb_out = emb_out[..., None]
+        else:
+            emb_out = th.permute(emb_out, (0, 2, 1))
+        # logger.debug(f'emb_out.shape: {emb_out.shape}')
         if self.use_scale_shift_norm:
             out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
             scale, shift = th.chunk(emb_out, 2, dim=1)
@@ -446,8 +450,8 @@ class UNetModel(nn.Module):
         bbox_angle_feat_size=32,
         # attention blocks
         attn_block_depth=1,
-        num_instances=21,
-        instanclass_dim=0,
+        num_instances: int = 21,  # number of instances
+        instance_emb_dim: int = 512,
     ):
         super().__init__()
 
@@ -483,7 +487,6 @@ class UNetModel(nn.Module):
         self.attention_resolutions = attention_resolutions
         self.dropout = dropout
         self.channel_mult = channel_mult
-        logger.debug(f"channel_mult: {channel_mult}")
         self.conv_resample = conv_resample
         # self.num_classes = num_classes
         self.text_emb_dim = text_emb_dim
@@ -494,7 +497,7 @@ class UNetModel(nn.Module):
         # attention blocks
         self.attn_block_depth = attn_block_depth
         self.num_instances = num_instances
-        self.instance_class_dim = instanclass_dim
+        self.instance_emb_dim = instance_emb_dim
 
         # time embedding block
         time_embed_dim = model_channels * 4
@@ -504,31 +507,35 @@ class UNetModel(nn.Module):
             linear(time_embed_dim, time_embed_dim),
         )
 
-        # label embedding block
-        # if self.num_classes is not None:
-        #     self.label_emb = nn.Embedding(num_classes, time_embed_dim)
-        # elif self.text_emb_dim > 0:
-        #     self.label_emb = None
         # instance embedding block
         if self.num_instances is not None:
-            self.instance_emb = nn.Embedding(num_instances, instanclass_dim)
+            self.instance_embed_layer = nn.Embedding(num_instances, instance_emb_dim)
         else:
-            self.instance_emb = None
+            self.instance_embed_layer = None
 
+        # initial block
+        self.init_conv = conv_nd(dims, self.in_channels, model_channels, 1)  # 3, padding=1
         # input block
-        self.input_blocks = nn.ModuleList([
-            TimestepEmbedSequential(
-                OrderedDict([('input_conv', conv_nd(dims, self.in_channels, model_channels, 3, padding=1))]))
-        ])
+        self.input_blocks = nn.ModuleList([])
         input_block_chans = [model_channels]
         ch = model_channels
-        # downsample rates for the attention layers
-        downsample_ratio = 1
+
         for level, mult in enumerate(channel_mult):
             for idx in range(num_res_blocks):
                 idx_str = f'{level}_{idx}'
                 layers = [(
-                    'resblock_' + idx_str,
+                    'resblock_' + idx_str + '_0',
+                    ResBlock(
+                        channels=ch,  # input channels
+                        emb_channels=self.instance_emb_dim,  # embedding channels
+                        dropout=dropout,  # dropout probability
+                        out_channels=ch,
+                        dims=dims,
+                        use_checkpoint=use_checkpoint,
+                        use_scale_shift_norm=use_scale_shift_norm,
+                    ))]
+                layers.append((
+                    'resblock_' + idx_str + '_1',
                     ResBlock(
                         channels=ch,  # input channels
                         emb_channels=time_embed_dim,  # embedding channels
@@ -537,15 +544,12 @@ class UNetModel(nn.Module):
                         dims=dims,
                         use_checkpoint=use_checkpoint,
                         use_scale_shift_norm=use_scale_shift_norm,
-                    ))]
+                    )))
                 # increase minput channels for next resblock
                 ch = mult * model_channels
                 # channels for q.k.v of attention block
                 dim_heads = ch // num_heads
-                # # insert attention block if needed
-                # if downsample_ratio in attention_resolutions:
-                #     layers.append(('attnblock_' + idx_str,
-                #                    AttentionBlock(channels=ch, use_checkpoint=use_checkpoint, num_heads=num_heads)))
+
                 layers.append(('attnblock_' + idx_str,
                                SpatialTransformer(in_channels=ch,
                                                   n_heads=num_heads,
@@ -558,73 +562,83 @@ class UNetModel(nn.Module):
                                                   use_checkpoint=use_checkpoint,
                                                   dims=dims)))
 
+                layers.append(('down_' + idx_str, conv_nd(dims, ch, ch, 1)))  # 3, padding=1
                 self.input_blocks.append(TimestepEmbedSequential(OrderedDict(layers)))
                 input_block_chans.append(ch)
-            if level != len(channel_mult) - 1:
-                # self.input_blocks.append(
-                #     TimestepEmbedSequential(
-                #         OrderedDict([('down_' + idx_str, Downsample(channels=ch, use_conv=conv_resample, dims=dims))])))
-                self.input_blocks.append(
-                    TimestepEmbedSequential(OrderedDict([('conv_' + idx_str, conv_nd(dims, ch, ch, 3, padding=1))])))
-                input_block_chans.append(ch)
-                downsample_ratio *= 2
+            # if level != len(channel_mult) - 1:
+            #     self.input_blocks.append(
+            #         TimestepEmbedSequential(OrderedDict([('down_' + idx_str, conv_nd(dims, ch, ch, 3, padding=1))])))
+            #     input_block_chans.append(ch)
 
         # out_channel is same as input_channel in moddle block
-        self.middle_block = TimestepEmbedSequential(
-            ResBlock(
-                ch,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
-                use_scale_shift_norm=use_scale_shift_norm,
-            ),
-            # AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads),
-            SpatialTransformer(in_channels=ch,
-                               n_heads=num_heads,
-                               d_head=ch // num_heads,
-                               depth=self.attn_block_depth,
-                               dropout=0.1,
-                               context_dim=self.text_emb_dim,
-                               disable_self_attn=False,
-                               use_linear=False,
-                               use_checkpoint=use_checkpoint,
-                               dims=dims),
-            ResBlock(
-                ch,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
-                use_scale_shift_norm=use_scale_shift_norm,
-            ),
-        )
+        self.middle_block = nn.ModuleList([])
+        self.middle_block.append(
+            TimestepEmbedSequential(
+                ResBlock(
+                    ch,
+                    self.instance_emb_dim,
+                    dropout,
+                    dims=dims,
+                    use_checkpoint=use_checkpoint,
+                    use_scale_shift_norm=use_scale_shift_norm,
+                ),
+                ResBlock(
+                    ch,
+                    time_embed_dim,
+                    dropout,
+                    dims=dims,
+                    use_checkpoint=use_checkpoint,
+                    use_scale_shift_norm=use_scale_shift_norm,
+                ),
+                SpatialTransformer(in_channels=ch,
+                                   n_heads=num_heads,
+                                   d_head=ch // num_heads,
+                                   depth=self.attn_block_depth,
+                                   dropout=0.1,
+                                   context_dim=self.text_emb_dim,
+                                   disable_self_attn=False,
+                                   use_linear=False,
+                                   use_checkpoint=use_checkpoint,
+                                   dims=dims),
+                ResBlock(
+                    ch,
+                    time_embed_dim,
+                    dropout,
+                    dims=dims,
+                    use_checkpoint=use_checkpoint,
+                    use_scale_shift_norm=use_scale_shift_norm,
+                ),
+            ))
 
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
-            for i in range(num_res_blocks + 1):
+            # for i in range(num_res_blocks + 1):
+            for i in range(num_res_blocks):
                 idx_str = f'{level}_{i}'
-                layers = [('resblock_' + idx_str,
+                layers = [('resblock_' + idx_str + '_0',
                            ResBlock(
-                               ch + input_block_chans.pop(),
-                               time_embed_dim,
-                               dropout,
-                               out_channels=model_channels * mult,
+                               channels=ch,
+                               emb_channels=self.instance_emb_dim,
+                               dropout=dropout,
+                               out_channels=ch,
                                dims=dims,
                                use_checkpoint=use_checkpoint,
                                use_scale_shift_norm=use_scale_shift_norm,
                            ))]
+                layers.append(('resblock_' + idx_str + '_1',
+                               ResBlock(
+                                   channels=ch + input_block_chans.pop(),
+                                   emb_channels=time_embed_dim,
+                                   dropout=dropout,
+                                   out_channels=model_channels * mult,
+                                   dims=dims,
+                                   use_checkpoint=use_checkpoint,
+                                   use_scale_shift_norm=use_scale_shift_norm,
+                               )))
                 ch = model_channels * mult
                 # channels for q.k.v of attention block
                 dim_heads = ch // num_heads
 
-                # if downsample_ratio in attention_resolutions:
-                # layers.append(('attnblock_' + idx_str,
-                #                AttentionBlock(
-                #                    ch,
-                #                    use_checkpoint=use_checkpoint,
-                #                    num_heads=num_heads_upsample,
-                #                )))
                 layers.append(('attnblock_' + idx_str,
                                SpatialTransformer(in_channels=ch,
                                                   n_heads=num_heads_upsample,
@@ -636,16 +650,27 @@ class UNetModel(nn.Module):
                                                   use_linear=False,
                                                   use_checkpoint=use_checkpoint,
                                                   dims=dims)))
-                if level and i == num_res_blocks:
-                    # layers.append(('up_' + idx_str, Upsample(channels=ch, use_conv=conv_resample, dims=dims)))
-                    layers.append(('conv_' + idx_str, conv_nd(dims, ch, ch, 3, padding=1)))
-                    downsample_ratio //= 2
+
+                layers.append(('up_' + idx_str, conv_nd(dims, ch, ch, 1)))  # 3, padding=1
+                # if level and i == num_res_blocks:
+                #     # layers.append(('up_' + idx_str, Upsample(channels=ch, use_conv=conv_resample, dims=dims)))
+                #     layers.append(('conv_' + idx_str, conv_nd(dims, ch, ch, 3, padding=1)))
                 self.output_blocks.append(TimestepEmbedSequential(OrderedDict(layers)))
+
+        self.final_res_block = ResBlock(
+            channels=ch,
+            emb_channels=time_embed_dim,
+            dropout=dropout,
+            out_channels=ch,
+            dims=dims,
+            use_checkpoint=use_checkpoint,
+            use_scale_shift_norm=use_scale_shift_norm,
+        )
 
         self.out = nn.Sequential(
             normalization(ch),
             SiLU(),
-            zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
+            zero_module(conv_nd(dims, model_channels, out_channels, 1)),  # 3, padding=1
         )
 
         # as we encode input data to encoding space, we need to project it back to input space
@@ -692,20 +717,20 @@ class UNetModel(nn.Module):
         self,
         x,
         timesteps,
-        invalid_masks=None,
-        y=None,
-        context=None,
+        # instance_condition=None,
+        text_condition=None,
     ):
         """
         Apply the model to an input batch.
-        :param x: an [N x C x ...] Tensor of inputs.
+        :param x: an [B x C x N] Tensor of inputs.
         :param timesteps: a 1-D batch of timesteps.
-        :param context: conditioning plugged in via crossattn
-        :param y: an [N] Tensor of labels, if class-conditional.
-        :return: an [N x C x ...] Tensor of outputs.
+        :param instance_condition: an [B x N] Tensor of instances, if instance-conditional.
+        :param text_condition: conditioning plugged in via crossattn
+
+        :return: an [B x C x 2N] Tensor of outputs.
         """
-        if self.num_classes is not None:
-            assert y is not None, "must specify y if and only if the model is class-conditional"
+        # if self.num_instances is not None:
+        #     assert instance_condition is not None, "must specify instance_condition if and only if the model is instance-conditional"
 
         hs = []
         # logger.debug(f"UNetModel::forward: input x: {x.shape}")
@@ -740,57 +765,78 @@ class UNetModel(nn.Module):
             X = th.cat([object_class_feat, object_pos_feat, object_size_feat, object_angle_feat], dim=-1)
             X = X.transpose(1, 2)
 
-        # logger.debug(f"UNetModel::forward: output X shape: {X.shape}")
+        # logger.debug(f"UNetModel::forward:  X shape: {X.shape}")
 
         context_emb = None
         # if self.num_classes is not None:
         #     assert y.shape == (X.shape[0],)
         #     time_emb = time_emb + self.label_emb(y)
         # logger.debug(f"UNetModel::forward: input y shape: {y.shape}")
-        if self.instance_emb is not None:
-            instance_indices = th.arange(self.num_instances).long().to(self.inner_dtype)[None, :].repeat(x.shape[0], 1)
-            instance_emb = self.instance_emb[instance_indices, :]
-            print(f"instance_emb.shape: {instance_emb.shape}")
-            time_emb = time_emb + instance_emb
-
-        if context is not None:
-            assert context.shape == (
+        instance_emb = None
+        if self.instance_embed_layer is not None:
+            instance_indices = th.arange(self.num_instances).long().to(x.device)[None, :].repeat(x.shape[0], 1)
+            instance_emb = self.instance_embed_layer(instance_indices)
+            # logger.debug(f"instance_emb.shape: {instance_emb.shape}")
+            # time_emb = time_emb + instance_emb
+        elif text_condition is not None:
+            assert text_condition.shape == (
                 X.shape[0], 77,
-                self.text_emb_dim), f" expected input context.shape: {(X.shape[0],77, self.text_emb_dim)}"
-            context_emb = context
+                self.text_emb_dim), f" expected input text_condition.shape: {(X.shape[0],77, self.text_emb_dim)}"
+            context_emb = text_condition
             while len(context_emb.shape) < len(X.shape):
                 context_emb = context_emb.unsqueeze(1)
-            # logger.debug(f"UNetModel::forward: context embedding shape: {context_emb.shape}")
+
+        else:
+            raise ValueError("Must specify either instance_condition or text_condition")
 
         h = X.type(self.inner_dtype)
 
-        # convert invalid_masks(Bx1xT) to attn_masks(BxTxT)
-        attn_masks = None
-        if attn_masks is not None:
-            attn_masks = (~attn_masks).to(dtype=h.dtype)
-            attn_masks = th.matmul(attn_masks.transpose(1, 2), attn_masks).to(dtype=th.bool)
-            attn_masks = ~attn_masks
-        for module in self.input_blocks:
-            h = module(h, time_emb, context_emb, attn_masks)
-            # logger.debug(f"UNetModel::forward: input_blocks hidden layer output shape: {h.shape}")
+        h = self.init_conv(h)
+        # down blocks
+        for (res0, res1, attn0, dsm) in self.input_blocks:
+            h = res0(h, instance_emb)
+            h = res1(h, time_emb)
+            h = attn0(h, context_emb)
+            h = dsm(h)
             hs.append(h)
 
-        h = self.middle_block(h, time_emb, context_emb, attn_masks)
-        # logger.debug(f"UNetModel::forward: middle_block hidden layer output shape: {h.shape}")
+        # middle blocks
+        for (res0, res1, attn0, res2) in self.middle_block:
+            h = res0(h, instance_emb)
+            h = res1(h, time_emb)
+            h = attn0(h, context_emb)
+            h = res2(h, time_emb)
 
-        for module in self.output_blocks:
+        # up blocks
+        for (res0, res1, attn0, usm) in self.output_blocks:
+            h = res0(h, instance_emb)
             h_in_input = hs.pop()
-            # logger.debug(f"UNetModel::forward: output_blocks hs.pop output shape: {h_in_input.shape}")
             cat_in = th.cat([h, h_in_input], dim=1)
-            h = module(cat_in, time_emb, context_emb, attn_masks)
-            # logger.debug(f"UNetModel::forward: output_blocks h output shape: {h.shape}")
+            h = res1(cat_in, time_emb)
+            h = attn0(h, context_emb)
+            h = usm(h)
 
+        h = self.final_res_block(h, time_emb)
         h = h.type(X.dtype)
         ret = self.out(h)
-        # logger.debug(f"UNetModel::forward: out layer output shape: {ret.shape}")
-        # if self.use_input_encoding:
-        #     ret = self.proj_out(ret)
-        #     logger.debug(f"UNetModel::forward: proj_out layer output shape: {ret.shape}")
+
+        # attn_masks = None
+        # for module in self.input_blocks:
+        #     h = module(h, time_emb, context_emb, attn_masks)
+        #     # logger.debug(f"UNetModel::forward: input_blocks hidden layer output shape: {h.shape}")
+        #     hs.append(h)
+        # h = self.middle_block(h, time_emb, context_emb, attn_masks)
+        # # logger.debug(f"UNetModel::forward: middle_block hidden layer output shape: {h.shape}")
+        # for module in self.output_blocks:
+        #     h_in_input = hs.pop()
+        #     # logger.debug(f"UNetModel::forward: output_blocks hs.pop output shape: {h_in_input.shape}")
+        #     cat_in = th.cat([h, h_in_input], dim=1)
+        #     h = module(cat_in, time_emb, context_emb, attn_masks)
+        #     # logger.debug(f"UNetModel::forward: output_blocks h output shape: {h.shape}")
+        # h = h.type(X.dtype)
+        # ret = self.out(h)
+        logger.debug(f"UNetModel::forward: out layer output shape: {ret.shape}")
+
         return ret
 
     def get_feature_vectors(self, x, timesteps, y=None):

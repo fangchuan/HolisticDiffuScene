@@ -148,28 +148,13 @@ class TrainLoop:
         self.model.convert_to_fp16()
 
     def run_loop(self):
-        # th.autograd.set_detect_anomaly(True)
-        while (not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps):
-            # if self.step == self.warmup_steps:
-            #     th.cuda.cudart().cudaProfilerStart()
 
-            # get next batch
-            # if self.step >= self.warmup_steps:
-            #     th.cuda.nvtx.range_push(f"step {self.step}")
-            #     th.cuda.nvtx.range_push("dataloader:")
+        while (not self.lr_anneal_steps or self.step + self.resume_step < self.lr_anneal_steps):
+
             batch_data, cond_data = next(self.data)
-            # push dataloader range
-            # if self.step >= self.warmup_steps:
-            #     th.cuda.nvtx.range_pop()
-            # logger.debug(f"batch_data[0,:,-1]:  {batch_data[0,:,-1]}")  # BxCxT
-            # logger.debug(f"cond_data:  {cond_data['context'].shape}")
 
             self.run_step(batch_data, cond_data)
-            # # pop iteration range
-            # if self.step >= self.warmup_steps:
-            #     th.cuda.nvtx.range_pop()
-            # if self.step == self.profiling_steps:
-            #     th.cuda.cudart().cudaProfilerStop()
+
             if self.step % self.log_interval == 0:
                 logger.dumpkvs()
             if self.step % self.save_interval == 0:
@@ -185,25 +170,16 @@ class TrainLoop:
     def run_step(self, batch_data, cond_data: Dict):
         self.forward_backward(batch_data, cond_data)
 
-        # if self.step >= self.warmup_steps:
-        #     th.cuda.nvtx.range_push("opt.step():")
         if self.use_fp16:
             self.optimize_fp16()
         else:
             self.optimize_normal()
-        # # pop opt.step() range
-        # if self.step >= self.warmup_steps:
-        #     th.cuda.nvtx.range_pop()
 
         self.log_step()
 
     def forward_backward(self, batch_data, cond_data):
         # clean gradients.
-        # if self.step >= self.warmup_steps:
-        #     th.cuda.nvtx.range_push("zero_grad():")
         zero_grad(self.model_params)
-        # if self.step >= self.warmup_steps:
-        #     th.cuda.nvtx.range_pop()
 
         for i in range(0, batch_data.shape[0], self.microbatch):
             micro_batch_data = batch_data[i:i + self.microbatch].to(dist_util.dev(), dtype=th.float32)
@@ -220,19 +196,14 @@ class TrainLoop:
                 self.ddp_model,  # model
                 micro_batch_data,  # x_start
                 tms_indices,  # timesteps
-                model_kwargs=micro_cond_data,  # y
+                model_kwargs=micro_cond_data,  # conditions
             )
 
-            # if self.step >= self.warmup_steps:
-            #     th.cuda.nvtx.range_push("compute_losses:")
             if last_batch or not self.use_ddp:
                 losses = compute_losses()
             else:
                 with self.ddp_model.no_sync():
                     losses = compute_losses()
-            # # pop forward range
-            # if self.step >= self.warmup_steps:
-            #     th.cuda.nvtx.range_pop()
 
             if isinstance(self.schedule_sampler, LossAwareSampler):
                 self.schedule_sampler.update_with_local_losses(tms_indices, losses["loss"].detach())
@@ -244,16 +215,12 @@ class TrainLoop:
                           losses={
                               k: v * weights for k, v in losses.items()
                           })
-            # if self.step >= self.warmup_steps:
-            #     th.cuda.nvtx.range_push("loss.backward():")
+
             if self.use_fp16:
                 loss_scale = 2**self.lg_loss_scale
                 (loss * loss_scale).backward()
             else:
                 loss.backward()
-            # # pop backward range
-            # if self.step >= self.warmup_steps:
-            #     th.cuda.nvtx.range_pop()
 
     def optimize_fp16(self):
         if any(not th.isfinite(p.grad).all() for p in self.model_params):

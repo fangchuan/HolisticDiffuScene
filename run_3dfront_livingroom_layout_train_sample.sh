@@ -1,10 +1,10 @@
-MODEL_FLAGS="--layout_channels 33 --layout_size 21 --attention_resolutions 32,16,8 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond True --b_text_cond False --use_input_encoding True"
+MODEL_FLAGS="--layout_channels 33 --layout_size 21 --attention_resolutions 32,16,8 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond True --b_text_cond False --use_input_encoding True "
 DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine"
 TRAIN_FLAGS="--lr 1e-4 --batch_size 64 --schedule_sampler loss-second-moment --use_3d_iou False "
 NUM_GPUS=2
 ROOM_TYPE="livingroom"
 CONFIG_FILE="/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/config/3dfront_livingroom_config.yaml"
-MAX_STEPS=200000
+MAX_STEPS=400000
 
 mpiexec -n $NUM_GPUS python scripts/threed_front_room_layout_train2.py \
     $MODEL_FLAGS \
@@ -13,7 +13,7 @@ mpiexec -n $NUM_GPUS python scripts/threed_front_room_layout_train2.py \
     --room_type $ROOM_TYPE  \
     --config_file $CONFIG_FILE \
     --lr_anneal_steps $MAX_STEPS \
-    --log_dir "log/3dfront_livingroom/unconditional/"
+    --log_dir "log/3dfront_livingroom/unconditional-new/"
 
 
 MODEL_FLAGS="--layout_channels 33 --layout_size 21 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond True --b_text_cond False --use_input_encoding True"
@@ -21,11 +21,11 @@ DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_resp
 CONFIG_FILE="/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/config/3dfront_livingroom_config.yaml"
 
 python scripts/threed_front_room_layout_sample2.py \
-    --model_path log/3dfront_livingroom/unconditional/ema_0.9999_200000.pt \
+    --model_path log/3dfront_livingroom/unconditional-new/ema_0.9999_200000.pt \
      $MODEL_FLAGS \
      $DIFFUSION_FLAGS \
      --num_samples 1000 \
       --room_type $ROOM_TYPE \
       --path_to_pickled_3d_futute_models /mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/threed_future_model_livingroom.pkl \
       --config_file $CONFIG_FILE \
-      --log_dir "log/3dfront_livingroom/unconditional/sample_results"
+      --log_dir "log/3dfront_livingroom/unconditional-new/sample_results"

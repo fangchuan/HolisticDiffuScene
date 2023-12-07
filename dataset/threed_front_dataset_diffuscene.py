@@ -251,10 +251,9 @@ def Add_Text(samples_dict: Dict, clip_encoder, class_labels: List, eval=False, m
     def add_clip_embeddings(sample, clip_encoder, max_sentences=3):
         sentence = ''.join(sample['description'][:max_sentences])
         sample['description'] = sentence
-        print(f'sentence: {sentence}')
+        # print(f'sentence: {sentence}')
         # embed words
         sample['desc_emb'] = clip_encoder.get_text_embeds(sample["description"]).cpu().numpy()
-        print(f'sample["desc_emb"]: {sample["desc_emb"].shape}')
         return sample
 
     # Add relationship between objects
@@ -268,6 +267,20 @@ def Add_Text(samples_dict: Dict, clip_encoder, class_labels: List, eval=False, m
     return sample
 
 
+def Permutate_Scene(samples_dict: Dict,
+                    permutation_keys: List = ['translations', 'sizes', 'angles'],
+                    permutation_axis=0):
+    shapes = samples_dict["class_labels"].shape
+    # print(f'Permutation: {shapes}')
+    ordering = np.random.permutation(shapes[permutation_axis])
+    # print(f'Permutation new orders: {ordering}')
+
+    for k in permutation_keys:
+        samples_dict[k] = samples_dict[k][ordering]
+
+    return samples_dict
+
+
 class ThreedFrontDataset(data.Dataset):
     '''
     dataset for ThreeD-Front
@@ -279,8 +292,9 @@ class ThreedFrontDataset(data.Dataset):
             room_type='bedroom',
             is_train=True,
             is_test=False,
-            rot_augmentation=True,  #  max number of text_prompt sentences
-            random_text_desc=True,
+            rot_augmentation=True,  # data augmentation by random rotation
+            random_text_desc=True,  # use random text description
+            permutation=True,  # permute objects
             shard=0,  #  support parallel training
             num_shards=1):
 
@@ -292,6 +306,7 @@ class ThreedFrontDataset(data.Dataset):
         self.rot_augmentation = rot_augmentation
         self.text_encoder = FrozenCLIPEmbedder()
         self.random_text_desc = random_text_desc
+        self.permutation = permutation
 
         self._parse_train_stats(config["data"]["train_stats"])
 
@@ -299,7 +314,7 @@ class ThreedFrontDataset(data.Dataset):
         splits_builder = CSVSplitsBuilder(config["data"]["annotation_file"])
         split_scene_ids = splits_builder.get_splits(
             keep_splits=config["training"].get("splits", ["train", "val"])) if is_train \
-                  else splits_builder.get_splits(keep_splits=config["validation"].get("splits", ["train", "val", "test"]))
+                  else splits_builder.get_splits(keep_splits=config["validation"].get("splits", [ "test"]))
 
         # rooms liist
         self._tags_lst = sorted([
@@ -312,15 +327,15 @@ class ThreedFrontDataset(data.Dataset):
             for pi in self._tags_lst
             if os.path.exists(os.path.join(self._base_dir, pi, "boxes.npz"))
         ])
-        # text prompt files
-        self._path_to_rooms_text_lst = sorted([
-            os.path.join(self._base_dir, pi, "text_prompt.txt")
-            for pi in self._tags_lst
-            if os.path.exists(os.path.join(self._base_dir, pi, "text_prompt.txt"))
-        ])
+        # # text prompt files
+        # self._path_to_rooms_text_lst = sorted([
+        #     os.path.join(self._base_dir, pi, "text_prompt.txt")
+        #     for pi in self._tags_lst
+        #     if os.path.exists(os.path.join(self._base_dir, pi, "text_prompt.txt"))
+        # ])
         assert len(self._tags_lst) == len(self._path_to_rooms_lst), "Number of scenes and boxes.npz files do not match"
-        assert len(self._tags_lst) == len(
-            self._path_to_rooms_text_lst), "Number of scenes and text_prompt.txt files do not match"
+        # assert len(self._tags_lst) == len(
+        #     self._path_to_rooms_text_lst), "Number of scenes and text_prompt.txt files do not match"
 
         rendered_scene = "rendered_scene_256.png"
         path_to_rendered_scene = os.path.join(self._base_dir, self._tags_lst[0], rendered_scene)
@@ -332,11 +347,11 @@ class ThreedFrontDataset(data.Dataset):
         self.local_tags_lst = self._tags_lst[shard:][::num_shards]
         self.local_path_to_rooms_lst = self._path_to_rooms_lst[shard:][::num_shards]
         self.local_path_to_renders = self._path_to_renders[shard:][::num_shards]
-        self.local_path_to_rooms_text_lst = self._path_to_rooms_text_lst[shard:][::num_shards]
+        # self.local_path_to_rooms_text_lst = self._path_to_rooms_text_lst[shard:][::num_shards]
 
         # pre-load all data
         self.local_rooms_dict_lst = []
-        self.local_rooms_text_lst = []
+        # self.local_rooms_text_lst = []
         self._preload_()
 
     def _get_room_layout(self, room_layout):
@@ -345,24 +360,6 @@ class ThreedFrontDataset(data.Dataset):
         img = img.resize(tuple(map(int, self.config["data"]["room_layout_size"].split(","))), resample=Image.BILINEAR)
         D = np.asarray(img).astype(np.float32) / np.float32(255)
         return D
-
-    def get_room_params(self, i):
-        D = np.load(self._path_to_rooms_lst[i])
-
-        room = self._get_room_layout(D["room_layout"])
-        room = np.transpose(room[:, :, None], (2, 0, 1))
-        # room_text = self._get_room_text(str(D["scene_uid"]))
-        room_text_emb = D["desc_emb"]
-        print(f'room_text_emb: {room_text_emb.shape}')
-
-        return {
-            "room_layout": room,
-            "room_text_emb": room_text_emb,
-            "class_labels": D["class_labels"],
-            "translations": D["translations"],
-            "sizes": D["sizes"],
-            "angles": D["angles"]
-        }
 
     def __len__(self):
         return len(self.local_path_to_rooms_lst)
@@ -390,10 +387,10 @@ class ThreedFrontDataset(data.Dataset):
             # load npz data
             npz_data = np.load(self.local_path_to_rooms_lst[idx])
             self.local_rooms_dict_lst.append(npz_data)
-            # load text prompt file
-            with open(self.local_path_to_rooms_text_lst[idx], "r") as f:
-                text = f.read().strip()
-                self.local_rooms_text_lst.append(text)
+            # # load text prompt file
+            # with open(self.local_path_to_rooms_text_lst[idx], "r") as f:
+            #     text = f.read().strip()
+            #     self.local_rooms_text_lst.append(text)
 
     @property
     def class_labels(self):
@@ -499,7 +496,7 @@ class ThreedFrontDataset(data.Dataset):
         """
         # D = np.load(self.local_path_to_rooms_lst[idx])
         D = self.local_rooms_dict_lst[idx]
-        text_prompt = self.local_rooms_text_lst[idx]
+        # text_prompt = self.local_rooms_text_lst[idx]
         # print('text_prompt: ', text_prompt)
 
         # room_layout_img = self._get_room_layout(D["room_layout"])
@@ -530,21 +527,27 @@ class ThreedFrontDataset(data.Dataset):
                 rot_angle = np.pi
             elif np.random.rand() < 0.75:
                 rot_angle = np.pi * 0.5
+            else:
+                rot_angle = 0.0
             R = self.rotation_matrix_around_y(rot_angle)
-
             # rotate translations
             bbox_trans = bbox_trans.dot(R)
-
             # rotate angles
             angle_min, angle_max = self._angles
             bbox_angles = (bbox_angles + rot_angle - angle_min) % (2 * np.pi) + angle_min
 
+        # add text description
         if self.random_text_desc:
-            samples_dict = {'translations': bbox_trans, 'sizes': bbox_sizes, 'angles': bbox_angles}
+            samples_dict = {
+                'class_labels': bbox_onehot_class_labels,
+                'translations': bbox_trans,
+                'sizes': bbox_sizes,
+                'angles': bbox_angles
+            }
             samples = Add_Text(samples_dict=samples_dict,
                                clip_encoder=self.text_encoder,
                                class_labels=self.class_labels,
-                               eval=self.is_test,
+                               eval=(self.is_train == False),
                                max_sentences=3)
             room_text_emb = samples['desc_emb'].squeeze(0).astype(np.float32)
 
@@ -552,8 +555,25 @@ class ThreedFrontDataset(data.Dataset):
         bbox_cos_sin_angles = np.concatenate([np.cos(bbox_angles), np.sin(bbox_angles)], axis=-1)
         # scale properties to -1 ~ 1
         scaled_class_labels = bbox_onehot_class_labels * 2 - 1
-        scaled_trans = self.scale(bbox_trans, *self._centroids)
-        scaled_size = self.scale(bbox_sizes, *self._sizes)
+        scaled_trans = self.scale(bbox_trans, self._centroids[0], self._centroids[1])
+        scaled_size = self.scale(bbox_sizes, self._sizes[0], self._sizes[1])
+
+        # perrmutate objects
+        if self.permutation:
+            samples_dict = {
+                'class_labels': scaled_class_labels,
+                'translations': scaled_trans,
+                'sizes': scaled_size,
+                'angles': bbox_cos_sin_angles
+            }
+            samples = Permutate_Scene(
+                samples_dict=samples_dict,
+                permutation_keys=['class_labels', 'translations', 'sizes', 'angles'],
+            )
+            scaled_class_labels = samples['class_labels']
+            scaled_trans = samples['translations']
+            scaled_size = samples['sizes']
+            bbox_cos_sin_angles = samples['angles']
 
         # concatenate
         out_lst = np.concatenate([scaled_class_labels, scaled_trans, scaled_size, bbox_cos_sin_angles], axis=-1)
@@ -569,11 +589,11 @@ class ThreedFrontDataset(data.Dataset):
         out_lst = out_lst.transpose(1, 0)
 
         cond_dict = {}
-        if self.room_type is not None:
-            cond_dict["y"] = np.array(ROOM_TYPE_DICT[self.room_type], dtype=np.int64)
+        # if self.room_type is not None:
+        #     cond_dict["y"] = np.array(ROOM_TYPE_DICT[self.room_type], dtype=np.int64)
 
-        cond_dict["text"] = text_prompt
-        cond_dict["context"] = room_text_emb
+        # cond_dict["text"] = text_prompt
+        cond_dict["text_condition"] = room_text_emb
         if not self.is_train:
             return out_lst, cond_dict, self.local_tags_lst[idx]
         else:

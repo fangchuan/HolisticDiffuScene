@@ -27,7 +27,7 @@ training:
     lr_decay: 0.5
 
 validation:
-    splits: ["train", "val", "test"]
+    splits: ["test"]
     frequency: 10
     batch_size: 128
     gen_traj: false

@@ -34,17 +34,14 @@ def main(argv):
         "--path_to_real_renderings",
         type=str,
         help="Path to the folder containing the real renderings",
-        # default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/test/bedroom/topview/")
-        default=
-        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/text-cond-train-test/openai-2023-11-17-16-32-12-074077/livingroom/"
-    )
+        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/livingroom_topdown_renders/")
     parser.add_argument(
         "--path_to_synthesized_renderings",
         type=str,
         help="Path to the folder containing the synthesized",
-        # default= "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/openai-2023-09-23-12-23-59-306819/topview/")
         default=
-        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/text-cond-train-test/openai-2023-11-17-16-32-12-074077/livingroom/"
+        # "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/unconditional-new/sample_results/openai-2023-12-05-20-07-23-532451/livingroom"
+        "/mnt/nas_3dv/hdd1/fangchuan/originalDiffuScene/DiffuScene/scripts/3dfront_livingroom/diffusion_livingrooms_dim512_nomask_instancond_objfeats_lat32/gen_top2down_notexture_nofloor/"
     )
 
     parser.add_argument(
@@ -56,12 +53,14 @@ def main(argv):
     args = parser.parse_args(argv)
 
     real_img_folderpath = args.path_to_real_renderings
-    # real_images_path_lst = [os.path.join(real_img_folderpath, f) for f in os.listdir(real_img_folderpath) if f.endswith(".png")]
     real_images_path_lst = [
-        os.path.join(real_img_folderpath, f, 'gt_rendered.png')
-        for f in os.listdir(real_img_folderpath)
-        if f.isdigit() and os.path.isdir(os.path.join(real_img_folderpath, f))
+        os.path.join(real_img_folderpath, f) for f in os.listdir(real_img_folderpath) if f.endswith(".png")
     ]
+    # real_images_path_lst = [
+    #     os.path.join(real_img_folderpath, f, 'gt_rendered.png')
+    #     for f in os.listdir(real_img_folderpath)
+    #     if f.isdigit() and os.path.isdir(os.path.join(real_img_folderpath, f))
+    # ]
     # dataset_folderpath = '/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/threed_front_livingroom/'
     # test_splits_filepath = args.path_to_annotations
     # test_splits = []
@@ -90,12 +89,12 @@ def main(argv):
     print("Number of real images: {}".format(len(real_images_path_lst)))
 
     fake_img_folderpath = args.path_to_synthesized_renderings
-    # fake_images_path_lst = [ os.path.join(fake_img_folderpath, f) for f in os.listdir(fake_img_folderpath) if f.endswith(".png")]
-    fake_images_path_lst = [
-        os.path.join(fake_img_folderpath, f, 'rendered.png')
-        for f in os.listdir(fake_img_folderpath)
-        if f.isdigit() and os.path.isdir(os.path.join(fake_img_folderpath, f))
-    ]
+    fake_images_path_lst = [ os.path.join(fake_img_folderpath, f) for f in os.listdir(fake_img_folderpath) if f.endswith(".png")]
+    # fake_images_path_lst = [
+    #     os.path.join(fake_img_folderpath, f, 'rendered.png')
+    #     for f in os.listdir(fake_img_folderpath)
+    #     if f.isdigit() and os.path.isdir(os.path.join(fake_img_folderpath, f))
+    # ]
     print("Generating temporary a folder with test_fake images...")
     path_to_test_fake = "/tmp/test_fake/"
     if not os.path.exists(path_to_test_fake):

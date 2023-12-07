@@ -43,6 +43,7 @@ def model_and_diffusion_defaults():
         use_scale_shift_norm=True,
         use_input_encoding=False,
         dataset_stats_file=None,
+        instance_num=21,
     )
 
 
@@ -71,6 +72,7 @@ def create_model_and_diffusion(
     use_scale_shift_norm: bool,
     use_input_encoding: bool,
     dataset_stats_file: str = None,
+    instance_num: int = None,
 ):
     """ create UNet model and diffusion, according to the given parameters
 
@@ -117,6 +119,7 @@ def create_model_and_diffusion(
         use_scale_shift_norm=use_scale_shift_norm,
         dropout=dropout,
         use_input_encoding=use_input_encoding,
+        instance_num=instance_num,
     )
     # create diffusion process
     diffusion = create_gaussian_diffusion(
@@ -151,6 +154,7 @@ def create_model(
     use_scale_shift_norm,
     dropout,
     use_input_encoding,
+    instance_num=None,
 ):
     layout_feature_size = layout_channels
     if layout_feature_size == 1024:
@@ -166,7 +170,7 @@ def create_model(
     else:
         raise ValueError(f"unsupported layout size: {layout_channels}")
 
-    assert class_cond != text_cond, "only one of class_cond and text_cond can be True"
+    # assert class_cond != text_cond, "only one of class_cond and text_cond can be True"
 
     # downsample ratio at attention layers
     attention_downsample_ratio_lst = []
@@ -182,13 +186,15 @@ def create_model(
         attention_resolutions=tuple(attention_downsample_ratio_lst),
         dropout=dropout,
         channel_mult=channel_mult,
-        num_classes=(NUM_CLASSES if class_cond else None),
+        # num_classes=(NUM_CLASSES if class_cond else None),
         text_emb_dim=(NUM_TEXT_EMBEDDING_DIM if text_cond else None),
         use_checkpoint=use_checkpoint,
         num_heads=num_heads,
         num_heads_upsample=num_heads_upsample,
         use_scale_shift_norm=use_scale_shift_norm,
         use_input_encoding=use_input_encoding,
+        num_instances=instance_num,
+        instance_emb_dim=128,
     )
 
 
@@ -323,7 +329,7 @@ def create_gaussian_diffusion(
         timestep_respacing = [steps]
 
     used_timestamps = space_timesteps(steps, timestep_respacing)
-    logger.log(f"used_timestamps: {used_timestamps}")
+    # logger.log(f"used_timestamps: {used_timestamps}")
     logger.log(f'dataset_stats_file: {dataset_stats_file}')
     return SpacedDiffusion(
         use_timesteps=used_timestamps,

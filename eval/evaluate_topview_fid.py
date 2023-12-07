@@ -31,9 +31,9 @@ def main(argv):
         "--path_to_real_renderings",
         type=str,
         help="Path to the folder containing the real renderings",
-        # default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/test/bedroom/topview/")
-        default=
-        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/unconditional/sample_results/openai-2023-11-22-16-26-54-891915/livingroom/"
+        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/livingroom_topdown_renders/"
+        # default=
+        # "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/unconditional/sample_results/openai-2023-11-22-16-26-54-891915/livingroom/"
     )
     parser.add_argument(
         "--path_to_synthesized_renderings",
@@ -41,7 +41,7 @@ def main(argv):
         help="Path to the folder containing the synthesized",
         # default= "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/openai-2023-09-23-12-23-59-306819/topview/")
         default=
-        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/unconditional/sample_results/openai-2023-11-22-16-26-54-891915/livingroom/"
+        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/unconditional-new/sample_results/openai-2023-12-06-13-54-48-104245/livingroom"
     )
 
     parser.add_argument(

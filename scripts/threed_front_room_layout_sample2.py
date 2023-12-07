@@ -243,7 +243,7 @@ def main():
             max_layout_types = (NUM_CLASSES - 1)
             layout_type_lst = th.randint(low=0, high=max_layout_types, size=(args.batch_size,), device=dist_util.dev())
             layout_type_lst = th.full((args.batch_size,), ROOM_TYPE_DICT[room_type], device=dist_util.dev())
-            model_kwargs["y"] = layout_type_lst
+            # model_kwargs["y"] = layout_type_lst
             scene_names_lst.append(f'{args.room_type}_{len(scene_names_lst)}')
         if args.b_text_cond:
             cond_data_lst = []

@@ -259,8 +259,8 @@ class GaussianDiffusion:
         """
         if model_kwargs is None:
             model_kwargs = {}
-        if 'invalid_masks' not in model_kwargs and invalid_masks is not None:
-            model_kwargs['invalid_masks'] = invalid_masks
+        # if 'invalid_masks' not in model_kwargs and invalid_masks is not None:
+        #     model_kwargs['invalid_masks'] = invalid_masks
 
         B, C = x.shape[:2]
         # timestep shape: (B,)
@@ -636,12 +636,13 @@ class GaussianDiffusion:
         # forward
         true_mean, _, true_log_variance_clipped = self.q_posterior_mean_variance(x_start=x_start, x_t=x_t, t=t)
         # model prediction
-        out = self.p_mean_variance(model,
-                                   x_t,
-                                   t,
-                                   clip_denoised=clip_denoised,
-                                   invalid_masks=invalid_masks,
-                                   model_kwargs=model_kwargs)
+        out = self.p_mean_variance(
+            model,
+            x_t,
+            t,
+            clip_denoised=clip_denoised,
+            #    invalid_masks=invalid_masks,
+            model_kwargs=model_kwargs)
 
         # compute KL(q(x_{t-1}|x_t,x_0) || p(x_{t-1}|x_t))
         kl = normal_kl(true_mean, true_log_variance_clipped, out["mean"], out["log_variance"])
@@ -690,11 +691,11 @@ class GaussianDiffusion:
         x_t = self.q_sample(x_start, t, noise=noise)
 
         # valid mask for x
-        in_feature_size = x_start.shape[-2]
-        invalid_stat_idx = in_feature_size - 3 - 3 - 2
-        invalid_masks = th.all(x_start[:, invalid_stat_idx - 1:invalid_stat_idx, :] == 1, dim=1, keepdim=True)
-        # logger.debug(f"invalid_masks[0,:,-1]: {invalid_masks[0,:,-1]}")
-        model_kwargs['invalid_masks'] = invalid_masks
+        # in_feature_size = x_start.shape[-2]
+        # invalid_stat_idx = in_feature_size - 3 - 3 - 2
+        # invalid_masks = th.all(x_start[:, invalid_stat_idx - 1:invalid_stat_idx, :] == 1, dim=1, keepdim=True)
+        # # logger.debug(f"invalid_masks[0,:,-1]: {invalid_masks[0,:,-1]}")
+        # model_kwargs['invalid_masks'] = invalid_masks
         terms = {}
 
         if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL or self.loss_type == LossType.RESCALED_KL_IOU:
@@ -703,8 +704,8 @@ class GaussianDiffusion:
                                      x_t=x_t,
                                      t=t,
                                      clip_denoised=False,
-                                     model_kwargs=model_kwargs,
-                                     invalid_masks=invalid_masks)
+                                     model_kwargs=model_kwargs,)
+                                    #  invalid_masks=invalid_masks)
             terms["vb"] = out["output"]
             if self.loss_type == LossType.RESCALED_KL:
                 terms["vb"] *= self.num_timesteps
