@@ -83,7 +83,9 @@ COLOR_TO_ADEK_LABEL = {
     (70, 184, 160): "bag",
     (94, 106, 211): "structure",
     (82, 84, 163): "furniture",
-    (100, 85, 144): "prop"
+    (100, 85, 144): "prop",
+    (0, 153, 255): "hood",
+    (51, 255, 0): "stove",
 }
 
 OBJECT_LABEL_IDS = {

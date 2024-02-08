@@ -69,6 +69,7 @@ TEST_SCENE = ['scene_%05d' % i for i in range(3000, 3500)]
 ST3D_BEDROOM_FURNITURES_SET = set()
 ST3D_LIVINGROOM_FURNITURES_SET = set()
 ST3D_DININGROOM_FURNITURES_SET = set()
+ST3D_KITCHEN_FURNITURES_SET = set()
 
 
 def heading2rotmat(heading_angle_rad):
@@ -798,6 +799,7 @@ def prepare_dataset(raw_dataset_dir: str,
             source_img_path = os.path.join(room_path, "full", "rgb_rawlight.png")
             source_cor_path = os.path.join(room_path, "layout.txt")
             source_cam_pos_path = os.path.join(room_path, "camera_xyz.txt")
+            source_depth_path = os.path.join(room_path, "full", "depth.png")
 
             # parse room layout
             # room_layout_mesh = parse_room_layout(source_img_path, source_cam_pos_path, source_cor_path)
@@ -810,7 +812,7 @@ def prepare_dataset(raw_dataset_dir: str,
                 continue
 
             quad_wall_num_lst.append(len(quad_walls_normalized_dict['walls']))
-            if target_room_type == 'bedroom':
+            if target_room_type == 'bedroom' or target_room_type == 'kitchen':
                 if len(quad_walls_normalized_dict['walls']) > ST3D_BEDROOM_QUAD_WALL_MAX_LEN:
                     print(f'bad scene {room_str} walls number > {ST3D_BEDROOM_QUAD_WALL_MAX_LEN}')
                     ROOM_WALLS_LARGER_THAN_10.append(room_str)
@@ -852,6 +854,7 @@ def prepare_dataset(raw_dataset_dir: str,
             # print(f'room {room_str} scene_desc_text: {scene_desc_text}')
 
             out_img_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'img')
+            out_depth_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'depth')
             out_cord_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'label_cor')
             out_cam_pos_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'cam_pos')
             out_room_type_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'room_type')
@@ -862,6 +865,7 @@ def prepare_dataset(raw_dataset_dir: str,
             out_sem_bbox_img_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'sem_bbox_img')
             out_sem_layout_img_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'sem_layout_img')
             os.makedirs(out_img_dir, exist_ok=True)
+            os.makedirs(out_depth_dir, exist_ok=True)
             os.makedirs(out_cord_dir, exist_ok=True)
             os.makedirs(out_cam_pos_dir, exist_ok=True)
             os.makedirs(out_room_type_dir, exist_ok=True)
@@ -872,6 +876,7 @@ def prepare_dataset(raw_dataset_dir: str,
             os.makedirs(out_sem_bbox_img_dir, exist_ok=True)
             os.makedirs(out_sem_layout_img_dir, exist_ok=True)
             target_img_path = os.path.join(out_img_dir, '%s_%s.png' % (scene_id, room_id))
+            target_depth_path = os.path.join(out_depth_dir, '%s_%s.png' % (scene_id, room_id))
             target_cor_path = os.path.join(out_cord_dir, '%s_%s.txt' % (scene_id, room_id))
             target_cam_pos_path = os.path.join(out_cam_pos_dir, '%s_%s.txt' % (scene_id, room_id))
             target_room_type_path = os.path.join(out_room_type_dir, '%s_%s.txt' % (scene_id, room_id))
@@ -894,15 +899,23 @@ def prepare_dataset(raw_dataset_dir: str,
                     INVALID_ROOMS_LST.append(room_str)
                     print(f'bad scene {room_str} without bed')
                     continue
+            # skip kitchen without stove
+            if target_room_type == 'kitchen':
+                room_furniture_types = set([box['class'] for box in obj_bbox_3d_dict['objects']])
+                if 'stove' not in room_furniture_types:
+                    INVALID_ROOMS_LST.append(room_str)
+                    print(f'bad kitchen {room_str} without stove')
+                    continue
 
             # skip rooms with corrupted files
-            if not os.path.isfile(source_img_path) or not os.path.isfile(source_cor_path) \
+            if not os.path.isfile(source_img_path) or not os.path.isfile(source_depth_path) or not os.path.isfile(source_cor_path) \
             or not os.path.isfile(source_cam_pos_path) or imghdr.what(source_img_path) is None:
                 INVALID_ROOMS_LST.append(room_str)
                 print(f'bad scene {room_str} with corrupted files')
                 continue
             else:
                 shutil.copyfile(source_img_path, target_img_path)
+                shutil.copyfile(source_depth_path, target_depth_path)
                 shutil.copyfile(source_cor_path, target_cor_path)
                 shutil.copyfile(source_cam_pos_path, target_cam_pos_path)
                 # write room type
@@ -947,6 +960,9 @@ def prepare_dataset(raw_dataset_dir: str,
             elif target_room_type == 'dining room':
                 room_furniture_types = set([box['class'] for box in obj_bbox_3d_dict['objects']])
                 ST3D_DININGROOM_FURNITURES_SET.update(room_furniture_types)
+            elif target_room_type == 'kitchen':
+                room_furniture_types = set([box['class'] for box in obj_bbox_3d_dict['objects']])
+                ST3D_KITCHEN_FURNITURES_SET.update(room_furniture_types)
 
             room_layout_size = room_layout_mesh.bounding_box_oriented.extents
             room_layout_size_lst.append(room_layout_size)
@@ -972,17 +988,17 @@ def parse_args():
                         help="raw dataset path",
                         metavar="DIR")
     parser.add_argument("--room_type",
-                        default="st3d_livingroom",
-                        choices=["st3d_bedroom", "st3d_livingroom", "st3d_diningroom", "st3d_study"],
+                        default="st3d_kitchen",
+                        choices=["st3d_bedroom", "st3d_livingroom", "st3d_diningroom", "st3d_study", "st3d_kitchen"],
                         help="structured3d room type")
     parser.add_argument('--annotated_labels_path',
                         type=str,
-                        default='/data/dataset/Structured3D/preprocessed/annotations/livingroom/annotated_labels/',
+                        default='/data/dataset/Structured3D/preprocessed/annotations/kitchen/latest_labels/',
                         help='path to annotated labels')
     parser.add_argument('--out_train_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/0919_new_livingroom/train')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/new_text2pano/train')
     parser.add_argument('--out_test_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/0919_new_livingroom/test')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/new_text2pano/test')
     return parser.parse_args()
 
 
@@ -997,6 +1013,8 @@ def main():
         room_type_str = 'dining room'
     elif args.room_type == 'st3d_study':
         room_type_str = 'study'
+    elif args.room_type == 'st3d_kitchen':
+        room_type_str = 'kitchen'
 
     train_furniture_stats, room_mean_size, wall_num_max, wall_num_mean = prepare_dataset(args.dataset_path,
                                                                                          room_type_str,
@@ -1027,6 +1045,9 @@ def main():
     elif args.room_type == 'st3d_diningroom':
         print('*' * 20 + ' st3d_diningroom furniture types: ' + '*' * 20)
         print(ST3D_DININGROOM_FURNITURES_SET)
+    elif args.room_type == 'st3d_kitchen':
+        print('*' * 20 + ' st3d_kitchen furniture types: ' + '*' * 20)
+        print(ST3D_KITCHEN_FURNITURES_SET)
 
     # merge train and test furniture statistics
     for k, v in train_furniture_stats.items():
@@ -1036,10 +1057,11 @@ def main():
 
     dataset_stats = {
         'invalid_rooms': INVALID_ROOMS_LST,
-        'room_walls_larger_than_10': ROOM_WALLS_LARGER_THAN_10,
+        # 'room_walls_larger_than_10': ROOM_WALLS_LARGER_THAN_10,
         'bedroom_furniture_types': list(ST3D_BEDROOM_FURNITURES_SET),
         'livingroom_furniture_types': list(ST3D_LIVINGROOM_FURNITURES_SET),
         'diningroom_furniture_types': list(ST3D_DININGROOM_FURNITURES_SET),
+        'kitchen_furniture_types': list(ST3D_KITCHEN_FURNITURES_SET),
         'furniture_counter': train_furniture_stats,
         'room_mean_size': room_mean_size.tolist(),
         'quad_wall_num_max': wall_num_max,
@@ -1052,8 +1074,12 @@ def main():
 
     # get train.json and test.json
     train_test_split_filepath = os.path.join(os.path.dirname(args.out_test_path), 'splits.json')
-    valid_train_scene_ids = [s[:-4] for s in os.listdir(os.path.join(args.out_train_path, room_type_str, 'img'))]
-    valid_test_scene_ids = [s[:-4] for s in os.listdir(os.path.join(args.out_test_path, room_type_str, 'img'))]
+    valid_train_scene_ids = [
+        s[:-4] for s in os.listdir(os.path.join(args.out_train_path, room_type_str.replace(' ', '_'), 'img'))
+    ]
+    valid_test_scene_ids = [
+        s[:-4] for s in os.listdir(os.path.join(args.out_test_path, room_type_str.replace(' ', '_'), 'img'))
+    ]
 
     with open(train_test_split_filepath, 'w') as f:
         for i, scene_id in enumerate(valid_train_scene_ids):

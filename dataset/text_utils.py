@@ -113,7 +113,7 @@ from operator import methodcaller
 
 import nltk
 # uncomment it for first time run
-nltk.download('cmudict')
+# nltk.download('cmudict')
 from nltk.corpus import cmudict
 """
 Taken from https://stackoverflow.com/questions/20336524/verify-correct-use-of-a-and-an-in-english-texts-python
