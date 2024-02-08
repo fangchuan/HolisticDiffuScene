@@ -251,7 +251,7 @@ def main():
                 scene_idx = np.random.choice(len(dataset))
                 gt_scene, gt_cond_dict, scene_name = dataset[scene_idx]
                 # text prompt from eval dataset
-                cond_data_lst.append(gt_cond_dict['context'])
+                cond_data_lst.append(gt_cond_dict['text_condition'])
                 text_prompt = gt_cond_dict['text']
                 cond_text_prompt_lst.append(text_prompt)
                 scene_names_lst.append(scene_name)
@@ -264,7 +264,7 @@ def main():
                 # gt_scene_bbox_ply_fname = f'{scene_name}_gt_bbox.ply'
                 # gt_scene_mesh.export(os.path.join(sample_result_folder, gt_scene_bbox_ply_fname))
 
-            model_kwargs["context"] = th.from_numpy(np.stack(cond_data_lst)).to(dist_util.dev(), dtype=th.float32)
+            model_kwargs["text_condition"] = th.from_numpy(np.stack(cond_data_lst)).to(dist_util.dev(), dtype=th.float32)
         sample_fn = (diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop)
         sample = sample_fn(
             model=model,

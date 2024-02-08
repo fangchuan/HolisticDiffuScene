@@ -29,8 +29,6 @@ from misc.utils import load_config
 def make_dataloader_cycle(iterable):
     while True:
         yield from iterable
-        # for x in iterable:
-        #     yield x
 
 
 def load_data(args, room_type, config, is_train=True):

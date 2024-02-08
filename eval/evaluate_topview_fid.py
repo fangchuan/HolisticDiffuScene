@@ -41,7 +41,7 @@ def main(argv):
         help="Path to the folder containing the synthesized",
         # default= "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/openai-2023-09-23-12-23-59-306819/topview/")
         default=
-        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/unconditional-new/sample_results/openai-2023-12-06-13-54-48-104245/livingroom"
+        "/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/log/3dfront_livingroom/textconditional-0122/sample_results/openai-2024-01-27-08-16-04-293807/livingroom"
     )
 
     parser.add_argument(

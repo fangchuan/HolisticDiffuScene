@@ -83,7 +83,7 @@ def clean_obj_name(name):
     return name.replace('_', ' ')
 
 
-def Add_Text(samples_dict: Dict, clip_encoder, class_labels: List, eval=False, max_sentences=3, max_token_length=50):
+def Add_Text(samples_dict: Dict, clip_encoder:FrozenCLIPEmbedder, class_labels: List, eval=False, max_sentences=3, max_token_length=50):
 
     def add_relation(sample):
         '''
@@ -549,6 +549,7 @@ class ThreedFrontDataset(data.Dataset):
                                class_labels=self.class_labels,
                                eval=(self.is_train == False),
                                max_sentences=3)
+            room_text = samples["description"]
             room_text_emb = samples['desc_emb'].squeeze(0).astype(np.float32)
 
         # encode angles as [cosin, sin]
@@ -592,7 +593,7 @@ class ThreedFrontDataset(data.Dataset):
         # if self.room_type is not None:
         #     cond_dict["y"] = np.array(ROOM_TYPE_DICT[self.room_type], dtype=np.int64)
 
-        # cond_dict["text"] = text_prompt
+        cond_dict["text"] = room_text
         cond_dict["text_condition"] = room_text_emb
         if not self.is_train:
             return out_lst, cond_dict, self.local_tags_lst[idx]

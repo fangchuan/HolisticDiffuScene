@@ -43,7 +43,6 @@ def model_and_diffusion_defaults():
         use_scale_shift_norm=True,
         use_input_encoding=False,
         dataset_stats_file=None,
-        instance_num=21,
     )
 
 
@@ -72,12 +71,11 @@ def create_model_and_diffusion(
     use_scale_shift_norm: bool,
     use_input_encoding: bool,
     dataset_stats_file: str = None,
-    instance_num: int = None,
 ):
     """ create UNet model and diffusion, according to the given parameters
 
     Args:
-        layout_size (int): Layout feature size
+        layout_size (int): Layout instance number
         layout_channels (int): Layout feature channel size
         b_class_cond (bool): whther use class labels as conditions
         b_text_cond (bool): whether use text as conditions
@@ -119,7 +117,6 @@ def create_model_and_diffusion(
         use_scale_shift_norm=use_scale_shift_norm,
         dropout=dropout,
         use_input_encoding=use_input_encoding,
-        instance_num=instance_num,
     )
     # create diffusion process
     diffusion = create_gaussian_diffusion(
@@ -154,7 +151,6 @@ def create_model(
     use_scale_shift_norm,
     dropout,
     use_input_encoding,
-    instance_num=None,
 ):
     layout_feature_size = layout_channels
     if layout_feature_size == 1024:
@@ -187,13 +183,14 @@ def create_model(
         dropout=dropout,
         channel_mult=channel_mult,
         # num_classes=(NUM_CLASSES if class_cond else None),
+        text_condition=text_cond,
         text_emb_dim=(NUM_TEXT_EMBEDDING_DIM if text_cond else None),
         use_checkpoint=use_checkpoint,
         num_heads=num_heads,
         num_heads_upsample=num_heads_upsample,
         use_scale_shift_norm=use_scale_shift_norm,
         use_input_encoding=use_input_encoding,
-        num_instances=instance_num,
+        num_instances=layout_size,
         instance_emb_dim=128,
     )
 

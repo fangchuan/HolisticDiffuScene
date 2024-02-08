@@ -196,3 +196,4 @@ We would like to thank Kujiale.com for providing the database of house designs a
 33. 2023-10-13: ST3D_liveingroom_textcondition_openai-2023-10-13-22-50-00-00在ST3D训练text condition模型, 打开input_encoding, object_IOU_3D：定性效果不明显,缺乏定量评估;
 34. 2023-10-14: ST3D数据集的object bbox angle没有归一化!!!
 35. 2023-11-15: GPU util打不满问题与env无关, 似乎与数据集大小有关, worker设为0可以缓解. 切换到A6000可以缓解.
+36. 2024-01-22: 更新unet网络, 包含instance_embedding, 训练text-condition的layout generation, 在3D_FRONT数据集上稍劣于ATISS!!!

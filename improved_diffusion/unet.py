@@ -436,7 +436,7 @@ class UNetModel(nn.Module):
         channel_mult=(1, 2, 4, 8),
         conv_resample=True,
         dims=1,
-        # num_classes=None,  # number of classes, if None, then use text as condition
+        text_condition=True,  # whether use text as condition
         text_emb_dim=768,  # text embedding dimension (77,768) for BERT
         use_checkpoint=False,
         num_heads=1,
@@ -468,17 +468,22 @@ class UNetModel(nn.Module):
             # remove 3 to account for the masked bins for the size, 3 for position and
             # 2 for angle properties
             self.num_object_classes = in_channels - 3 - 3 - 2
-            self.object_class_emb_layer = nn.Linear(self.num_object_classes, class_label_feat_size, bias=False)
-            # Positional encoding for each property
-            self.object_pe_pos_x = FixedPositionalEncoding(proj_dims=bbox_center_feat_size)
-            self.object_pe_pos_y = FixedPositionalEncoding(proj_dims=bbox_center_feat_size)
-            self.object_pe_pos_z = FixedPositionalEncoding(proj_dims=bbox_center_feat_size)
-            self.object_pe_size_x = FixedPositionalEncoding(proj_dims=bbox_size_feat_size)
-            self.object_pe_size_y = FixedPositionalEncoding(proj_dims=bbox_size_feat_size)
-            self.object_pe_size_z = FixedPositionalEncoding(proj_dims=bbox_size_feat_size)
-            self.object_pe_angle_cz = FixedPositionalEncoding(proj_dims=bbox_angle_feat_size)
-            self.object_pe_angle_sz = FixedPositionalEncoding(proj_dims=bbox_angle_feat_size)
-            self.object_emb_dim = class_label_feat_size + bbox_center_feat_size * 3 + bbox_size_feat_size * 3 + bbox_angle_feat_size * 2
+            # self.object_class_emb_layer = nn.Linear(self.num_object_classes, class_label_feat_size, bias=False)
+            # # Positional encoding for each property
+            # self.object_pe_pos_x = FixedPositionalEncoding(proj_dims=bbox_center_feat_size)
+            # self.object_pe_pos_y = FixedPositionalEncoding(proj_dims=bbox_center_feat_size)
+            # self.object_pe_pos_z = FixedPositionalEncoding(proj_dims=bbox_center_feat_size)
+            # self.object_pe_size_x = FixedPositionalEncoding(proj_dims=bbox_size_feat_size)
+            # self.object_pe_size_y = FixedPositionalEncoding(proj_dims=bbox_size_feat_size)
+            # self.object_pe_size_z = FixedPositionalEncoding(proj_dims=bbox_size_feat_size)
+            # self.object_pe_angle_cz = FixedPositionalEncoding(proj_dims=bbox_angle_feat_size)
+            # self.object_pe_angle_sz = FixedPositionalEncoding(proj_dims=bbox_angle_feat_size)
+            # self.object_emb_dim = class_label_feat_size + bbox_center_feat_size * 3 + bbox_size_feat_size * 3 + bbox_angle_feat_size * 2
+
+            self.class_embed_func = UNetModel._encoder_mlp(hidden_size=model_channels,
+                                                           input_size=self.num_object_classes)
+            self.bbox_embed_func = UNetModel._encoder_mlp(hidden_size=model_channels, input_size=8)
+            self.object_emb_dim = model_channels * 2
 
         self.in_channels = self.object_emb_dim
         self.model_channels = model_channels
@@ -488,8 +493,8 @@ class UNetModel(nn.Module):
         self.dropout = dropout
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
-        # self.num_classes = num_classes
         self.text_emb_dim = text_emb_dim
+        self.b_text_cond = text_condition
         self.use_checkpoint = use_checkpoint
         self.num_heads = num_heads
         self.num_heads_upsample = num_heads_upsample
@@ -690,6 +695,28 @@ class UNetModel(nn.Module):
         # grid_img = vutil.make_grid(data, nrow=1, normalize=True, scale_each=True, pad_value=0.5)
         # vutil.save_image(grid_img, img_name, pad_value=0.5)
 
+    @staticmethod
+    def _encoder_mlp(hidden_size, input_size):
+        mlp_layers = [
+            nn.Conv1d(input_size, hidden_size, 1),
+            nn.GELU(),
+            nn.Conv1d(hidden_size, hidden_size * 2, 1),
+            nn.GELU(),
+            nn.Conv1d(hidden_size * 2, hidden_size, 1),
+        ]
+        return nn.Sequential(*mlp_layers)
+
+    @staticmethod
+    def _decoder_mlp(hidden_size, output_size):
+        mlp_layers = [
+            nn.Conv1d(hidden_size, hidden_size * 2, 1),
+            nn.GELU(),
+            nn.Conv1d(hidden_size * 2, hidden_size, 1),
+            nn.GELU(),
+            nn.Conv1d(hidden_size, output_size, 1),
+        ]
+        return nn.Sequential(*mlp_layers)
+
     def convert_to_fp16(self):
         """
         Convert the torso of the model to float16.
@@ -740,30 +767,36 @@ class UNetModel(nn.Module):
 
         X = x
         if self.use_input_encoding:
-            x = x.transpose(1, 2)
-            object_class_labels = x[:, :, :self.num_object_classes]
-            object_bbox_poses = x[:, :, self.num_object_classes:self.num_object_classes + 3]
-            object_bbox_sizes = x[:, :, self.num_object_classes + 3:self.num_object_classes + 6]
-            object_bbox_angles = x[:, :, self.num_object_classes + 6:self.num_object_classes + 8]
-            object_class_feat = self.object_class_emb_layer(object_class_labels)
-            # logger.debug(f"UNetModel::forward: output object class embedding shape: {object_class_feat.shape}")
-            object_pos_x_feat = self.object_pe_pos_x(object_bbox_poses[:, :, 0:1])
-            object_pos_y_feat = self.object_pe_pos_y(object_bbox_poses[:, :, 1:2])
-            object_pos_z_feat = self.object_pe_pos_z(object_bbox_poses[:, :, 2:3])
-            object_pos_feat = th.cat([object_pos_x_feat, object_pos_y_feat, object_pos_z_feat], dim=-1)
-            # logger.debug(f"UNetModel::forward: output object position embedding shape: {object_pos_feat.shape}")
-            object_size_x_feat = self.object_pe_size_x(object_bbox_sizes[:, :, 0:1])
-            object_size_y_feat = self.object_pe_size_y(object_bbox_sizes[:, :, 1:2])
-            object_size_z_feat = self.object_pe_size_z(object_bbox_sizes[:, :, 2:3])
-            object_size_feat = th.cat([object_size_x_feat, object_size_y_feat, object_size_z_feat], dim=-1)
-            # logger.debug(f"UNetModel::forward: output object size embedding shape: {object_size_feat.shape}")
-            object_angle_x_feat = self.object_pe_angle_cz(object_bbox_angles[:, :, 0:1])
-            object_angle_y_feat = self.object_pe_angle_sz(object_bbox_angles[:, :, 1:2])
-            object_angle_feat = th.cat([object_angle_x_feat, object_angle_y_feat], dim=-1)
-            # logger.debug(f"UNetModel::forward: output object angle embedding shape: {object_angle_feat.shape}")
+            # x = x.transpose(1, 2)
+            # object_class_labels = x[:, :, :self.num_object_classes]
+            # object_bbox_poses = x[:, :, self.num_object_classes:self.num_object_classes + 3]
+            # object_bbox_sizes = x[:, :, self.num_object_classes + 3:self.num_object_classes + 6]
+            # object_bbox_angles = x[:, :, self.num_object_classes + 6:self.num_object_classes + 8]
+            # object_class_feat = self.object_class_emb_layer(object_class_labels)
+            # # logger.debug(f"UNetModel::forward: output object class embedding shape: {object_class_feat.shape}")
+            # object_pos_x_feat = self.object_pe_pos_x(object_bbox_poses[:, :, 0:1])
+            # object_pos_y_feat = self.object_pe_pos_y(object_bbox_poses[:, :, 1:2])
+            # object_pos_z_feat = self.object_pe_pos_z(object_bbox_poses[:, :, 2:3])
+            # object_pos_feat = th.cat([object_pos_x_feat, object_pos_y_feat, object_pos_z_feat], dim=-1)
+            # # logger.debug(f"UNetModel::forward: output object position embedding shape: {object_pos_feat.shape}")
+            # object_size_x_feat = self.object_pe_size_x(object_bbox_sizes[:, :, 0:1])
+            # object_size_y_feat = self.object_pe_size_y(object_bbox_sizes[:, :, 1:2])
+            # object_size_z_feat = self.object_pe_size_z(object_bbox_sizes[:, :, 2:3])
+            # object_size_feat = th.cat([object_size_x_feat, object_size_y_feat, object_size_z_feat], dim=-1)
+            # # logger.debug(f"UNetModel::forward: output object size embedding shape: {object_size_feat.shape}")
+            # object_angle_x_feat = self.object_pe_angle_cz(object_bbox_angles[:, :, 0:1])
+            # object_angle_y_feat = self.object_pe_angle_sz(object_bbox_angles[:, :, 1:2])
+            # object_angle_feat = th.cat([object_angle_x_feat, object_angle_y_feat], dim=-1)
+            # # logger.debug(f"UNetModel::forward: output object angle embedding shape: {object_angle_feat.shape}")
 
-            X = th.cat([object_class_feat, object_pos_feat, object_size_feat, object_angle_feat], dim=-1)
-            X = X.transpose(1, 2)
+            # X = th.cat([object_class_feat, object_pos_feat, object_size_feat, object_angle_feat], dim=-1)
+            # X = X.transpose(1, 2)
+
+            object_class_feat = self.class_embed_func(x[:, :self.num_object_classes, :])
+            # logger.debug(f"UNetModel::forward: output object class embedding shape: {object_class_feat.shape}")
+            object_bbox_feat = self.bbox_embed_func(x[:, self.num_object_classes:self.num_object_classes + 8, :])
+            # logger.debug(f"UNetModel::forward: output object bbox embedding shape: {object_bbox_feat.shape}")
+            X = th.cat([object_class_feat, object_bbox_feat], dim=1)
 
         # logger.debug(f"UNetModel::forward:  X shape: {X.shape}")
 
@@ -776,16 +809,16 @@ class UNetModel(nn.Module):
         if self.instance_embed_layer is not None:
             instance_indices = th.arange(self.num_instances).long().to(x.device)[None, :].repeat(x.shape[0], 1)
             instance_emb = self.instance_embed_layer(instance_indices)
-            # logger.debug(f"instance_emb.shape: {instance_emb.shape}")
+            # logger.debug(f"UNetModel::forward: instance_emb.shape: {instance_emb.shape}")
             # time_emb = time_emb + instance_emb
-        elif text_condition is not None:
+        if self.b_text_cond and text_condition is not None:
             assert text_condition.shape == (
                 X.shape[0], 77,
                 self.text_emb_dim), f" expected input text_condition.shape: {(X.shape[0],77, self.text_emb_dim)}"
             context_emb = text_condition
             while len(context_emb.shape) < len(X.shape):
                 context_emb = context_emb.unsqueeze(1)
-
+            # logger.debug(f"UNetModel::forward: context_emb.shape: {context_emb.shape}")
         else:
             raise ValueError("Must specify either instance_condition or text_condition")
 
@@ -819,23 +852,7 @@ class UNetModel(nn.Module):
         h = self.final_res_block(h, time_emb)
         h = h.type(X.dtype)
         ret = self.out(h)
-
-        # attn_masks = None
-        # for module in self.input_blocks:
-        #     h = module(h, time_emb, context_emb, attn_masks)
-        #     # logger.debug(f"UNetModel::forward: input_blocks hidden layer output shape: {h.shape}")
-        #     hs.append(h)
-        # h = self.middle_block(h, time_emb, context_emb, attn_masks)
-        # # logger.debug(f"UNetModel::forward: middle_block hidden layer output shape: {h.shape}")
-        # for module in self.output_blocks:
-        #     h_in_input = hs.pop()
-        #     # logger.debug(f"UNetModel::forward: output_blocks hs.pop output shape: {h_in_input.shape}")
-        #     cat_in = th.cat([h, h_in_input], dim=1)
-        #     h = module(cat_in, time_emb, context_emb, attn_masks)
-        #     # logger.debug(f"UNetModel::forward: output_blocks h output shape: {h.shape}")
-        # h = h.type(X.dtype)
-        # ret = self.out(h)
-        logger.debug(f"UNetModel::forward: out layer output shape: {ret.shape}")
+        # logger.debug(f"UNetModel::forward: out layer output shape: {ret.shape}")
 
         return ret
 
