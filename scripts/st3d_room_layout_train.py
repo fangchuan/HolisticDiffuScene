@@ -35,7 +35,8 @@ def main():
 
     # set up distributed training and logging
     dist_util.setup_dist()
-    log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    # log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    log_dir = args.log_dir
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout'])
     logger.set_level(logger.INFO)
 
@@ -51,7 +52,12 @@ def main():
                                 shard=MPI.COMM_WORLD.Get_rank(),
                                 num_shards=MPI.COMM_WORLD.Get_size())
     logger.info(f"train_dataset length: {len(train_dataset)}")
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2, drop_last=False)
+    train_loader = DataLoader(train_dataset, 
+                              batch_size=args.batch_size, 
+                              shuffle=True, 
+                              num_workers=0, 
+                              drop_last=True,
+                              pin_memory=True)
 
     logger.log("training...")
     TrainLoop(
@@ -91,7 +97,7 @@ def create_argparser():
         microbatch=-1,  # -1 disables microbatches
         ema_rate="0.9999",  # comma-separated list of EMA values
         log_interval=10,
-        save_interval=10000,
+        save_interval=100000,
         resume_checkpoint="",
         use_fp16=False,
         fp16_scale_growth=1e-3,

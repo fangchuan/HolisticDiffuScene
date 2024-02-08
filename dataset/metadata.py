@@ -1368,3 +1368,34 @@ ST3D_LIVINGROOM_FURNITURE_CNTS = {
     "box": 1,
     "toilet": 1
 }
+
+
+ST3D_KITCHEN_MIN_LEN = 3
+ST3D_KITCHEN_MAX_LEN = 24
+# 20
+ST3D_KITCHEN_FURNITURE = [
+        "shelves", "fridge", "mirror", "door", "pillow", "cabinet", "table", "sofa",
+        "window", "stove", "chair", "curtain", "lamp", "bathtub", "hood", "counter",
+        "picture", "sink", "wall", "empty"
+]
+
+ST3D_KITCHEN_FURNITURE_CNTS = {
+        "cabinet": 2057,
+        "door": 1961,
+        "stove": 1879,
+        "window": 1840,
+        "sink": 1807,
+        "hood": 1773,
+        "fridge": 1167,
+        "lamp": 470,
+        "curtain": 206,
+        "picture": 124,
+        "chair": 69,
+        "shelves": 58,
+        "sofa": 37,
+        "counter": 25,
+        "table": 18,
+        "pillow": 1,
+        "mirror": 1,
+        "bathtub": 1
+    }

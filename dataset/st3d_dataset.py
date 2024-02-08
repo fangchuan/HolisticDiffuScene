@@ -792,7 +792,7 @@ class ST3DDataset(data.Dataset):
             [fname for fname in os.listdir(self.img_dir) if fname.endswith('.jpg') or fname.endswith('.png')])
         self.txt_fnames = ['%s.txt' % fname[:-4] for fname in self.img_fnames]
         self.json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
-        self.npy_fnames = ['%s.npy' % fname[:-4] for fname in self.img_fnames]
+        self.npy_fnames = ['%s_gpt4.npy' % fname[:-4] for fname in self.img_fnames]
         #  image file names and text file names on local_rank machine
         self.local_img_fnames = self.img_fnames[shard::num_shards]
         self.local_txt_fnames = self.txt_fnames[shard::num_shards]
@@ -853,7 +853,7 @@ class ST3DDataset(data.Dataset):
             room_type = ROOM_TYPE_DICT[room_type]
         # read room textual description file
         text_desc_lst = []
-        text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx])
+        text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx][:-4]+'_gpt4.txt')
         with open(text_desc_filepath) as f:
             text_desc = f.readline()
             text_desc_lst = text_desc.strip().split('. ')
@@ -922,15 +922,15 @@ class ST3DDataset(data.Dataset):
         out_lst = out_lst.transpose(1, 0)
 
         cond_dict = {}
-        if room_type is not None:
-            cond_dict["y"] = np.array(room_type, dtype=np.int64)
+        # if room_type is not None:
+        #     cond_dict["y"] = np.array(room_type, dtype=np.int64)
 
         text_desc_len = len(text_desc_lst)
         if text_desc_len:
             if text_desc_len > self.max_text_sentences:
                 text_desc_lst = text_desc_lst[:self.max_text_sentences]
             cond_dict["text"] = ''.join(text_desc_lst)
-        cond_dict["context"] = np.squeeze(text_emb, axis=0)
+        cond_dict["text_condition"] = np.squeeze(text_emb, axis=0)
 
         if self.return_scene_name:
             scene_name = self.local_txt_fnames[idx][:-4]

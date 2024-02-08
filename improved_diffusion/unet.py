@@ -760,7 +760,7 @@ class UNetModel(nn.Module):
         #     assert instance_condition is not None, "must specify instance_condition if and only if the model is instance-conditional"
 
         hs = []
-        # logger.debug(f"UNetModel::forward: input x: {x.shape}")
+        logger.debug(f"UNetModel::forward: input x: {x.shape}")
         # logger.debug(f"UNetModel::forward: input timesteps shape: {timesteps.shape}")
         time_emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
         # logger.debug(f"UNetModel::forward: output timesteps embedding shape: {time_emb.shape}")
@@ -793,12 +793,12 @@ class UNetModel(nn.Module):
             # X = X.transpose(1, 2)
 
             object_class_feat = self.class_embed_func(x[:, :self.num_object_classes, :])
-            # logger.debug(f"UNetModel::forward: output object class embedding shape: {object_class_feat.shape}")
+            logger.debug(f"UNetModel::forward: output object class embedding shape: {object_class_feat.shape}")
             object_bbox_feat = self.bbox_embed_func(x[:, self.num_object_classes:self.num_object_classes + 8, :])
-            # logger.debug(f"UNetModel::forward: output object bbox embedding shape: {object_bbox_feat.shape}")
+            logger.debug(f"UNetModel::forward: output object bbox embedding shape: {object_bbox_feat.shape}")
             X = th.cat([object_class_feat, object_bbox_feat], dim=1)
 
-        # logger.debug(f"UNetModel::forward:  X shape: {X.shape}")
+        logger.debug(f"UNetModel::forward:  X shape: {X.shape}")
 
         context_emb = None
         # if self.num_classes is not None:
@@ -809,7 +809,7 @@ class UNetModel(nn.Module):
         if self.instance_embed_layer is not None:
             instance_indices = th.arange(self.num_instances).long().to(x.device)[None, :].repeat(x.shape[0], 1)
             instance_emb = self.instance_embed_layer(instance_indices)
-            # logger.debug(f"UNetModel::forward: instance_emb.shape: {instance_emb.shape}")
+            logger.debug(f"UNetModel::forward: instance_emb.shape: {instance_emb.shape}")
             # time_emb = time_emb + instance_emb
         if self.b_text_cond and text_condition is not None:
             assert text_condition.shape == (
