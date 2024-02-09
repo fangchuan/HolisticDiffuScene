@@ -817,7 +817,7 @@ def prepare_dataset(raw_dataset_dir: str,
                     print(f'bad scene {room_str} walls number > {ST3D_BEDROOM_QUAD_WALL_MAX_LEN}')
                     ROOM_WALLS_LARGER_THAN_10.append(room_str)
                     continue
-            elif target_room_type == 'livingroom':
+            elif target_room_type == 'living room':
                 if len(quad_walls_normalized_dict['walls']) > ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN:
                     print(f'bad scene {room_str} walls number > {ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN}')
                     ROOM_WALLS_LARGER_THAN_10.append(room_str)
@@ -988,17 +988,17 @@ def parse_args():
                         help="raw dataset path",
                         metavar="DIR")
     parser.add_argument("--room_type",
-                        default="st3d_kitchen",
+                        default="st3d_livingroom",
                         choices=["st3d_bedroom", "st3d_livingroom", "st3d_diningroom", "st3d_study", "st3d_kitchen"],
                         help="structured3d room type")
     parser.add_argument('--annotated_labels_path',
                         type=str,
-                        default='/data/dataset/Structured3D/preprocessed/annotations/kitchen/latest_labels/',
+                        default='/data/dataset/Structured3D/preprocessed/annotations/livingroom/latest_labels/',
                         help='path to annotated labels')
     parser.add_argument('--out_train_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/new_text2pano/train')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240209_text2pano/train')
     parser.add_argument('--out_test_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/new_text2pano/test')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240209_text2pano/test')
     return parser.parse_args()
 
 
@@ -1075,10 +1075,10 @@ def main():
     # get train.json and test.json
     train_test_split_filepath = os.path.join(os.path.dirname(args.out_test_path), 'splits.json')
     valid_train_scene_ids = [
-        s[:-4] for s in os.listdir(os.path.join(args.out_train_path, room_type_str.replace(' ', '_'), 'img'))
+        s[:-4] for s in os.listdir(os.path.join(args.out_train_path, room_type_str.replace(' ', ''), 'img'))
     ]
     valid_test_scene_ids = [
-        s[:-4] for s in os.listdir(os.path.join(args.out_test_path, room_type_str.replace(' ', '_'), 'img'))
+        s[:-4] for s in os.listdir(os.path.join(args.out_test_path, room_type_str.replace(' ', ''), 'img'))
     ]
 
     with open(train_test_split_filepath, 'w') as f:

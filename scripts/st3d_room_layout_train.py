@@ -9,6 +9,7 @@ sys.path.append("..")  # Adds higher directory to python modules path.
 import argparse
 import datetime
 
+import torch
 from mpi4py import MPI
 from torch.utils.data import DataLoader
 
@@ -23,6 +24,7 @@ from improved_diffusion.script_util import (
 )
 from improved_diffusion.train_util import TrainLoop
 from dataset.st3d_dataset import ST3DDataset
+from dataset.efficient_dataloader import DataLoaderDived
 
 
 def make_dataloader_cycle(iterable):
@@ -49,6 +51,7 @@ def main():
     logger.log("creating data loader...")
     train_dataset = ST3DDataset(root_dir=args.data_dir,
                                 max_text_sentences=4,
+                                device=dist_util.dev(),
                                 shard=MPI.COMM_WORLD.Get_rank(),
                                 num_shards=MPI.COMM_WORLD.Get_size())
     logger.info(f"train_dataset length: {len(train_dataset)}")
@@ -58,12 +61,17 @@ def main():
                               num_workers=0, 
                               drop_last=True,
                               pin_memory=True)
+    # efficient_train_loader = DataLoaderDived(dataset=train_dataset,
+    #                                          base_batch_size=args.batch_size,
+    #                                          shuffle=True,
+    #                                          num_workers=8,
+    #                                          batch_size=8)
 
     logger.log("training...")
     TrainLoop(
         model=unet_model,
         diffusion=diffusion_model,
-        # data=iter(make_dataloader_cycle(train_loader)),
+        # data=efficient_train_loader,
         data=make_dataloader_cycle(train_loader),
         batch_size=args.batch_size,
         microbatch=args.microbatch,

@@ -17,9 +17,10 @@ import trimesh
 
 import torch.utils.data as data
 from misc import panostretch
-from .metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, \
-ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN,\
-ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN)
+from .metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE,  ST3D_KITCHEN_FURNITURE, \
+ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, ST3D_KITCHEN_MAX_LEN,\
+ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_KITCHEN_FURNITURE_CNTS,\
+    ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN)
 
 # room types
 ROOM_TYPE_DICT = {
@@ -40,7 +41,8 @@ ROOM_TYPE_DICT = {
     'garage': 14,
     'undefined': 15
 }
-
+from dataset.gen_scene_text import get_scene_description
+from improved_diffusion.clip_util import FrozenCLIPEmbedder
 
 # ROOM_CLASS_LST = [10, 8, 3, 2, 0, 4, 5, 14, 13, 12, 7, 9, 11, 1, 6, 15]
 def get_room_type(room_type_v: int) -> str:
@@ -635,6 +637,10 @@ def ClassLabelsEncode(room_type: int, obj_bbox_label: str) -> np.array:
         classes = ST3D_LIVINGROOM_FURNITURE
     elif room_type == ROOM_TYPE_DICT['dining room']:
         classes = ST3D_DININGROOM_FURNITURE
+    elif room_type == ROOM_TYPE_DICT['kitchen']:
+        classes = ST3D_KITCHEN_FURNITURE
+    else:
+        raise ValueError('The room type is not supported.')
 
     def one_hot_label(all_labels, current_label):
         return np.eye(len(all_labels))[all_labels.index(current_label)]
@@ -680,6 +686,8 @@ def ordered_bboxes_with_class_frequencies(room_type: int, object_bbox_lst: List[
         class_freq_dict = ST3D_LIVINGROOM_FURNITURE_CNTS
     elif room_type == ROOM_TYPE_DICT['dining room']:
         class_freq_dict = ST3D_DININGROOM_FURNITURE_CNTS
+    elif room_type == ROOM_TYPE_DICT['kitchen']:
+        class_freq_dict = ST3D_KITCHEN_FURNITURE_CNTS
 
     bbox_size_lst = np.array([np.array(bbox['size']) for bbox in object_bbox_lst])
     # print(f'bbox_size_lst: {bbox_size_lst}')
@@ -740,7 +748,7 @@ def padding_and_reshape_wall_bbox(room_type: int, wall_bbox_lst: np.array, bbox_
         class_num = len(ST3D_DININGROOM_FURNITURE)
         max_len = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
 
-    assert L <= max_len, 'The length of the wall bbox list should be less than 10.'
+    assert L <= max_len, f'The length of the wall bbox list should be less than {max_len}.'
 
     # Pad the end label in the end of each sequence, and convert the class labels to -1, 1
     empty_label = np.eye(class_num)[-1]
@@ -775,7 +783,10 @@ class ST3DDataset(data.Dataset):
             max_text_sentences=4,  #  max number of text_prompt sentences
             shard=0,  #  support parallel training
             num_shards=1,
-            return_scene_name=False):
+            device='cuda',
+            return_scene_name=False,
+            random_text_desc=True,
+            permutation=True):
         self.img_dir = os.path.join(root_dir, 'img')
         self.cor_dir = os.path.join(root_dir, 'label_cor')
         self.quad_wall_dir = os.path.join(root_dir, 'quad_walls')
@@ -792,7 +803,7 @@ class ST3DDataset(data.Dataset):
             [fname for fname in os.listdir(self.img_dir) if fname.endswith('.jpg') or fname.endswith('.png')])
         self.txt_fnames = ['%s.txt' % fname[:-4] for fname in self.img_fnames]
         self.json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
-        self.npy_fnames = ['%s_gpt4.npy' % fname[:-4] for fname in self.img_fnames]
+        self.npy_fnames = ['%s.npy' % fname[:-4] for fname in self.img_fnames]
         #  image file names and text file names on local_rank machine
         self.local_img_fnames = self.img_fnames[shard::num_shards]
         self.local_txt_fnames = self.txt_fnames[shard::num_shards]
@@ -808,6 +819,10 @@ class ST3DDataset(data.Dataset):
         self.max_text_sentences = max_text_sentences
         self.local_classes = None
         self.return_scene_name = return_scene_name
+        self.random_text_desc = random_text_desc
+        self.permutation = permutation
+        if random_text_desc:
+            self.clip_model = FrozenCLIPEmbedder(device=device)
 
         # The direction of all camera is always along the negative y-axis.
         self.cam_R = np.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]], np.float32)
@@ -848,31 +863,57 @@ class ST3DDataset(data.Dataset):
         room_type = None
         room_type_filepath = os.path.join(self.room_type_dir, self.local_txt_fnames[idx])
         with open(room_type_filepath) as f:
-            room_type = f.readline().strip()
-            assert room_type in ROOM_TYPE_DICT.keys(), room_type_filepath
-            room_type = ROOM_TYPE_DICT[room_type]
-        # read room textual description file
-        text_desc_lst = []
-        text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx][:-4]+'_gpt4.txt')
-        with open(text_desc_filepath) as f:
-            text_desc = f.readline()
-            text_desc_lst = text_desc.strip().split('. ')
-            text_desc_lst = [complete_stop_in_sentence(sen) for sen in text_desc_lst if len(sen)]
-
-        # read text embedding file
-        text_emb = np.array([])
-        text_emb_filepath = os.path.join(self.text_emb_dir, self.local_npy_fnames[idx])
-        text_emb = np.load(text_emb_filepath).astype(np.float32)
-
-        # read object bbox file
+            room_type_str = f.readline().strip()
+            assert room_type_str in ROOM_TYPE_DICT.keys(), room_type_filepath
+            room_type = ROOM_TYPE_DICT[room_type_str]
+        
+        # load object bbox file
         object_bbox_filepath = os.path.join(self.bbox_3d_dir, self.local_json_fnames[idx])
         object_bbox_lst = []
         with open(object_bbox_filepath) as f:
             object_bbox_dicts = json.load(f)
             object_bbox_dicts = object_bbox_dicts['objects']
-        # sort object bbox by class frequency and bbox size
-        object_bbox_dicts = ordered_bboxes_with_class_frequencies(room_type=room_type,
+        
+        # load wall bbox file
+        wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_json_fnames[idx])
+        wall_bbox_lst = []
+        with open(wall_bbox_filepath, 'r') as f:
+            wall_bbox_dicts = json.load(f)
+            wall_bbox_dicts = wall_bbox_dicts['walls']
+            
+        if not self.permutation:
+            # sort object bbox by class frequency and bbox size
+            object_bbox_dicts = ordered_bboxes_with_class_frequencies(room_type=room_type,
                                                                   object_bbox_lst=object_bbox_dicts)
+        else:
+            objects_num = len(object_bbox_dicts)
+            object_bbox_dicts = [object_bbox_dicts[i] for i in np.random.permutation(objects_num)]
+        
+        # load precomputed text description and text embedding
+        if not self.random_text_desc:
+            text_desc_lst = []
+            text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx])
+            with open(text_desc_filepath) as f:
+                text_desc = f.readline()
+                text_desc_lst = text_desc.strip().split('. ')
+                text_desc_lst = [complete_stop_in_sentence(sen) for sen in text_desc_lst if len(sen)]
+            # print(f'original text_desc_str: {text_desc}')
+            # read text embedding file
+            text_emb = np.array([])
+            text_emb_filepath = os.path.join(self.text_emb_dir, self.local_npy_fnames[idx])
+            text_emb = np.load(text_emb_filepath).astype(np.float32)
+        else:
+            text_desc_str, text_emb = get_scene_description(room_type=room_type_str,
+                                    wall_dict={"walls": wall_bbox_dicts}, 
+                                    object_dict={"objects": object_bbox_dicts},
+                                    eval=False,
+                                    glove_model=self.clip_model,
+                                    use_object_ordering=False)
+            text_emb = text_emb.astype(np.float32)
+            # print(f'randomrized text_desc_str: {text_desc_str}, text_embedding shape: {text_emb.shape}')
+            text_desc_lst = text_desc_str.strip().split('. ')
+            text_desc_lst = [complete_stop_in_sentence(sen) for sen in text_desc_lst if len(sen)]
+            
 
         for obj_bbox in object_bbox_dicts:
             bbox_class_label = obj_bbox['class'].lower()
@@ -893,12 +934,6 @@ class ST3DDataset(data.Dataset):
                                                           bbox_dim=bbox_property_encode_dim)
         # print(f'object_bbox_lst: {object_bbox_lst}')
 
-        # read wall bbox
-        wall_bbox_filepath = os.path.join(self.quad_wall_dir, self.local_json_fnames[idx])
-        wall_bbox_lst = []
-        with open(wall_bbox_filepath, 'r') as f:
-            wall_bbox_dicts = json.load(f)
-            wall_bbox_dicts = wall_bbox_dicts['walls']
         for wall_bbox in wall_bbox_dicts:
             wall_id = int(wall_bbox['ID'])
             wall_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label='wall')
