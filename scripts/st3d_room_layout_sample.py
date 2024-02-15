@@ -28,7 +28,7 @@ from improved_diffusion.script_util import (
 )
 
 from dataset.st3d_dataset import ST3DDataset
-# from improved_diffusion.clip_util import FrozenCLIPEmbedder
+from improved_diffusion.clip_util import FrozenCLIPEmbedder
 from dataset.metadata import ST3D_BEDROOM_QUAD_WALL_MAX_LEN, \
                             ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, \
                             COLOR_TO_ADEK_LABEL
@@ -39,16 +39,16 @@ from preprocess.prepare_st3d_dataset import vis_scene_mesh
 from misc.utils import reconstrcut_floor_ceiling_from_quad_walls
 
 TEXT_PROMPT_LST = [
-    "The bedroom has five walls. The room has a door, a bed and a nightstand. The nightstand is beside the door.",
-    "The bedroom has four walls. There is a bed in the middle of the room. There is a window on the wall. There is a desk next to the bed.",
-    "The bedroom has four walls. There is a chair next to the desk. There is a lamp on the desk. There is a door on the wall. ",
-    "The bedroom has six walls. There is a cabinet next to the door. There is a mirror on the cabinet. There is a carpet on the floor.",
-    "The bedroom has four walls. There is a bed in the middle of the room. There is a window on the wall. There is a desk next to the bed.",
-    "The bedroom has four walls.The room has a curtain , a cabinet and a door .There is a lamp to the right of the door .",
-    "The bedroom has eight walls. There is a picture on the wall. The television is in front of the bed. There is a chair next to the bed.",
-    "The bedroom has seven walls. The room has a bed, a window and a cabinet. The window is beside the door.",
-    "The bedroom has fiv walls. The room has a bed, a window and a curtain, but doesnot has a lamp.",
-    "The bedroom has six walls. The room has a door, a bed and a window.",
+    # "An Asian-inspired bedroom with traditional decor elements. There's a bed with blue and white cushions, wooden side tables, and sliding doors with tree motifs. The curved ceiling has layered detailing, and there's a large painting on one wall. The room also features a seating area with a blue rug and a low table set with a tea service.",
+    "A children's bedroom with a round crib in the center. The walls are decorated with a light purple wallpaper featuring whimsical motifs. There's a window with blinds, an air conditioning unit, and a playful wall decal of a tree. On the right, there's a white desk with a chair, and a plush toy rests on the floor. The room has a cozy, circular design, ideal for a nursery.",
+    # "The bedroom has four walls. There is a chair next to the desk. There is a lamp on the desk. There is a door on the wall. ",
+    # "The bedroom has six walls. There is a cabinet next to the door. There is a mirror on the cabinet. There is a carpet on the floor.",
+    # "The bedroom has four walls. There is a bed in the middle of the room. There is a window on the wall. There is a desk next to the bed.",
+    # "The bedroom has four walls.The room has a curtain , a cabinet and a door .There is a lamp to the right of the door .",
+    # "The bedroom has eight walls. There is a picture on the wall. The television is in front of the bed. There is a chair next to the bed.",
+    # "The bedroom has seven walls. The room has a bed, a window and a cabinet. The window is beside the door.",
+    # "The bedroom has fiv walls. The room has a bed, a window and a curtain, but doesnot has a lamp.",
+    # "The bedroom has six walls. The room has a door, a bed and a window.",
 ]
 
 
@@ -60,7 +60,7 @@ def main():
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
     # text_encoder = FrozenCLIPEmbedder(device=dist_util.dev())
-    dataset = ST3DDataset(root_dir=args.data_dir, max_text_sentences=4, return_scene_name=True)
+    dataset = ST3DDataset(root_dir=args.data_dir, max_text_sentences=4, return_scene_name=True, random_text_desc=False)
 
     logger.log("creating UNet model and diffusion model ...")
     model, diffusion = create_model_and_diffusion(**args_to_dict(args, model_and_diffusion_defaults().keys()))
@@ -91,18 +91,23 @@ def main():
                 scene_idx = np.random.choice(len(dataset))
                 gt_scene, gt_cond_dict, scene_name = dataset[scene_idx]
                 # text prompt from eval dataset
-                cond_data_lst.append(gt_cond_dict['context'])
+                cond_data_lst.append(gt_cond_dict['text_condition'])
                 text_prompt = gt_cond_dict['text']
                 cond_text_prompt_lst.append(text_prompt)
                 scene_names_lst.append(scene_name)
                 logger.log('text_prompt: {}'.format(text_prompt))
 
                 # text prompt from predefined list
-                # text_prompt = TEXT_PROMPT_LST[np.random.choice(len(TEXT_PROMPT_LST))]
+                # scene_idx = np.random.choice(len(TEXT_PROMPT_LST))
+                # scene_name = SCENE_NAME_LST[scene_idx]
+                # text_prompt = TEXT_PROMPT_LST[scene_idx]
                 # logger.log('text_prompt: {}'.format(text_prompt))
                 # cond_text_prompt_lst.append(text_prompt)
-                # cond_data_lst.append(text_encoder.get_text_embeds(text_prompt).unsqueeze(0).cpu().numpy())
-            model_kwargs["context"] = th.from_numpy(np.stack(cond_data_lst)).to(dist_util.dev(), dtype=th.float32)
+                # cond_data_lst.append(text_encoder.get_text_embeds(text_prompt).squeeze(0).cpu().numpy())
+                # scene_names_lst.append(scene_name)
+                
+            model_kwargs["text_condition"] = th.from_numpy(np.stack(cond_data_lst)).to(dist_util.dev(), dtype=th.float32)
+            # print(f'model_kwargs["text_condition"].shape: {model_kwargs["text_condition"].shape}')
         sample_fn = (diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop)
         sample = sample_fn(
             model=model,

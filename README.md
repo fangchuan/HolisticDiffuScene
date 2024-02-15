@@ -197,5 +197,5 @@ We would like to thank Kujiale.com for providing the database of house designs a
 34. 2023-10-14: ST3D数据集的object bbox angle没有归一化!!!
 35. 2023-11-15: GPU util打不满问题与env无关, 似乎与数据集大小有关, worker设为0可以缓解. 切换到A6000可以缓解.
 36. 2024-01-22: 更新unet网络, 包含instance_embedding, 训练text-condition的layout generation, 在3D_FRONT数据集上稍劣于ATISS!!!
-37. 2024-02-08: log/ST3D_bedroom/textcondition测试gpt4的room_text_prompt
-38. 2024-02-09: log/ST3D_livingroom/textcondition测试our_randomrized_text_prompt,
+37. 2024-02-08: log/ST3D_bedroom/textcondition测试gpt4的room_text_prompt, 训练集过拟合, 无法在测试集上生成合理的结果;
+38. 2024-02-09: log/ST3D_livingroom/textcondition测试our_randomrized_text_prompt, 训练集拟合效果不好, 无法在测试集上生成合理的结果;

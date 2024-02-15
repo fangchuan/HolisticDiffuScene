@@ -19,7 +19,7 @@ if __name__ == "__main__":
                         help="room types",
                         metavar="LIST")
     parser.add_argument("--gpt_caption_path",
-                        default="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/gpt4_vision_caption/",
+                        default="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/gpt4_vision_caption_test/",
                         help="gpt caption path",
                         metavar="DIR")
     args = parser.parse_args()
