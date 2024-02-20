@@ -30,6 +30,7 @@ from dataset.metadata import (INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABE
                               ST3D_BEDROOM_QUAD_WALL_MAX_LEN)
 
 from dataset.st3d_dataset import get_mesh_from_corners, np_coorx2u, np_coory2v, find_occlusion, corners_to_1d_boundary
+from dataset.st3d.st3d_scene import St3dRoom, ST3DDataset
 from dataset.gen_scene_text import get_scene_description
 
 from visualize_mesh import verify_normal, create_spatial_quad_polygen
@@ -763,6 +764,7 @@ def prepare_dataset(raw_dataset_dir: str,
     # clip model
     glove_model = FrozenCLIPEmbedder(device='cuda')
 
+    st3d_rooms_lst = []
     for scene_id in tqdm(scene_ids):
 
         if scene_id in INVALID_SCENES_LST:
@@ -810,7 +812,11 @@ def prepare_dataset(raw_dataset_dir: str,
                 print(f'bad scene {room_str} walls number < 4')
                 INVALID_ROOMS_LST.append(room_str)
                 continue
-
+            # skip wall height > 5m
+            if np.max([wall['height'] for wall in quad_walls_dict['walls']]) > 5.0:
+                print(f'bad scene {room_str} walls height > 5m')
+                INVALID_ROOMS_LST.append(room_str)
+                continue
             quad_wall_num_lst.append(len(quad_walls_normalized_dict['walls']))
             if target_room_type == 'bedroom' or target_room_type == 'kitchen':
                 if len(quad_walls_normalized_dict['walls']) > ST3D_BEDROOM_QUAD_WALL_MAX_LEN:
@@ -852,7 +858,7 @@ def prepare_dataset(raw_dataset_dir: str,
                 eval=(split == 'test'),
             )
             # print(f'room {room_str} scene_desc_text: {scene_desc_text}')
-
+            
             out_img_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'img')
             out_depth_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'depth')
             out_cord_dir = os.path.join(out_dir, room_type_str.replace(' ', ''), 'label_cor')
@@ -914,6 +920,29 @@ def prepare_dataset(raw_dataset_dir: str,
                 print(f'bad scene {room_str} with corrupted files')
                 continue
             else:
+                # construct st3d room
+                st3d_room = St3dRoom(scene_id=room_str, scene_type=room_type_str,
+                                walls_lst=quad_walls_dict['walls'],
+                                bboxes_lst=obj_bbox_3d_dict['objects'],)
+                st3d_rooms_lst.append(st3d_room)
+                
+                # re-center the walls and objects
+                def recenter_fn(x:Dict)->Dict:
+                    x['center'] = (np.array(x['center']) - st3d_room.centroid).tolist()
+                    x['corners'] = [(np.array(cor) - st3d_room.centroid).tolist() for cor in x['corners']]
+                    return x
+                # recenter_fn = lambda x: x['center'] = (np.array(x['center']) - st3d_room.centroid).tolist()
+                quad_walls_dict['walls'] = list(map(recenter_fn, quad_walls_dict['walls']))
+                obj_bbox_3d_dict['objects'] = list(map(recenter_fn, obj_bbox_3d_dict['objects']))
+                # visialization and debug
+                # if b_save_debug_files:
+                #     debug_bbox_img, debug_bbox_trimesh = save_visualization_and_mesh(
+                #         objects_lst=obj_bbox_3d_dict['objects'],
+                #         quad_walls_lst=quad_walls_dict['walls'],
+                #         source_cor_path=source_cor_path,
+                #         source_img_path=source_img_path,
+                #     )
+                    
                 shutil.copyfile(source_img_path, target_img_path)
                 shutil.copyfile(source_depth_path, target_depth_path)
                 shutil.copyfile(source_cor_path, target_cor_path)
@@ -924,15 +953,15 @@ def prepare_dataset(raw_dataset_dir: str,
                 # write 3d bbox
                 with open(target_bbox_3d_path, 'w') as f:
                     json.dump(obj_bbox_3d_dict, f, indent=4)
-                # write normalized 3d bbox
-                with open(target_bbox_3d_normal_path, 'w') as f:
-                    json.dump(obj_bbox_3d_normalized_dict, f, indent=4)
+                # # write normalized 3d bbox
+                # with open(target_bbox_3d_normal_path, 'w') as f:
+                #     json.dump(obj_bbox_3d_normalized_dict, f, indent=4)
                 # write quad walls
                 with open(target_quad_wall_path, 'w') as f:
                     json.dump(quad_walls_dict, f, indent=4)
-                # write normalized quad walls
-                with open(target_quad_wall_normalized_path, 'w') as f:
-                    json.dump(quad_walls_normalized_dict, f, indent=4)
+                # # write normalized quad walls
+                # with open(target_quad_wall_normalized_path, 'w') as f:
+                #     json.dump(quad_walls_normalized_dict, f, indent=4)
 
                 # write text description
                 with open(target_text_desc_path, 'w') as f:
@@ -968,6 +997,27 @@ def prepare_dataset(raw_dataset_dir: str,
             room_layout_size_lst.append(room_layout_size)
             furniture_counts.append([box['class'] for box in obj_bbox_3d_dict['objects']])
 
+    st3d_dataset = ST3DDataset.from_dataset_directory(st3d_rooms_lst)
+    tr_bounds = st3d_dataset.bounds["translations"]
+    si_bounds = st3d_dataset.bounds["sizes"]
+    an_bounds = st3d_dataset.bounds["angles"]
+
+    dataset_stats = {
+        "bounds_translations": tr_bounds[0].tolist() + tr_bounds[1].tolist(),
+        "bounds_sizes": si_bounds[0].tolist() + si_bounds[1].tolist(),
+        "bounds_angles": an_bounds[0].tolist() + an_bounds[1].tolist(),
+        "class_labels": st3d_dataset.class_labels,
+        "object_types": st3d_dataset.object_types,
+        "class_frequencies": st3d_dataset.class_frequencies,
+        "class_order": st3d_dataset.class_order,
+        "count_furniture": st3d_dataset.count_furniture,
+        "room_layout_size_mean": np.mean(room_layout_size_lst, axis=0).tolist(),
+    }
+    print(dataset_stats)
+    dataset_stat_filepath = os.path.join(out_dir, target_room_type.replace(' ', ''), split+"_dataset_stats.json")
+    with open(dataset_stat_filepath, "w") as f:
+        json.dump(dataset_stats, f, indent=4)
+        
     furniture_counts = Counter(sum(furniture_counts, []))
     furniture_counts = OrderedDict(sorted(furniture_counts.items(), key=lambda x: -x[1]))
     room_mean_size = np.mean(np.array(room_layout_size_lst), axis=0)
@@ -996,9 +1046,9 @@ def parse_args():
                         default='/data/dataset/Structured3D/preprocessed/annotations/livingroom/latest_labels/',
                         help='path to annotated labels')
     parser.add_argument('--out_train_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240209_text2pano/train')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240215_text2pano/train')
     parser.add_argument('--out_test_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240209_text2pano/test')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240215_text2pano/test')
     return parser.parse_args()
 
 
@@ -1073,7 +1123,7 @@ def main():
         json.dump(dataset_stats, f, indent=4)
 
     # get train.json and test.json
-    train_test_split_filepath = os.path.join(os.path.dirname(args.out_test_path), 'splits.json')
+    train_test_split_filepath = os.path.join(os.path.dirname(args.out_test_path), room_type_str.replace(' ', '')+'_splits.json')
     valid_train_scene_ids = [
         s[:-4] for s in os.listdir(os.path.join(args.out_train_path, room_type_str.replace(' ', ''), 'img'))
     ]

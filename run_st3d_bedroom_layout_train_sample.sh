@@ -1,16 +1,18 @@
-# MODEL_FLAGS="--layout_channels 32 --layout_size 23 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True  --b_class_cond False --b_text_cond True --use_input_encoding True"
-# DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine"
-# TRAIN_FLAGS="--lr 1e-4 --batch_size 64 --schedule_sampler loss-second-moment --use_3d_iou False "
-# NUM_GPUS=2
-# MAX_STEPS=400000
+MODEL_FLAGS="--layout_channels 32 --layout_size 23 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True  --b_class_cond False --b_text_cond True --use_input_encoding True"
+DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine"
+TRAIN_FLAGS="--lr 1e-4 --batch_size 64 --schedule_sampler loss-second-moment --use_3d_iou False "
+NUM_GPUS=2
+MAX_STEPS=400000
+train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/bedroom/train_dataset_stats.json"
 
-# mpiexec -n $NUM_GPUS python scripts/st3d_room_layout_train.py \
-#  --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/new_text2pano/train/bedroom/ \
-#  $MODEL_FLAGS \
-#  $DIFFUSION_FLAGS \
-#  $TRAIN_FLAGS \
-#  --lr_anneal_steps $MAX_STEPS \
-#  --log_dir log/ST3D_bedroom/textcondition
+mpiexec -n $NUM_GPUS python scripts/st3d_room_layout_train.py \
+ --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/bedroom/ \
+ $MODEL_FLAGS \
+ $DIFFUSION_FLAGS \
+ $TRAIN_FLAGS \
+ --lr_anneal_steps $MAX_STEPS \
+ --log_dir log/ST3D_bedroom/20240220_normalized \
+ --dataset_stats_file $train_stats_file
 
 
 MODEL_FLAGS="--layout_channels 32 --layout_size 23 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True  --b_class_cond False --b_text_cond True --use_input_encoding True"
@@ -19,10 +21,11 @@ NUM_SAMPLES=10
 ROOM_TYPE="bedroom"
 
 python scripts/st3d_room_layout_sample.py \
- --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/new_text2pano/test/bedroom/ \
- --model_path log/ST3D_bedroom/textcondition/ema_0.9999_400000.pt \
+ --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/bedroom/ \
+ --model_path log/ST3D_bedroom/20240220_normalized/ema_0.9999_400000.pt \
  $MODEL_FLAGS \
  $DIFFUSION_FLAGS \
  --room_type $ROOM_TYPE \
  --num_samples $NUM_SAMPLES \
- --log_dir "log/ST3D_bedroom/textcondition/sample_results"
+ --log_dir "log/ST3D_bedroom/20240220_normalized/sample_results" \
+ --dataset_stats_file $train_stats_file 

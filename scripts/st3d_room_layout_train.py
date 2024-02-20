@@ -53,7 +53,9 @@ def main():
                                 max_text_sentences=4,
                                 device=dist_util.dev(),
                                 shard=MPI.COMM_WORLD.Get_rank(),
-                                num_shards=MPI.COMM_WORLD.Get_size())
+                                num_shards=MPI.COMM_WORLD.Get_size(),
+                                random_text_desc=False,
+                                train_stats_file=args.dataset_stats_file,)
     logger.info(f"train_dataset length: {len(train_dataset)}")
     train_loader = DataLoader(train_dataset, 
                               batch_size=args.batch_size, 
@@ -109,6 +111,7 @@ def create_argparser():
         resume_checkpoint="",
         use_fp16=False,
         fp16_scale_growth=1e-3,
+        dataset_stats_file=None,
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()

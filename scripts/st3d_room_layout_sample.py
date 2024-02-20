@@ -60,7 +60,11 @@ def main():
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
     # text_encoder = FrozenCLIPEmbedder(device=dist_util.dev())
-    dataset = ST3DDataset(root_dir=args.data_dir, max_text_sentences=4, return_scene_name=True, random_text_desc=False)
+    dataset = ST3DDataset(root_dir=args.data_dir, 
+                          max_text_sentences=4, 
+                          return_scene_name=True, 
+                          random_text_desc=False, 
+                          train_stats_file=args.dataset_stats_file)
 
     logger.log("creating UNet model and diffusion model ...")
     model, diffusion = create_model_and_diffusion(**args_to_dict(args, model_and_diffusion_defaults().keys()))
@@ -132,6 +136,7 @@ def main():
     samples_arr = np.concatenate(all_layout_lst, axis=0)
     samples_arr = samples_arr[:args.num_samples]
     samples_arr = np.transpose(samples_arr, (0, 2, 1))
+    print(f'samples_arr.shape: {samples_arr.shape}')
 
     sample_result_folder = os.path.join(logger.get_dir(), f'{args.room_type}')
     if not os.path.exists(sample_result_folder):
@@ -161,6 +166,11 @@ def main():
     # load sample results: BxNxChannel
     for idx, scene_name in enumerate(scene_names_lst):
         scene_sample_result = samples_arr[idx]
+        print(f'scene_sample_result.shape: {scene_sample_result.shape}')
+        # descale samples
+        scene_sample_result = dataset.post_process(scene_sample_result)
+        # print(f'scene_sample_result.shape: {scene_sample_result.shape}')
+        print(f'descaled scene_sample_result.shape: {scene_sample_result.shape}')
         scene_sample_label = args.room_type
         print(f'scene_sample_label: {scene_sample_label}')
 
@@ -170,6 +180,8 @@ def main():
         elif args.room_type == 'livingroom':
             room_layout_size = np.array([7.239328956952291, 7.6231320936720675, 2.857928654068745])  # livingroom
             wall_max_num = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
+        elif args.room_type == 'kitchen':
+            wall_max_num = ST3D_BEDROOM_QUAD_WALL_MAX_LEN
         # quad walls
         quad_wall_lst = scene_sample_result[:wall_max_num, :]
         # objects
@@ -178,8 +190,8 @@ def main():
         wall_dict_lst, obj_bbox_dict_lst = recover_quad_wall_layout_mesh(dataset_type='st3d',
                                                                          room_type=args.room_type,
                                                                          quad_wall_lst=quad_wall_lst,
-                                                                         object_bbox_lst=obj_bbox_lst,
-                                                                         room_layout_bbox_size=room_layout_size)
+                                                                         object_bbox_lst=obj_bbox_lst,)
+                                                                        #  room_layout_bbox_size=room_layout_size)
 
         # save synthesis results as image
         out_img = np.zeros((512, 1024, 3), np.uint8)
@@ -229,6 +241,7 @@ def create_argparser():
         use_ddim=False,
         model_path="",
         room_type='bedroom',
+        dataset_stats_file=None,
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()

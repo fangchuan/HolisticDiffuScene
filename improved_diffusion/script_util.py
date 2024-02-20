@@ -163,6 +163,8 @@ def create_model(
         channel_mult = (1, 2, 2, 2)
     elif layout_feature_size == 34:  # for st3d_livingroom
         channel_mult = (1, 2, 2, 2)
+    elif layout_feature_size == 28:  # for st3d_kitchen
+        channel_mult = (1, 2, 2, 2)
     else:
         raise ValueError(f"unsupported layout size: {layout_channels}")
 

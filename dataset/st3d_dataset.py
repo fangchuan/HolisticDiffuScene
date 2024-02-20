@@ -20,7 +20,7 @@ from misc import panostretch
 from .metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE,  ST3D_KITCHEN_FURNITURE, \
 ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, ST3D_KITCHEN_MAX_LEN,\
 ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_KITCHEN_FURNITURE_CNTS,\
-    ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN)
+    ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_KITCHEN_QUAD_WALL_MAX_LEN)
 
 # room types
 ROOM_TYPE_DICT = {
@@ -650,7 +650,16 @@ def ClassLabelsEncode(room_type: int, obj_bbox_label: str) -> np.array:
     class_label = one_hot_label(classes, obj_bbox_label)
     return class_label
 
+def encode_class_labels(class_labels: List[str], obj_bbox_label: str) -> np.array:
 
+    def one_hot_label(all_labels, current_label):
+        return np.eye(len(all_labels))[all_labels.index(current_label)]
+
+    C = len(class_labels)  # number of classes
+    class_label = np.zeros(C, dtype=np.float32)
+    class_label = one_hot_label(class_labels, obj_bbox_label)
+    return class_label
+    
 def TranslationEncode(obj_bbox_centroid: np.array) -> np.array:
     """Implement the encoding for the object centroid."""
     # Make a local copy of the class labels
@@ -715,10 +724,15 @@ def padding_and_reshape_object_bbox(room_type: int, object_bbox_lst: np.array, b
     elif room_type == ROOM_TYPE_DICT['dining room']:
         max_len = ST3D_DININGROOM_MAX_LEN
         class_num = len(ST3D_DININGROOM_FURNITURE)
+    elif room_type == ROOM_TYPE_DICT['kitchen']:
+        max_len = ST3D_KITCHEN_MAX_LEN
+        class_num = len(ST3D_KITCHEN_FURNITURE)
+    else:
+        raise ValueError('The room type is not supported.')
 
     # Pad the end label in the end of each sequence, and convert the class labels to -1, 1
     if L < max_len:
-        empty_label = np.eye(class_num)[-1]
+        empty_label = np.eye(class_num)[-1] * 2 -1
         padding = np.concatenate([empty_label, np.zeros(bbox_dim - class_num, dtype=np.float32)], axis=0)
         object_bbox_lst = np.vstack([object_bbox_lst, np.tile(padding, [max_len - L, 1])])
     elif L >= max_len:
@@ -747,11 +761,16 @@ def padding_and_reshape_wall_bbox(room_type: int, wall_bbox_lst: np.array, bbox_
     elif room_type == ROOM_TYPE_DICT['dining room']:
         class_num = len(ST3D_DININGROOM_FURNITURE)
         max_len = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
+    elif room_type == ROOM_TYPE_DICT['kitchen']:
+        class_num = len(ST3D_KITCHEN_FURNITURE)
+        max_len = ST3D_KITCHEN_QUAD_WALL_MAX_LEN
+    else:
+        raise ValueError('The room type is not supported.')
 
     assert L <= max_len, f'The length of the wall bbox list should be less than {max_len}.'
 
     # Pad the end label in the end of each sequence, and convert the class labels to -1, 1
-    empty_label = np.eye(class_num)[-1]
+    empty_label = np.eye(class_num)[-1] * 2 -1
     padding = np.concatenate([empty_label, np.zeros(bbox_dim - class_num, dtype=np.float32)], axis=0)
     wall_bbox_lst = np.vstack([wall_bbox_lst, np.tile(padding, [max_len - L, 1])])
 
@@ -786,7 +805,8 @@ class ST3DDataset(data.Dataset):
             device='cuda',
             return_scene_name=False,
             random_text_desc=True,
-            permutation=True):
+            permutation=True,
+            train_stats_file=None):
         self.img_dir = os.path.join(root_dir, 'img')
         self.cor_dir = os.path.join(root_dir, 'label_cor')
         self.quad_wall_dir = os.path.join(root_dir, 'quad_walls')
@@ -797,12 +817,14 @@ class ST3DDataset(data.Dataset):
         # text descritpion folder
         self.text_desc_dir = os.path.join(root_dir, 'text_desc')
         self.text_emb_dir = os.path.join(root_dir, 'text_desc_emb')
+        self.train_stats_filepath = train_stats_file
 
         # total image file names and text file names
         self.img_fnames = sorted(
             [fname for fname in os.listdir(self.img_dir) if fname.endswith('.jpg') or fname.endswith('.png')])
         self.txt_fnames = ['%s.txt' % fname[:-4] for fname in self.img_fnames]
-        self.json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
+        # self.json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
+        self.json_fnames = ['%s.json' % fname[:-4] for fname in self.img_fnames]
         self.npy_fnames = ['%s.npy' % fname[:-4] for fname in self.img_fnames]
         #  image file names and text file names on local_rank machine
         self.local_img_fnames = self.img_fnames[shard::num_shards]
@@ -828,10 +850,108 @@ class ST3DDataset(data.Dataset):
         self.cam_R = np.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]], np.float32)
 
         self._check_dataset()
+        self._parse_train_stats()
 
     def _check_dataset(self):
         for fname in self.txt_fnames:
             assert os.path.isfile(os.path.join(self.cor_dir, fname)), '%s not found' % os.path.join(self.cor_dir, fname)
+
+    def _parse_train_stats(self):
+        with open(self.train_stats_filepath, "r") as f:
+            train_stats = json.load(f)
+        # min and max centroid, size, angle
+        self._centroids = train_stats["bounds_translations"]
+        self._centroids = (np.array(self._centroids[:3]), np.array(self._centroids[3:]))
+        self._sizes = train_stats["bounds_sizes"]
+        self._sizes = (np.array(self._sizes[:3]), np.array(self._sizes[3:]))
+        self._angles = train_stats["bounds_angles"]
+        self._angles = (np.array(self._angles[0]), np.array(self._angles[1]))
+
+        self._class_labels = train_stats["class_labels"]
+        self._object_types = train_stats["object_types"]
+        self._class_frequencies = train_stats["class_frequencies"]
+        self._class_order = train_stats["class_order"]
+        self._count_furniture = train_stats["count_furniture"]
+
+    @property
+    def class_labels(self):
+        return self._class_labels
+
+    @property
+    def object_types(self):
+        return self._object_types
+
+    @property
+    def class_frequencies(self):
+        return self._class_frequencies
+
+    @property
+    def class_order(self):
+        return self._class_order
+
+    @property
+    def count_furniture(self):
+        return self._count_furniture
+    
+    @staticmethod
+    def scale(x, minimum, maximum):
+        X = x.astype(np.float32)
+        X = np.clip(X, minimum, maximum)
+        X = ((X - minimum) / (maximum - minimum))
+        X = 2 * X - 1
+        return X
+
+    @staticmethod
+    def descale(x, minimum, maximum):
+        x = (x + 1) / 2
+        x = x * (maximum - minimum) + minimum
+        return x
+
+    def post_process(self, samples: np.ndarray):
+        """ post process the samples in the room
+
+        Args:
+            samples (np.ndarray): sampled furniture and walls in the room
+        """
+        N, C = samples.shape
+        center_bounds = self._centroids
+        size_bounds = self._sizes
+
+        center_dim = 3
+        size_dim = 3
+        angle_dim = 2
+        class_label_dim = len(self._class_labels)
+
+        new_samples = []
+        for i in range(N):
+            # descale class labels
+            class_labels = samples[i, :class_label_dim]
+            descaled_class_labels = (class_labels + 1) / 2
+            # class_label_prob = np.where(descaled_class_labels > 0.5, descaled_class_labels, 0)
+            # if np.all(class_label_prob == 0):
+            #     continue
+            # class_label = self.class_labels[class_label_prob.argmax()]
+            # if class_label == 'empty':
+            #     continue
+
+            # descale center
+            center = samples[i, class_label_dim:class_label_dim + center_dim]
+            descaled_centers = self.descale(center, *center_bounds)
+
+            # descale size
+            size = samples[i, class_label_dim + center_dim:class_label_dim + center_dim + size_dim]
+            descaled_sizes = self.descale(size, *size_bounds)
+
+            # cvt cos,sin to angle
+            cos_sin_angle = samples[i, class_label_dim + center_dim + size_dim:class_label_dim + center_dim + size_dim +
+                                    angle_dim]
+            angles = np.arctan2(cos_sin_angle[1:2], cos_sin_angle[0:1])
+
+            # concatenate
+            descaled_samples = np.concatenate([descaled_class_labels, descaled_centers, descaled_sizes, angles],
+                                              axis=-1)
+            new_samples.append(descaled_samples)
+        return np.array(new_samples)
 
     def __len__(self):
         # return len(self.img_fnames)
@@ -853,11 +973,11 @@ class ST3DDataset(data.Dataset):
         # H, W = img.shape[:2]
 
         # read camera position file
-        cam_pos_lst = []
-        cam_pos_filepath = os.path.join(self.cam_pos_dir, self.local_txt_fnames[idx])
-        with open(cam_pos_filepath) as f:
-            cam_pos_lst = np.array([line.strip().split() for line in f if line.strip()], np.float32)
-        assert len(cam_pos_lst) == 1, cam_pos_filepath
+        # cam_pos_lst = []
+        # cam_pos_filepath = os.path.join(self.cam_pos_dir, self.local_txt_fnames[idx])
+        # with open(cam_pos_filepath) as f:
+        #     cam_pos_lst = np.array([line.strip().split() for line in f if line.strip()], np.float32)
+        # assert len(cam_pos_lst) == 1, cam_pos_filepath
 
         # read room type file
         room_type = None
@@ -913,45 +1033,136 @@ class ST3DDataset(data.Dataset):
             # print(f'randomrized text_desc_str: {text_desc_str}, text_embedding shape: {text_emb.shape}')
             text_desc_lst = text_desc_str.strip().split('. ')
             text_desc_lst = [complete_stop_in_sentence(sen) for sen in text_desc_lst if len(sen)]
+        
+        # new_bbox_dict_lst = []
+        if self.train_stats_filepath is None:
+            for obj_bbox in object_bbox_dicts:
+                bbox_class_label = obj_bbox['class'].lower()
+                bbox_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=bbox_class_label)
+                bbox_centroid = np.array(obj_bbox['center'], np.float32)
+                bbox_centroid = TranslationEncode(bbox_centroid)
+                bbox_size = np.array(obj_bbox['size'], np.float32)
+                bbox_size = SizeEncode(bbox_size)
+                # only use Z angle
+                bbox_angle = np.array(obj_bbox['angles'], np.float32)
+                bbox_angle = RotationEncode(bbox_angle)
+                bbox_property_encode = np.concatenate([bbox_class, bbox_centroid, bbox_size, bbox_angle], axis=-1)
+                # print(f'bbox_property_encode: {bbox_property_encode}')
+                bbox_property_encode_dim = bbox_property_encode.shape[-1]
+                object_bbox_lst.append(bbox_property_encode)
+            object_bbox_lst = padding_and_reshape_object_bbox(room_type=room_type,
+                                                            object_bbox_lst=np.array(object_bbox_lst),
+                                                            bbox_dim=bbox_property_encode_dim)
+        else:
+            # normalize object bbox w.r.t. training set statistics
+            bbox_onehot_class_labels = []
+            bbox_trans = []
+            bbox_sizes = []
+            bbox_angles = []
+            for obj_bbox in object_bbox_dicts:
+                # new_obj_bbox = obj_bbox.copy()
+                bbox_class_label = obj_bbox['class'].lower()
+                bbox_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=bbox_class_label)
+                # scale to [-1, 1]
+                bbox_class = bbox_class*2 - 1
+                bbox_onehot_class_labels.append(bbox_class)
+                
+                bbox_centroid = np.array(obj_bbox['center'], np.float32)
+                scaled_bbox_centroid = self.scale(bbox_centroid, *self._centroids)
+                bbox_trans.append(scaled_bbox_centroid)
+                # new_obj_bbox['center'] = self.descale(scaled_bbox_centroid, *self._centroids).tolist()
+                
+                bbox_size = np.array(obj_bbox['size'], np.float32)
+                scaled_bbox_size = self.scale(bbox_size, *self._sizes)
+                bbox_sizes.append(scaled_bbox_size)
+                # new_obj_bbox['size'] = self.descale(scaled_bbox_size, *self._sizes).tolist()
+                
+                # only use z_angle
+                bbox_angle = np.array(obj_bbox['angles'], np.float32)[-1]
+                bbox_cos_sin_angles = np.array([np.cos(bbox_angle), np.sin(bbox_angle)])
+                bbox_angles.append(bbox_cos_sin_angles)
+                # new_obj_bbox['angles'] = [0,0, np.arctan2(bbox_cos_sin_angles[1], bbox_cos_sin_angles[0])]
+                
+                # new_bbox_dict_lst.append(new_obj_bbox)
+                
+            object_bbox_lst = np.concatenate([np.array(bbox_onehot_class_labels), 
+                                              np.array(bbox_trans), 
+                                              np.array(bbox_sizes), 
+                                              np.array(bbox_angles)], axis=-1)
             
+            object_bbox_lst = padding_and_reshape_object_bbox(room_type=room_type,
+                                                    object_bbox_lst=object_bbox_lst,
+                                                    bbox_dim=object_bbox_lst.shape[-1])   
+            # print(f'object_bbox_lst: {object_bbox_lst}')
+                 
+                
 
-        for obj_bbox in object_bbox_dicts:
-            bbox_class_label = obj_bbox['class'].lower()
-            bbox_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=bbox_class_label)
-            bbox_centroid = np.array(obj_bbox['center'], np.float32)
-            bbox_centroid = TranslationEncode(bbox_centroid)
-            bbox_size = np.array(obj_bbox['size'], np.float32)
-            bbox_size = SizeEncode(bbox_size)
-            # only use Z angle
-            bbox_angle = np.array(obj_bbox['angles'], np.float32)
-            bbox_angle = RotationEncode(bbox_angle)
-            bbox_property_encode = np.concatenate([bbox_class, bbox_centroid, bbox_size, bbox_angle], axis=-1)
-            # print(f'bbox_property_encode: {bbox_property_encode}')
-            bbox_property_encode_dim = bbox_property_encode.shape[-1]
-            object_bbox_lst.append(bbox_property_encode)
-        object_bbox_lst = padding_and_reshape_object_bbox(room_type=room_type,
-                                                          object_bbox_lst=np.array(object_bbox_lst),
-                                                          bbox_dim=bbox_property_encode_dim)
-        # print(f'object_bbox_lst: {object_bbox_lst}')
-
-        for wall_bbox in wall_bbox_dicts:
-            wall_id = int(wall_bbox['ID'])
-            wall_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label='wall')
-            wall_centroid = np.array(wall_bbox['center'], np.float32)
-            wall_centroid = TranslationEncode(wall_centroid)
-            wall_size = np.array([wall_bbox['width'], 0.01, wall_bbox['height']], np.float32)
-            wall_size = SizeEncode(wall_size)
-            wall_angle = np.array(wall_bbox['angles'], np.float32)
-            wall_angle = RotationEncode(wall_angle)
-            wall_property_encode = np.concatenate([wall_class, wall_centroid, wall_size, wall_angle], axis=-1)
-            # print(f'wall_property_encode: {wall_property_encode}')
-            wall_property_encode_dim = wall_property_encode.shape[-1]
-            wall_bbox_lst.append(wall_property_encode)
-        wall_bbox_lst = padding_and_reshape_wall_bbox(room_type=room_type,
-                                                      wall_bbox_lst=np.array(wall_bbox_lst),
-                                                      bbox_dim=wall_property_encode_dim)
-
-        # print(f'wall_bbox_lst: {wall_bbox_lst}')
+        if self.train_stats_filepath is None:
+            for wall_bbox in wall_bbox_dicts:
+                wall_id = int(wall_bbox['ID'])
+                wall_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label='wall')
+                wall_centroid = np.array(wall_bbox['center'], np.float32)
+                wall_centroid = TranslationEncode(wall_centroid)
+                wall_size = np.array([wall_bbox['width'], 0.01, wall_bbox['height']], np.float32)
+                wall_size = SizeEncode(wall_size)
+                wall_angle = np.array(wall_bbox['angles'], np.float32)
+                wall_angle = RotationEncode(wall_angle)
+                wall_property_encode = np.concatenate([wall_class, wall_centroid, wall_size, wall_angle], axis=-1)
+                # print(f'wall_property_encode: {wall_property_encode}')
+                wall_property_encode_dim = wall_property_encode.shape[-1]
+                wall_bbox_lst.append(wall_property_encode)
+            wall_bbox_lst = padding_and_reshape_wall_bbox(room_type=room_type,
+                                                        wall_bbox_lst=np.array(wall_bbox_lst),
+                                                        bbox_dim=wall_property_encode_dim)
+        else:
+            # normalize wall bbox w.r.t. training set statistics
+            wall_onehot_class_labels = []
+            wall_trans = []
+            wall_sizes = []
+            wall_angles = []
+            for wall_bbox in wall_bbox_dicts:
+                # new_wall_bbox = wall_bbox.copy()
+                wall_class_label = 'wall'
+                wall_class = ClassLabelsEncode(room_type=room_type, obj_bbox_label=wall_class_label)
+                # scale to [-1, 1]
+                wall_class = wall_class*2 - 1
+                wall_onehot_class_labels.append(wall_class)
+                
+                wall_centroid = np.array(wall_bbox['center'], np.float32)
+                scaled_wall_centroid = self.scale(wall_centroid, *self._centroids)
+                wall_trans.append(scaled_wall_centroid)
+                # new_wall_bbox['center'] = self.descale(scaled_wall_centroid, *self._centroids).tolist()
+                
+                wall_size = np.array([wall_bbox['width'], 0.01, wall_bbox['height']], np.float32)
+                scaled_wall_size = self.scale(wall_size, *self._sizes)
+                wall_sizes.append(scaled_wall_size)
+                # new_wall_bbox['size'] = self.descale(scaled_wall_size, *self._sizes).tolist()
+                
+                # only use z_angle
+                wall_angle = np.array(wall_bbox['angles'], np.float32)[-1]
+                wall_cos_sin_angles = np.array([np.cos(wall_angle), np.sin(wall_angle)])
+                wall_angles.append(wall_cos_sin_angles)
+                # new_wall_bbox['angles'] = [0,0, np.arctan2(wall_cos_sin_angles[1], wall_cos_sin_angles[0])]
+                
+                # new_bbox_dict_lst.append(new_wall_bbox)
+                
+            wall_bbox_lst = np.concatenate([wall_onehot_class_labels, wall_trans, wall_sizes, wall_angles], axis=-1)
+            
+            wall_bbox_lst = padding_and_reshape_wall_bbox(room_type=room_type,
+                                                    wall_bbox_lst=wall_bbox_lst,
+                                                    bbox_dim=wall_bbox_lst.shape[-1])
+            # print(f'wall_bbox_lst: {wall_bbox_lst}')
+            
+                
+        
+        # from preprocess.prepare_st3d_dataset import vis_scene_mesh
+        # from dataset.metadata import COLOR_TO_ADEK_LABEL
+        # scene_bbox_mesh = vis_scene_mesh(room_layout_mesh=None,
+        #                                  obj_bbox_lst=new_bbox_dict_lst,
+        #                                  color_to_labels=COLOR_TO_ADEK_LABEL)
+        # save_mesh_path = os.path.join(self.bbox_3d_dir, self.local_json_fnames[idx][:-5]+'_scaled.ply')
+        # scene_bbox_mesh.export(save_mesh_path)
+        
         assert wall_bbox_lst.shape[-1] == object_bbox_lst.shape[-1]
         out_lst = np.concatenate([wall_bbox_lst, object_bbox_lst], axis=0)
         out_lst = out_lst.transpose(1, 0)

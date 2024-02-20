@@ -19,7 +19,7 @@ import json
 
 # from misc.panorama import draw_boundary_from_cor_id
 # from misc.colors import colormap_255
-from dataset.metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE,
+from dataset.metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, ST3D_KITCHEN_FURNITURE,
                               ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, COLOR_TO_ADEK_LABEL)
 from dataset.threed_front.metadata import (THREED_FRONT_BEDROOM_FURNITURE, THREED_FRONT_DININGROOM_FURNITURE,
                                            THREED_FRONT_LIVINGROOM_FURNITURE, THREED_FRONT_BEDROOM_MAX_WALL_NUM, THREED_FRONT_LIVINGROOM_MAX_WALL_NUM)
@@ -135,6 +135,8 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         class_labels_lst = (ST3D_LIVINGROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_LIVINGROOM_FURNITURE
     elif room_type == 'diningroom':
         class_labels_lst = (ST3D_DININGROOM_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_DININGROOM_FURNITURE
+    elif room_type == 'kitchen':
+        class_labels_lst = (ST3D_KITCHEN_FURNITURE) if dataset_type == 'st3d' else THREED_FRONT_KITCHEN_FURNITURE
     else:
         raise NotImplementedError
 
@@ -152,7 +154,10 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         # recover class label
         class_label_prob = quad_wall_lst[i][:centroid_idx]
         # print(f'class_label_prob: {class_label_prob}')
-        class_label_prob = np.where(class_label_prob > 0.5, 1, 0)
+        class_label_prob = np.where(class_label_prob > 0.5, class_label_prob, 0)
+        if np.all(class_label_prob == 0):
+            print(f'wall {i} has no class label')
+            continue
         class_label = class_labels_lst[class_label_prob.argmax()]
         if class_label == 'empty':
             continue
@@ -160,11 +165,12 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         wall_center = quad_wall_lst[i][centroid_idx:centroid_idx + 3] * room_layout_bbox_size
         quad_wall_dict['center'] = wall_center.tolist()
         wall_size = quad_wall_lst[i][size_idx:size_idx + 3]
-        wall_normal_angle = quad_wall_lst[i][angle_idx:angle_idx + 2]
+        # wall_normal_angle = quad_wall_lst[i][angle_idx:angle_idx + 2]
 
-        angle_0 = np.arccos(wall_normal_angle[0])
-        angle_1 = np.arcsin(wall_normal_angle[1])
-        angle = angle_1 if abs(wall_normal_angle[0]) < 5e-3 else angle_0
+        # angle_0 = np.arccos(wall_normal_angle[0])
+        # angle_1 = np.arcsin(wall_normal_angle[1])
+        # angle = angle_1 if abs(wall_normal_angle[0]) < 5e-3 else angle_0
+        angle = quad_wall_lst[i][angle_idx]
 
         quad_wall_dict['angles'] = [0, 0, float(angle)]
         # The direction of all camera is always along the negative y-axis.
@@ -203,9 +209,12 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         # recover class label
         class_label_prob = object_bbox_lst[i][:centroid_idx]
         # print(f'class_label_prob: {class_label_prob}')
-        class_label_prob = np.where(class_label_prob > 0.5, 1, 0)
-        if len(class_label_prob) == 0:
+        class_label_prob = np.where(class_label_prob > 0.5, class_label_prob, 0)
+        # if len(class_label_prob) == 0:
+        #     print(f'object {i} has no class label')
+        if np.all(class_label_prob == 0):
             print(f'object {i} has no class label')
+            continue
         class_label = class_labels_lst[class_label_prob.argmax()]
         if class_label == 'empty':
             continue
@@ -226,10 +235,11 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         size = size * room_layout_bbox_size
         obj_bbox_dict['size'] = size.tolist()
         # recover angle
-        cs_angle_value = object_bbox_lst[i][angle_idx:]
-        angle_0 = np.arccos(cs_angle_value[0])
-        angle_1 = np.arcsin(cs_angle_value[1])
-        angle = angle_1 if abs(cs_angle_value[0]) < 5e-3 else angle_0
+        # cs_angle_value = object_bbox_lst[i][angle_idx:]
+        # angle_0 = np.arccos(cs_angle_value[0])
+        # angle_1 = np.arcsin(cs_angle_value[1])
+        # angle = angle_1 if abs(cs_angle_value[0]) < 5e-3 else angle_0
+        angle = object_bbox_lst[i][angle_idx]
         obj_bbox_dict['angles'] = [0, 0, float(angle)]
         # print(f' object {class_label} centroid: {centroid} size: {size} angle: {angle_0}')
         obj_bbox_dict_list.append(obj_bbox_dict)
@@ -327,6 +337,9 @@ if __name__ == "__main__":
             elif args.room_type == 'livingroom':
                 room_layout_size = np.array([7.239328956952291, 7.6231320936720675, 2.857928654068745])  # livingroom
                 wall_max_num = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
+            elif args.room_type == 'kitchen':
+                room_layout_size = np.array([5.190448841484693, 5.507005307872562, 2.6443791106290626])
+                wall_max_num = ST3D_BEDROOM_QUAD_WALL_MAX_LEN
         
         if args.dataset_type == '3d_front':
             if args.room_type == 'bedroom':
@@ -356,8 +369,8 @@ if __name__ == "__main__":
             wall_dict_lst, obj_bbox_dict_lst = recover_quad_wall_layout_mesh(dataset_type=args.dataset_type,
                                                                              room_type=args.room_type,
                                                                              quad_wall_lst=quad_wall_lst,
-                                                                             object_bbox_lst=obj_bbox_lst,
-                                                                             room_layout_bbox_size=room_layout_size)
+                                                                             object_bbox_lst=obj_bbox_lst,)
+                                                                            #  room_layout_bbox_size=room_layout_size)
 
         # save synthetic boundaries as image
         img_fname = f'{scene_sample_label}_{idx}.png'
