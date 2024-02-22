@@ -15,7 +15,7 @@ from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, 
 from . import logger
 from shapely.geometry.polygon import Polygon
 from misc.utils import euler_angle_to_matrix
-from .rotated_iou_loss import bdb3d_iou
+# from .rotated_iou_loss import bdb3d_iou
 
 l1_critertion = th.nn.SmoothL1Loss(reduction='none')
 

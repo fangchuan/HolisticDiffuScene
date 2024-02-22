@@ -28,7 +28,7 @@ from improved_diffusion.script_util import (
 )
 
 from dataset.st3d_dataset import ST3DDataset
-from improved_diffusion.clip_util import FrozenCLIPEmbedder
+# from improved_diffusion.clip_util import FrozenCLIPEmbedder
 from dataset.metadata import ST3D_BEDROOM_QUAD_WALL_MAX_LEN, \
                             ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, \
                             COLOR_TO_ADEK_LABEL
@@ -74,6 +74,10 @@ def main():
 
     layout_channel_size = args.layout_channels
     layout_size = args.layout_size
+    # sample all test data
+    if args.num_samples == -1:
+        args.num_samples = len(dataset)
+
     logger.log("sampling layout...")
     all_layout_lst = []
     all_layout_type_lst = []
@@ -92,7 +96,10 @@ def main():
         if args.b_text_cond:
             cond_data_lst = []
             for i in range(args.batch_size):
-                scene_idx = np.random.choice(len(dataset))
+                if args.num_samples < len(dataset):
+                    scene_idx = np.random.choice(len(dataset))
+                else:
+                    scene_idx = len(all_layout_lst) * args.batch_size + i
                 gt_scene, gt_cond_dict, scene_name = dataset[scene_idx]
                 # text prompt from eval dataset
                 cond_data_lst.append(gt_cond_dict['text_condition'])
