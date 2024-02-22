@@ -11,7 +11,7 @@ mpiexec -n $NUM_GPUS python scripts/st3d_room_layout_train.py \
  $DIFFUSION_FLAGS \
  $TRAIN_FLAGS \
  --lr_anneal_steps $MAX_STEPS \
- --log_dir log/ST3D_bedroom/20240220_normalized \
+ --log_dir log/ST3D_bedroom/20240221_gpt4caption \
  --dataset_stats_file $train_stats_file
 
 
@@ -19,13 +19,14 @@ MODEL_FLAGS="--layout_channels 32 --layout_size 23 --num_channels 128 --num_res_
 DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing ddim200 --use_ddim True"
 NUM_SAMPLES=10
 ROOM_TYPE="bedroom"
+train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/bedroom/train_dataset_stats.json"
 
 python scripts/st3d_room_layout_sample.py \
  --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/bedroom/ \
- --model_path log/ST3D_bedroom/20240220_normalized/ema_0.9999_400000.pt \
+ --model_path log/ST3D_bedroom/20240221_gpt4caption/ema_0.9999_400000.pt \
  $MODEL_FLAGS \
  $DIFFUSION_FLAGS \
  --room_type $ROOM_TYPE \
  --num_samples $NUM_SAMPLES \
- --log_dir "log/ST3D_bedroom/20240220_normalized/sample_results" \
+ --log_dir "log/ST3D_bedroom/20240221_gpt4caption/sample_results" \
  --dataset_stats_file $train_stats_file 

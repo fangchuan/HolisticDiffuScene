@@ -35,7 +35,7 @@ def visualize_bbox_annotations(rgb_imgs_folderpath, labels_folderpath):
             room_annos = json.load(file)
             room_annos = room_annos['objects']
 
-        output_vis_folderpath = os.path.join(os.path.dirname(labels_folderpath), '0207_debug_annotations')
+        output_vis_folderpath = os.path.join(os.path.dirname(labels_folderpath), 'debug_annotations')
         if not os.path.exists(output_vis_folderpath):
             os.makedirs(output_vis_folderpath, exist_ok=True)
 
@@ -78,11 +78,11 @@ def visualize_bbox_annotations(rgb_imgs_folderpath, labels_folderpath):
 def parse_args():
     parser = argparse.ArgumentParser(description="Structured3D 3D Bounding Box Visualization")
     parser.add_argument("--rgbs_path",
-                        default="/data/dataset/Structured3D/preprocessed/annotations/kitchen/rgb",
+                        default="/data/dataset/Structured3D/preprocessed/annotations/study/rgb",
                         help="raw dataset path",
                         metavar="DIR")
     parser.add_argument("--labels_path",
-                        default="/data/dataset/Structured3D/preprocessed/annotations/kitchen/0207_labels",
+                        default="/data/dataset/Structured3D/preprocessed/annotations/study/labels",
                         help="debug folder path for object bbox annotations",
                         metavar="DIR")
     return parser.parse_args()

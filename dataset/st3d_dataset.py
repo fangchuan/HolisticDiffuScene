@@ -825,7 +825,7 @@ class ST3DDataset(data.Dataset):
         self.txt_fnames = ['%s.txt' % fname[:-4] for fname in self.img_fnames]
         # self.json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
         self.json_fnames = ['%s.json' % fname[:-4] for fname in self.img_fnames]
-        self.npy_fnames = ['%s.npy' % fname[:-4] for fname in self.img_fnames]
+        self.npy_fnames = ['%s_gpt4.npy' % fname[:-4] for fname in self.img_fnames]
         #  image file names and text file names on local_rank machine
         self.local_img_fnames = self.img_fnames[shard::num_shards]
         self.local_txt_fnames = self.txt_fnames[shard::num_shards]
@@ -1012,7 +1012,8 @@ class ST3DDataset(data.Dataset):
         # load precomputed text description and text embedding
         if not self.random_text_desc:
             text_desc_lst = []
-            text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx])
+            text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx][:-4]+'_gpt4.txt')
+            # text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx])
             with open(text_desc_filepath) as f:
                 text_desc = f.readline()
                 text_desc_lst = text_desc.strip().split('. ')

@@ -11,7 +11,7 @@ from improved_diffusion.clip_util import FrozenCLIPEmbedder
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="preprocess gpt4 caption for each room in structured3d")
     parser.add_argument("--dataset_path",
-                        default="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/new_text2pano/",
+                        default="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/",
                         help="processed dataset path",
                         metavar="DIR")
     parser.add_argument("--room_types",
@@ -19,7 +19,7 @@ if __name__ == "__main__":
                         help="room types",
                         metavar="LIST")
     parser.add_argument("--gpt_caption_path",
-                        default="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/gpt4_vision_caption_test/",
+                        default="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240221_gpt4_vision_caption_test/",
                         help="gpt caption path",
                         metavar="DIR")
     args = parser.parse_args()
@@ -51,9 +51,9 @@ if __name__ == "__main__":
             # only use the first sentence
             text_desc = text_desc.split('\n')[0]
             
-            begin_pos = text_desc.find('of') + 2
-            # end_pos = text_desc.find('\n') + 1
-            cut_text_desc = text_desc[begin_pos:]
+            # begin_pos = text_desc.find('of') + 2
+            # cut_text_desc = text_desc[begin_pos:]
+            cut_text_desc = text_desc
             cut_text_desc = cut_text_desc.strip()
             # set first letter to upper case
             cut_text_desc = cut_text_desc[0].upper() + cut_text_desc[1:]
