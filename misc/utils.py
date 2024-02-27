@@ -1,7 +1,6 @@
 """
 Adapted from https://github.com/thusiyuan/cooperative_scene_parsing/blob/master/utils/sunrgbd_utils.py
 """
-import os
 import sys
 
 sys.path.append('.')
@@ -12,8 +11,6 @@ import numpy as np
 import torch as th
 import trimesh
 from typing import List, Dict
-
-from visualize_mesh import create_spatial_quad_polygen
 
 
 def normalize(vector):
@@ -270,7 +267,7 @@ def reconstrcut_floor_ceiling_from_quad_walls(quad_walls_lst: List[Dict]):
     for i, wall_dict in enumerate(quad_walls_lst):
         normal = np.array(wall_dict['normal'])
         corners = np.array(wall_dict['corners'])
-        wall_mesh, _ = create_spatial_quad_polygen(corners, normal, camera_center=None)
+        wall_mesh = create_spatial_quad_polygen(corners, normal, camera_center=None)
         wall_mesh_lst.append(wall_mesh)
 
     # room_wall_mesh = trimesh.util.concatenate(wall_mesh_lst)
@@ -486,6 +483,108 @@ def my_compute_box_3d(center, size, heading_angle):
     corners_3d[2, :] += center[2]
     return np.transpose(corners_3d)
 
+def heading2rotmat(heading_angle_rad: float) -> np.array:
+    """
+    Convert z_angle to rotation matrix
+    """
+    rotmat = np.eye(3)
+    cosval = np.cos(heading_angle_rad)
+    sinval = np.sin(heading_angle_rad)
+    rotmat[0:2, 0:2] = np.array([[cosval, -sinval], [sinval, cosval]])
+    return rotmat
+
+
+def convert_oriented_box_to_trimesh_fmt(box: Dict, color_to_labels: Dict = None) -> trimesh.Trimesh:
+    """
+    Convert oriented box dict to mesh
+    """
+    box_center = box['center']
+    box_lengths = box['size']
+    transform_matrix = np.eye(4)
+    transform_matrix[0:3, 3] = box_center
+    # only use z angle, rad
+    transform_matrix[0:3, 0:3] = heading2rotmat(box['angles'][-1])
+    box_trimesh_fmt = trimesh.creation.box(box_lengths, transform_matrix)
+    if color_to_labels is not None:
+        labels_lst = list(color_to_labels.values())
+        colors_lst = list(color_to_labels.keys())
+        color = colors_lst[labels_lst.index(box['class'])]
+    else:
+        color = (np.random.random(3) * 255).astype(np.uint8).tolist()
+        # pass
+    box_trimesh_fmt.visual.face_colors = color
+    return box_trimesh_fmt
+
+
+def vis_scene_mesh(room_layout_mesh: trimesh.Trimesh,
+                   obj_bbox_lst: List[Dict],
+                   color_to_labels: Dict = None,
+                   room_layout_bbox:trimesh.Trimesh = None) -> trimesh.Trimesh:
+    """ visualize scene bbox as mesh
+
+    Args:
+        room_layout_mesh (trimesh.Trimesh): closed mesh of room layout
+        obj_bbox_lst (List[Dict]): object bounding box list
+        color_to_labels (Dict, optional): color for object categories. Defaults to None.
+        room_layout_bbox (trimesh.Trimesh): _description_. Defaults to None.
+
+    Returns:
+        trimesh.Trimesh: _description_
+    """
+
+    def create_oriented_bbox(scene_bbox: List[Dict]) -> trimesh.Trimesh:
+        """Export oriented (around Z axis) scene bbox to meshes
+        Args:
+            scene_bbox: (N x 7 numpy array): xyz pos of center and 3 lengths (dx,dy,dz)
+                and heading angle around Z axis.
+                Y forward, X right, Z upward. heading angle of positive X is 0,
+                heading angle of positive Y is 90 degrees.
+            out_filename: (string) filename
+        """
+        scene = trimesh.scene.Scene()
+        for box in scene_bbox:
+            scene.add_geometry(convert_oriented_box_to_trimesh_fmt(box, color_to_labels))
+
+        mesh_list = trimesh.util.concatenate(scene.dump())
+        return mesh_list
+
+    v_object_meshes = create_oriented_bbox(obj_bbox_lst)
+    if room_layout_bbox is not None:
+        scene_mesh = trimesh.util.concatenate([room_layout_mesh, v_object_meshes, room_layout_bbox])
+    elif room_layout_mesh is not None:
+        scene_mesh = trimesh.util.concatenate([room_layout_mesh, v_object_meshes])
+    else:
+        scene_mesh = trimesh.util.concatenate([v_object_meshes])
+    return scene_mesh
+
+def create_spatial_quad_polygen(quad_vertices: List, normal: np.array, camera_center: np.array):
+    """create a quad polygen for spatial mesh
+    """
+    if camera_center is None:
+        camera_center = np.array([0, 0, 0])
+    quad_vertices = (quad_vertices - camera_center)
+    quad_triangles = []
+    triangle = np.array([[0, 2, 1], [2, 0, 3]])
+    quad_triangles.append(triangle)
+
+    quad_triangles = np.concatenate(quad_triangles, axis=0)
+
+    mesh = trimesh.Trimesh(vertices=quad_vertices,
+                           faces=quad_triangles,
+                           vertex_normals=np.tile(normal, (4, 1)),
+                           process=False)
+
+    centroid = np.mean(quad_vertices, axis=0)
+    # print(f'centroid: {centroid}')
+    normal_point = centroid + np.array(normal) * 0.5
+    # print(f'normal_point: {normal_point}')
+
+    # pcd_o3d = open3d.geometry.PointCloud()
+    # pcd_o3d.points = open3d.utility.Vector3dVector(np.asarray(mesh.vertices))
+    # pcd_o3d.points.append(normal_point)
+    # pcd_o3d.points.append(centroid)
+    # return mesh, pcd_o3d
+    return mesh
 
 import yaml
 try:

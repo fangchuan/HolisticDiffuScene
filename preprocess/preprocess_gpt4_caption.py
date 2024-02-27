@@ -15,11 +15,11 @@ if __name__ == "__main__":
                         help="processed dataset path",
                         metavar="DIR")
     parser.add_argument("--room_types",
-                        default=["bedroom", "living_room"],
+                        default=["bedroom", "living_room", "kitchen"],
                         help="room types",
                         metavar="LIST")
     parser.add_argument("--gpt_caption_path",
-                        default="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240221_gpt4_vision_caption_test/",
+                        default="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240227_gpt_vision_caption_kitchen/",
                         help="gpt caption path",
                         metavar="DIR")
     args = parser.parse_args()

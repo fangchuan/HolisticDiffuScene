@@ -14,7 +14,6 @@ from mpi4py import MPI
 from torch.utils.data import DataLoader
 
 from improved_diffusion import dist_util, logger
-# from improved_diffusion.image_datasets import load_data
 from improved_diffusion.resample import create_named_schedule_sampler
 from improved_diffusion.script_util import (
     model_and_diffusion_defaults,
@@ -55,6 +54,7 @@ def main():
                                 shard=MPI.COMM_WORLD.Get_rank(),
                                 num_shards=MPI.COMM_WORLD.Get_size(),
                                 random_text_desc=False,
+                                use_gpt_text_desc=args.use_gpt_text_desc,
                                 train_stats_file=args.dataset_stats_file,)
     logger.info(f"train_dataset length: {len(train_dataset)}")
     train_loader = DataLoader(train_dataset, 
@@ -112,6 +112,7 @@ def create_argparser():
         use_fp16=False,
         fp16_scale_growth=1e-3,
         dataset_stats_file=None,
+        use_gpt_text_desc=False,
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()

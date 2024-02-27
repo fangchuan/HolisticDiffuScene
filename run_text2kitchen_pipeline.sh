@@ -1,20 +1,20 @@
 export CUDA_VISIBLE_DEVICES=1
-NUM_SAMPLES=1
-OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240226
+NUM_SAMPLES=20
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240227
 
 eval "$(conda shell.bash hook)"
 conda activate structured3d
 
 # run layout sampling
 cd /mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/
-MODEL_FLAGS="--layout_channels 32 --layout_size 23 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True  --b_class_cond False --b_text_cond True --use_input_encoding True"
+MODEL_FLAGS="--layout_channels 28 --layout_size 34 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond False --b_text_cond True --use_input_encoding True"
 DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing ddim200 --use_ddim True"
-ROOM_TYPE="bedroom"
-train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/bedroom/train_dataset_stats.json"
+ROOM_TYPE="kitchen"
+train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/kitchen/train_dataset_stats.json"
 
 python scripts/st3d_room_layout_sample.py \
- --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/bedroom/ \
- --model_path log/ST3D_bedroom/20240220_normalized/ema_0.9999_400000.pt \
+ --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/kitchen/ \
+ --model_path log/ST3D_kitchen/20240223_normalized/ema_0.9999_400000.pt \
  $MODEL_FLAGS \
  $DIFFUSION_FLAGS \
  --room_type $ROOM_TYPE \
@@ -22,10 +22,11 @@ python scripts/st3d_room_layout_sample.py \
  --log_dir $OUTPUT_FOLDER \
  --dataset_stats_file $train_stats_file 
 
+
 # # run panorama sampling
 conda activate control-v11
-PANO_INPUT_FOLDER=$OUTPUT_FOLDER/bedroom
-CKPT_PATH="/mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/ckpts/control_v11p_sd15_seg_bedroom_fullres_32000.ckpt"
+PANO_INPUT_FOLDER=$OUTPUT_FOLDER/kitchen
+CKPT_PATH="/mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/ckpts/control_v11p_sd15_seg_kitchen_fullres_40000.ckpt"
 cd /mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/scripts
 python st3d_panorama_sample.py --input_folder $PANO_INPUT_FOLDER --ckpt_filepath $CKPT_PATH
 

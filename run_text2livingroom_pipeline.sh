@@ -1,30 +1,36 @@
 export CUDA_VISIBLE_DEVICES=0
-NUM_SAMPLES=-1
-OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/datasets/fangchuan/codes/HolisticDiffuScene/sample_results/pano_gen_experiments/
+NUM_SAMPLES=20
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240227
 
 eval "$(conda shell.bash hook)"
 conda activate structured3d
 
 # # run layout sampling
-# cd /mnt/nas_3dv/hdd1/datasets/fangchuan/codes/HolisticDiffuScene/
-# MODEL_FLAGS="--layout_channels 34 --layout_size 48 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True  --b_class_cond False --b_text_cond True --use_input_encoding False"
-# DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing 250"
-# python scripts/st3d_room_layout_sample.py --data_dir /mnt/nas_3dv/hdd1/datasets/datasets/Structured3D/text2pano/test/livingroom/ \
-#  --model_path log/ST3D_livingroom_textcondition_openai-2023-08-14-18-13-22-588311/ema_0.9999_200000.pt \
-#  $MODEL_FLAGS \
-#  $DIFFUSION_FLAGS \
-#  --num_samples $NUM_SAMPLES  --log_dir $OUTPUT_FOLDER  --room_type 'livingroom'
+cd /mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/
+MODEL_FLAGS="--layout_channels 34 --layout_size 44 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond False --b_text_cond True --use_input_encoding True"
+DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing 250"
+ROOM_TYPE="livingroom"
+train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/livingroom/train_dataset_stats.json"
 
+python scripts/st3d_room_layout_sample.py \
+ --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/livingroom/ \
+ --model_path log/ST3D_livingroom/20240223_normalized/ema_0.9999_400000.pt \
+ $MODEL_FLAGS \
+ $DIFFUSION_FLAGS \
+ --room_type $ROOM_TYPE \
+ --num_samples $NUM_SAMPLES \
+ --log_dir $OUTPUT_FOLDER \
+ --dataset_stats_file $train_stats_file 
 
 # run panorama sampling
 PANO_INPUT_FOLDER=$OUTPUT_FOLDER/livingroom
-CKPT_PATH="/mnt/nas_3dv/hdd1/datasets/fangchuan/codes/Layout_Controlnet/ckpts/control_v11p_sd15_seg_livingroom_fullres_40000.ckpt"
+CKPT_PATH="/mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/ckpts/control_v11p_sd15_seg_livingroom_fullres_40000.ckpt"
 conda activate control-v11
-cd /mnt/nas_3dv/hdd1/datasets/fangchuan/codes/Layout_Controlnet/scripts
+cd /mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/scripts
 python st3d_panorama_sample.py --input_folder $PANO_INPUT_FOLDER --ckpt_filepath $CKPT_PATH
 # run super-resolution
 
 # run panoramic reconstrcution
-# python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER
+python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER
 
 

@@ -650,16 +650,6 @@ def ClassLabelsEncode(room_type: int, obj_bbox_label: str) -> np.array:
     class_label = one_hot_label(classes, obj_bbox_label)
     return class_label
 
-def encode_class_labels(class_labels: List[str], obj_bbox_label: str) -> np.array:
-
-    def one_hot_label(all_labels, current_label):
-        return np.eye(len(all_labels))[all_labels.index(current_label)]
-
-    C = len(class_labels)  # number of classes
-    class_label = np.zeros(C, dtype=np.float32)
-    class_label = one_hot_label(class_labels, obj_bbox_label)
-    return class_label
-    
 def TranslationEncode(obj_bbox_centroid: np.array) -> np.array:
     """Implement the encoding for the object centroid."""
     # Make a local copy of the class labels
@@ -806,6 +796,7 @@ class ST3DDataset(data.Dataset):
             return_scene_name=False,
             random_text_desc=True,
             permutation=True,
+            use_gpt_text_desc=False,
             train_stats_file=None):
         self.img_dir = os.path.join(root_dir, 'img')
         self.cor_dir = os.path.join(root_dir, 'label_cor')
@@ -825,7 +816,7 @@ class ST3DDataset(data.Dataset):
         self.txt_fnames = ['%s.txt' % fname[:-4] for fname in self.img_fnames]
         # self.json_fnames = ['%s_normalized.json' % fname[:-4] for fname in self.img_fnames]
         self.json_fnames = ['%s.json' % fname[:-4] for fname in self.img_fnames]
-        self.npy_fnames = ['%s_gpt4.npy' % fname[:-4] for fname in self.img_fnames]
+        self.npy_fnames = ['%s_gpt4.npy' % fname[:-4] for fname in self.img_fnames] if use_gpt_text_desc else ['%s.npy' % fname[:-4] for fname in self.img_fnames] 
         #  image file names and text file names on local_rank machine
         self.local_img_fnames = self.img_fnames[shard::num_shards]
         self.local_txt_fnames = self.txt_fnames[shard::num_shards]
@@ -843,6 +834,7 @@ class ST3DDataset(data.Dataset):
         self.return_scene_name = return_scene_name
         self.random_text_desc = random_text_desc
         self.permutation = permutation
+        self.use_gpt_text_desc = use_gpt_text_desc
         if random_text_desc:
             self.clip_model = FrozenCLIPEmbedder(device=device)
 
@@ -1012,8 +1004,10 @@ class ST3DDataset(data.Dataset):
         # load precomputed text description and text embedding
         if not self.random_text_desc:
             text_desc_lst = []
-            text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx][:-4]+'_gpt4.txt')
-            # text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx])
+            if self.use_gpt_text_desc:
+                text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx][:-4]+'_gpt4.txt')
+            else:
+                text_desc_filepath = os.path.join(self.text_desc_dir, self.local_txt_fnames[idx])
             with open(text_desc_filepath) as f:
                 text_desc = f.readline()
                 text_desc_lst = text_desc.strip().split('. ')
