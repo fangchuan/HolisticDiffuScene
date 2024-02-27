@@ -1,6 +1,6 @@
 export CUDA_VISIBLE_DEVICES=1
-NUM_SAMPLES=1
-OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240226
+NUM_SAMPLES=10
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240227
 
 eval "$(conda shell.bash hook)"
 conda activate structured3d
@@ -10,11 +10,13 @@ cd /mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/
 MODEL_FLAGS="--layout_channels 32 --layout_size 23 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True  --b_class_cond False --b_text_cond True --use_input_encoding True"
 DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing ddim200 --use_ddim True"
 ROOM_TYPE="bedroom"
+RAW_DATASET_PATH=/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/bedroom/
 train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/bedroom/train_dataset_stats.json"
 
+LAYOUT_MODEL_PATH=log/ST3D_bedroom/20240220_normalized/ema_0.9999_400000.pt
 python scripts/st3d_room_layout_sample.py \
- --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/bedroom/ \
- --model_path log/ST3D_bedroom/20240220_normalized/ema_0.9999_400000.pt \
+ --data_dir  $RAW_DATASET_PATH\
+ --model_path $LAYOUT_MODEL_PATH \
  $MODEL_FLAGS \
  $DIFFUSION_FLAGS \
  --room_type $ROOM_TYPE \
@@ -25,9 +27,9 @@ python scripts/st3d_room_layout_sample.py \
 # # run panorama sampling
 conda activate control-v11
 PANO_INPUT_FOLDER=$OUTPUT_FOLDER/bedroom
-CKPT_PATH="/mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/ckpts/control_v11p_sd15_seg_bedroom_fullres_32000.ckpt"
+APP_MODEL_PATH="/mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/ckpts/control_v11p_sd15_seg_bedroom_fullres_32000.ckpt"
 cd /mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/scripts
-python st3d_panorama_sample.py --input_folder $PANO_INPUT_FOLDER --ckpt_filepath $CKPT_PATH
+python st3d_panorama_sample.py --input_folder $PANO_INPUT_FOLDER --ckpt_filepath $APP_MODEL_PATH
 
 # # run super-resolution
 # python scripts/sr_val_ddpm_text_T_vqganfin_oldcanvas.py --config configs/stableSRNew/v2-finetune_text_T_512.yaml \
