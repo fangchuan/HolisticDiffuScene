@@ -82,7 +82,7 @@ def parse_args():
                         help="raw dataset path",
                         metavar="DIR")
     parser.add_argument("--labels_path",
-                        default="/data/dataset/Structured3D/preprocessed/annotations/study/labels",
+                        default="/data/dataset/Structured3D/preprocessed/annotations/study/20240227_labels",
                         help="debug folder path for object bbox annotations",
                         metavar="DIR")
     return parser.parse_args()

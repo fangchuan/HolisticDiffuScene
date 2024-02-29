@@ -71,6 +71,7 @@ ST3D_BEDROOM_FURNITURES_SET = set()
 ST3D_LIVINGROOM_FURNITURES_SET = set()
 ST3D_DININGROOM_FURNITURES_SET = set()
 ST3D_KITCHEN_FURNITURES_SET = set()
+ST3D_STUDY_FURNITURES_SET = set()
 
 
 def heading2rotmat(heading_angle_rad):
@@ -818,7 +819,7 @@ def prepare_dataset(raw_dataset_dir: str,
                 INVALID_ROOMS_LST.append(room_str)
                 continue
             quad_wall_num_lst.append(len(quad_walls_normalized_dict['walls']))
-            if target_room_type == 'bedroom' or target_room_type == 'kitchen':
+            if target_room_type == 'bedroom' or target_room_type == 'kitchen' or target_room_type == 'study':
                 if len(quad_walls_normalized_dict['walls']) > ST3D_BEDROOM_QUAD_WALL_MAX_LEN:
                     print(f'bad scene {room_str} walls number > {ST3D_BEDROOM_QUAD_WALL_MAX_LEN}')
                     ROOM_WALLS_LARGER_THAN_10.append(room_str)
@@ -992,6 +993,9 @@ def prepare_dataset(raw_dataset_dir: str,
             elif target_room_type == 'kitchen':
                 room_furniture_types = set([box['class'] for box in obj_bbox_3d_dict['objects']])
                 ST3D_KITCHEN_FURNITURES_SET.update(room_furniture_types)
+            elif target_room_type == 'study':
+                room_furniture_types = set([box['class'] for box in obj_bbox_3d_dict['objects']])
+                ST3D_STUDY_FURNITURES_SET.update(room_furniture_types)
 
             room_layout_size = room_layout_mesh.bounding_box_oriented.extents
             room_layout_size_lst.append(room_layout_size)
@@ -1046,9 +1050,9 @@ def parse_args():
                         default='/data/dataset/Structured3D/preprocessed/annotations/livingroom/latest_labels/',
                         help='path to annotated labels')
     parser.add_argument('--out_train_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240215_text2pano/train')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train')
     parser.add_argument('--out_test_path',
-                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240215_text2pano/test')
+                        default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test')
     return parser.parse_args()
 
 
@@ -1065,6 +1069,8 @@ def main():
         room_type_str = 'study'
     elif args.room_type == 'st3d_kitchen':
         room_type_str = 'kitchen'
+    else:
+        raise ValueError(f'unsupported room type {args.room_type}')
 
     train_furniture_stats, room_mean_size, wall_num_max, wall_num_mean = prepare_dataset(args.dataset_path,
                                                                                          room_type_str,
@@ -1098,6 +1104,9 @@ def main():
     elif args.room_type == 'st3d_kitchen':
         print('*' * 20 + ' st3d_kitchen furniture types: ' + '*' * 20)
         print(ST3D_KITCHEN_FURNITURES_SET)
+    elif args.room_type == 'st3d_study':
+        print('*' * 20 + ' st3d_study furniture types: ' + '*' * 20)
+        print(ST3D_STUDY_FURNITURES_SET)
 
     # merge train and test furniture statistics
     for k, v in train_furniture_stats.items():
@@ -1112,6 +1121,7 @@ def main():
         'livingroom_furniture_types': list(ST3D_LIVINGROOM_FURNITURES_SET),
         'diningroom_furniture_types': list(ST3D_DININGROOM_FURNITURES_SET),
         'kitchen_furniture_types': list(ST3D_KITCHEN_FURNITURES_SET),
+        'study_furniture_types': list(ST3D_STUDY_FURNITURES_SET),
         'furniture_counter': train_furniture_stats,
         'room_mean_size': room_mean_size.tolist(),
         'quad_wall_num_max': wall_num_max,
