@@ -36,6 +36,10 @@ from dataset.metadata import ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_FURNIT
 from misc.equirect_projection import vis_objs3d, vis_floor_ceiling_simple
 from misc.utils import reconstrcut_floor_ceiling_from_quad_walls,vis_scene_mesh, euler_angle_to_matrix
 
+TARGET_BEDROOM_SCENE_NAMES = ['scene_03011_13456', 'scene_03084_641793', 'scene_03113_560', 'scene_03243_800738', \
+                          'scene_03422_794742', 'scene_03123_1683', 'scene_03244_143']
+TARGET_LIVINGROOM_SCENE_NAMES = ['scene_03027_2723', 'scene_03049_284331', \
+                          'scene_03125_536', 'scene_03200_522357', 'scene_03300_190736', 'scene_03309_12023']
 
 def recover_quad_wall_layout_mesh(dataset_type: str,
                                   room_type: str,
@@ -165,8 +169,8 @@ def main():
     args = create_argparser().parse_args()
 
     dist_util.setup_dist()
-    # log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
-    log_dir = args.log_dir
+    log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    # log_dir = args.log_dir
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
 
     dataset = ST3DDataset(root_dir=args.data_dir, 
@@ -194,7 +198,9 @@ def main():
 
     cond_text_prompt_lst = []
     scene_names_lst = []
-    while len(all_layout_lst) * args.batch_size < args.num_samples:
+    # while len(all_layout_lst) * args.batch_size < args.num_samples:
+    for scene_name in TARGET_LIVINGROOM_SCENE_NAMES:
+    
         begin_tms = time.time()
         model_kwargs = {}
         if args.b_class_cond:
@@ -205,19 +211,29 @@ def main():
             model_kwargs["y"] = layout_type_lst
         if args.b_text_cond:
             cond_data_lst = []
-            for i in range(args.batch_size):
-                if args.num_samples < len(dataset):
-                    scene_idx = np.random.choice(len(dataset))
-                else:
-                    scene_idx = len(all_layout_lst) * args.batch_size + i
-                gt_scene, gt_cond_dict, scene_name = dataset[scene_idx]
-                # text prompt from eval dataset
-                cond_data_lst.append(gt_cond_dict['text_condition'])
-                text_prompt = gt_cond_dict['text']
-                cond_text_prompt_lst.append(text_prompt)
-                scene_names_lst.append(scene_name)
-                logger.log('text_prompt: {}'.format(text_prompt))
-
+            # random select text prompt from eval dataset
+            # for i in range(args.batch_size):
+            #     if args.num_samples < len(dataset):
+            #         scene_idx = np.random.choice(len(dataset))
+            #     else:
+            #         scene_idx = len(all_layout_lst) * args.batch_size + i
+            #     gt_scene, gt_cond_dict, scene_name = dataset[scene_idx]
+            #     # text prompt from eval dataset
+            #     cond_data_lst.append(gt_cond_dict['text_condition'])
+            #     text_prompt = gt_cond_dict['text']
+            #     cond_text_prompt_lst.append(text_prompt)
+            #     scene_names_lst.append(scene_name)
+            #     logger.log('text_prompt: {}'.format(text_prompt))
+            
+            logger.log(f'scene_name: {scene_name}')
+            gt_scene, gt_cond_dict = dataset.get_room(scene_name=scene_name)
+            # text prompt from eval dataset
+            cond_data_lst.append(gt_cond_dict['text_condition'])
+            text_prompt = gt_cond_dict['text']
+            cond_text_prompt_lst.append(text_prompt)
+            scene_names_lst.append(scene_name)
+            logger.log('text_prompt: {}'.format(text_prompt))
+                
             model_kwargs["text_condition"] = th.from_numpy(np.stack(cond_data_lst)).to(dist_util.dev(), dtype=th.float32)
             # print(f'model_kwargs["text_condition"].shape: {model_kwargs["text_condition"].shape}')
         sample_fn = (diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop)

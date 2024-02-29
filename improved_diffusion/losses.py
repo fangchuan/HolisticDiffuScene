@@ -283,14 +283,16 @@ def verify_object_box_on_wall(points: th.Tensor, wall_center: th.Tensor, wall_no
     # return physical_constraint_loss.sum(), collision.sum()
 
 
-def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.Tensor, invalid_masks: th.Tensor,
+def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, 
+                                           room_type_lst: th.Tensor, 
+                                        #    invalid_masks: th.Tensor,
                                            iou_loss_weights: th.Tensor):
     """_summary_
 
     Args:
         x_pred (th.Tensor): _description_
         room_type_lst (th.Tensor): _description_
-        invalid_masks (th.Tensor): _description_
+        # invalid_masks (th.Tensor): _description_
         iou_loss_weights (th.Tensor): _description_
 
     Raises:
@@ -299,8 +301,6 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     Returns:
         physical_violation_loss: (B, 1, 1)
     """
-    # quad_walls: x_pred[:, :10, :]
-    # object_bbox: x_pred[:, 10:, :]
     B, C, feat_size = x_pred.shape
     assert th.all(room_type_lst == room_type_lst[0]), "The input room types should be equal"
     assert iou_loss_weights.shape == (B, C, feat_size), f"The loss weights tensor should be ({B}, {C}, {feat_size})"
@@ -755,15 +755,15 @@ def aabb_3d_iou_loss(means, weights, centroids_min, centroids_max, sizes_min, si
     # logger.debug(f'bbox_iou.shape: {bbox_iou.shape}')
     bbox_iou_mask = valid_mask[:, :, None] * valid_mask[:, None, :]
     bbox_iou_valid = bbox_iou * bbox_iou_mask
-    bbox_iou_valid_avg = bbox_iou_valid.sum(dim=list(range(1, len(bbox_iou_valid.shape)))) / (
-        bbox_iou_mask.sum(dim=list(range(1, len(bbox_iou_valid.shape)))) + 1e-6)
+    # bbox_iou_valid_avg = bbox_iou_valid.sum(dim=list(range(1, len(bbox_iou_valid.shape)))) / (
+    #     bbox_iou_mask.sum(dim=list(range(1, len(bbox_iou_valid.shape)))) + 1e-6)
     # get the iou loss weight w.r.t time
     # original weights shape: BxCxN
     w_iou = weights.transpose(1, 2)
     # logger.debug(f'weights.shape: {w_iou.shape}')
     w_iou = w_iou[:, :bbox_iou.shape[-2], :bbox_iou.shape[-1]]
     # logger.debug(f'w_iou.shape: {w_iou.shape}')
-    loss_iou = (w_iou * 0.1 * bbox_iou).mean(dim=list(range(1, len(w_iou.shape))))
+    # loss_iou = (w_iou * 0.1 * bbox_iou).mean(dim=list(range(1, len(w_iou.shape))))
     loss_iou_valid_avg = (w_iou * 0.5 * bbox_iou_valid).sum(dim=list(range(1, len(bbox_iou_valid.shape)))) / (
         bbox_iou_mask.sum(dim=list(range(1, len(bbox_iou_valid.shape)))) + 1e-6)
 
