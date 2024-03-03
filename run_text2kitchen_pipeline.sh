@@ -40,7 +40,7 @@ python st3d_panorama_sample.py --input_folder $PANO_INPUT_FOLDER --ckpt_filepath
 #                                                         --outdir output_img_1 \
 #                                                         --ddpm_steps 200 --dec_w 0.5 --colorfix_type adain
 # run panoramic reconstrcution
-python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER
+python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER --use_egformer True
 
 
 

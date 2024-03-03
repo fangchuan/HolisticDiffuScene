@@ -33,6 +33,6 @@ python st3d_panorama_sample.py --input_folder $PANO_INPUT_FOLDER --ckpt_filepath
 # run super-resolution
 
 # run panoramic reconstrcution
-python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER
+python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER --use_egformer True
 
 
