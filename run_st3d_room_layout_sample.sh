@@ -33,32 +33,49 @@
 
 # MODEL_FLAGS="--layout_channels 34 --layout_size 44 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond False --b_text_cond True --use_input_encoding True"
 # DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing ddim200 --use_ddim True"
-# NUM_SAMPLES=10
+# NUM_SAMPLES=40
 # ROOM_TYPE="livingroom"
-# train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240215_text2pano/train/livingroom/train_dataset_stats.json"
+# train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/livingroom/train_dataset_stats.json"
 
 # python scripts/st3d_room_layout_sample.py \
-#  --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240215_text2pano/test/livingroom/ \
-#  --model_path log/ST3D_livingroom/20240217_normalized/ema_0.9999_300000.pt \
+#  --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/livingroom/ \
+#  --model_path log/ST3D_livingroom/20240223_normalized/ema_0.9999_400000.pt \
 #  $MODEL_FLAGS \
 #  $DIFFUSION_FLAGS \
 #  --room_type $ROOM_TYPE \
 #  --num_samples $NUM_SAMPLES \
-#  --log_dir "log/ST3D_livingroom/20240217_normalized/sample_results" \
+#  --log_dir "log/ST3D_livingroom/20240223_normalized/sample_results/2024eccv_experiment" \
 #  --dataset_stats_file $train_stats_file 
 
-MODEL_FLAGS="--layout_channels 32 --layout_size 23 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True  --b_class_cond False --b_text_cond True --use_input_encoding True"
+# MODEL_FLAGS="--layout_channels 32 --layout_size 23 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True  --b_class_cond False --b_text_cond True --use_input_encoding True"
+# DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing ddim200 --use_ddim True"
+# NUM_SAMPLES=0
+# ROOM_TYPE="bedroom"
+# train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/bedroom/train_dataset_stats.json"
+
+# python scripts/st3d_room_layout_sample.py \
+#  --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/bedroom/ \
+#  --model_path log/ST3D_bedroom/20240221_gpt4caption/ema_0.9999_300000.pt \
+#  $MODEL_FLAGS \
+#  $DIFFUSION_FLAGS \
+#  --room_type $ROOM_TYPE \
+#  --num_samples $NUM_SAMPLES \
+#  --log_dir "log/ST3D_bedroom/20240221_gpt4caption/sample_results" \
+#  --dataset_stats_file $train_stats_file 
+
+MODEL_FLAGS="--layout_channels 28 --layout_size 34 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond False --b_text_cond True --use_input_encoding True"
 DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing ddim200 --use_ddim True"
 NUM_SAMPLES=10
-ROOM_TYPE="bedroom"
-train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/bedroom/train_dataset_stats.json"
-
+ROOM_TYPE="study"
+USE_GPT_TEXT_DESCRIPTION=False
+train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/study/train_dataset_stats.json"
 python scripts/st3d_room_layout_sample.py \
- --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/bedroom/ \
- --model_path log/ST3D_bedroom/20240221_gpt4caption/ema_0.9999_300000.pt \
+ --data_dir /mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/study/ \
+ --model_path log/ST3D_study/20240229_normalized/ema_0.9999_300000.pt \
  $MODEL_FLAGS \
  $DIFFUSION_FLAGS \
  --room_type $ROOM_TYPE \
  --num_samples $NUM_SAMPLES \
- --log_dir "log/ST3D_bedroom/20240221_gpt4caption/sample_results" \
- --dataset_stats_file $train_stats_file 
+ --log_dir "log/ST3D_study/20240229_normalized/sample_results" \
+ --dataset_stats_file $train_stats_file \
+ --use_gpt_text_desc $USE_GPT_TEXT_DESCRIPTION

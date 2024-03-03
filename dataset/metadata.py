@@ -1211,6 +1211,7 @@ INVALID_ROOMS_LST = [
 ST3D_BEDROOM_QUAD_WALL_MAX_LEN = 10
 ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN = 20
 ST3D_KITCHEN_QUAD_WALL_MAX_LEN = 10
+ST3D_STUDY_QUAD_WALL_MAX_LEN = 10
 
 ST3D_BEDROOM_MIN_LEN = 3
 ST3D_BEDROOM_MAX_LEN = 13
@@ -1400,3 +1401,31 @@ ST3D_KITCHEN_FURNITURE_CNTS = {
         "mirror": 1,
         "bathtub": 1
     }
+
+ST3D_STUDY_MIN_LEN = 3
+ST3D_STUDY_MAX_LEN = 24
+# 20
+ST3D_STUDY_FURNITURE = ["mirror", "pillow", "table", "sink", "picture", "curtain", "sofa", 
+    "window", "cabinet", "lamp", "shelves", "television", "desk", "dresser", "door",
+ "chair", "night stand", "bed", "wall", "empty"]
+
+ST3D_STUDY_FURNITURE_CNTS = {
+        "cabinet": 755,
+        "chair": 697,
+        "lamp": 706,
+        "door": 639,
+        "desk": 584,
+        "picture": 573,
+        "window": 535,
+        "curtain": 518,
+        "bed": 211,
+        "pillow": 181,
+        "sofa": 125,
+        "table": 108,
+        "shelves": 77,
+        "night stand": 26,
+        "television": 10,
+        "mirror": 6,
+        "dresser": 2,
+        "sink": 1
+}

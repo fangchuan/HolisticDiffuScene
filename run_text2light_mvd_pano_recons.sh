@@ -1,11 +1,24 @@
-NUM_SAMPLES=10
+# run text2light pipeline
+
+
+
 OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/mesh_generation_experiments/text2light_results/
 
 eval "$(conda shell.bash hook)"
 
+# generate HDR panorama
+# conda activate text2light
+# cd /mnt/nas_3dv/hdd1/fangchuan/Text2Light
+# bash test_text.sh
+
+# run MVDiffusion 
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/mesh_generation_experiments/mvdiffusion_results/
+# conda activate mvdiffusion
+# python test_text2room.py --out_dir $OUTPUT_FOLDER
+
 # run panorama sampling
 conda activate control-v11
-PANO_INPUT_FOLDER=$OUTPUT_FOLDER/blockade_livingroom
+PANO_INPUT_FOLDER=$OUTPUT_FOLDER
 cd /mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/scripts
 
 # # run super-resolution

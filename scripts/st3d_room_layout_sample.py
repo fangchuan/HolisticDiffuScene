@@ -31,6 +31,7 @@ from dataset.st3d_dataset import ST3DDataset
 from dataset.metadata import ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_FURNITURE, \
                             ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_FURNITURE,\
                             ST3D_DININGROOM_FURNITURE, ST3D_KITCHEN_FURNITURE, \
+                            ST3D_STUDY_FURNITURE, ST3D_STUDY_QUAD_WALL_MAX_LEN, \
                             COLOR_TO_ADEK_LABEL
 
 from misc.equirect_projection import vis_objs3d, vis_floor_ceiling_simple
@@ -52,6 +53,8 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         class_labels_lst = ST3D_DININGROOM_FURNITURE
     elif room_type == 'kitchen':
         class_labels_lst = ST3D_KITCHEN_FURNITURE
+    elif room_type == 'study':
+        class_labels_lst = ST3D_STUDY_FURNITURE
     else:
         raise NotImplementedError
 
@@ -290,6 +293,10 @@ def main():
             wall_max_num = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
         elif args.room_type == 'kitchen':
             wall_max_num = ST3D_BEDROOM_QUAD_WALL_MAX_LEN
+        elif args.room_type == 'study':
+            wall_max_num = ST3D_STUDY_QUAD_WALL_MAX_LEN
+        else:
+            raise NotImplementedError
         # quad walls
         quad_wall_lst = scene_sample_result[:wall_max_num, :]
         # objects

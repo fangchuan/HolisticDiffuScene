@@ -17,10 +17,10 @@ import trimesh
 
 import torch.utils.data as data
 from misc import panostretch
-from .metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE,  ST3D_KITCHEN_FURNITURE, \
-ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, ST3D_KITCHEN_MAX_LEN,\
-ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_KITCHEN_FURNITURE_CNTS,\
-    ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_KITCHEN_QUAD_WALL_MAX_LEN)
+from .metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE,  ST3D_KITCHEN_FURNITURE, ST3D_STUDY_FURNITURE, \
+ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, ST3D_KITCHEN_MAX_LEN, ST3D_STUDY_MAX_LEN,\
+ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_KITCHEN_FURNITURE_CNTS, ST3D_STUDY_FURNITURE_CNTS, \
+    ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_KITCHEN_QUAD_WALL_MAX_LEN, ST3D_STUDY_QUAD_WALL_MAX_LEN)
 
 # room types
 ROOM_TYPE_DICT = {
@@ -639,6 +639,8 @@ def ClassLabelsEncode(room_type: int, obj_bbox_label: str) -> np.array:
         classes = ST3D_DININGROOM_FURNITURE
     elif room_type == ROOM_TYPE_DICT['kitchen']:
         classes = ST3D_KITCHEN_FURNITURE
+    elif room_type == ROOM_TYPE_DICT['study']:
+        classes = ST3D_STUDY_FURNITURE
     else:
         raise ValueError('The room type is not supported.')
 
@@ -687,6 +689,8 @@ def ordered_bboxes_with_class_frequencies(room_type: int, object_bbox_lst: List[
         class_freq_dict = ST3D_DININGROOM_FURNITURE_CNTS
     elif room_type == ROOM_TYPE_DICT['kitchen']:
         class_freq_dict = ST3D_KITCHEN_FURNITURE_CNTS
+    elif room_type == ROOM_TYPE_DICT['study']:
+        class_freq_dict = ST3D_STUDY_FURNITURE_CNTS
 
     bbox_size_lst = np.array([np.array(bbox['size']) for bbox in object_bbox_lst])
     # print(f'bbox_size_lst: {bbox_size_lst}')
@@ -717,6 +721,9 @@ def padding_and_reshape_object_bbox(room_type: int, object_bbox_lst: np.array, b
     elif room_type == ROOM_TYPE_DICT['kitchen']:
         max_len = ST3D_KITCHEN_MAX_LEN
         class_num = len(ST3D_KITCHEN_FURNITURE)
+    elif room_type == ROOM_TYPE_DICT['study']:
+        max_len = ST3D_STUDY_MAX_LEN
+        class_num = len(ST3D_STUDY_FURNITURE)
     else:
         raise ValueError('The room type is not supported.')
 
@@ -754,6 +761,9 @@ def padding_and_reshape_wall_bbox(room_type: int, wall_bbox_lst: np.array, bbox_
     elif room_type == ROOM_TYPE_DICT['kitchen']:
         class_num = len(ST3D_KITCHEN_FURNITURE)
         max_len = ST3D_KITCHEN_QUAD_WALL_MAX_LEN
+    elif room_type == ROOM_TYPE_DICT['study']:
+        class_num = len(ST3D_STUDY_FURNITURE)
+        max_len = ST3D_STUDY_QUAD_WALL_MAX_LEN
     else:
         raise ValueError('The room type is not supported.')
 
@@ -1088,7 +1098,7 @@ class ST3DDataset(data.Dataset):
             object_bbox_lst = padding_and_reshape_object_bbox(room_type=room_type,
                                                     object_bbox_lst=object_bbox_lst,
                                                     bbox_dim=object_bbox_lst.shape[-1])   
-            # print(f'object_bbox_lst: {object_bbox_lst}')
+            # print(f'object_bbox_lst: {object_bbox_lst.shape}')
                  
                 
 
@@ -1146,7 +1156,7 @@ class ST3DDataset(data.Dataset):
             wall_bbox_lst = padding_and_reshape_wall_bbox(room_type=room_type,
                                                     wall_bbox_lst=wall_bbox_lst,
                                                     bbox_dim=wall_bbox_lst.shape[-1])
-            # print(f'wall_bbox_lst: {wall_bbox_lst}')
+            # print(f'wall_bbox_lst: {wall_bbox_lst.shape}')
             
                 
         
