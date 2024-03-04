@@ -31,13 +31,14 @@ def main(argv):
         "--path_to_real_renderings",
         type=str,
         help="Path to the folder containing the real renderings",
-        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/livingroom_topdown_renders/")
+        # default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/livingroom_topdown_renders/")
+        default="/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_diningroom_real")
     parser.add_argument(
         "--path_to_synthesized_renderings",
         type=str,
         help="Path to the folder containing the synthesized",
-        default=
-        "/mnt/nas_3dv/hdd1/fangchuan/originalDiffuScene/DiffuScene/scripts/3dfront_livingroom/diffusion_livingrooms_dim512_nomask_instancond_objfeats_lat32/gen_top2down_notexture_nofloor/"
+        # default="/mnt/nas_3dv/hdd1/fangchuan/originalDiffuScene/DiffuScene/scripts/3dfront_livingroom/diffusion_livingrooms_dim512_nomask_instancond_objfeats_lat32/gen_top2down_notexture_nofloor/"
+        default="/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/DiffuScene/pretrained/diningrooms_bert/gen_top2down_notexture_nofloor/"
     )
 
     args = parser.parse_args(argv)
@@ -46,8 +47,8 @@ def main(argv):
         print("Path to synthesized renderings does not exist! Create folder and copy all the rendering images there.")
         os.makedirs(args.path_to_real_renderings)
 
-        dataset_folderpath = '/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/threed_front_livingroom/'
-        test_splits_filepath = '/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/splits/livingroom_test.lst'
+        dataset_folderpath = '/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/threed_front_diningroom/'
+        test_splits_filepath = '/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/splits/diningroom_test.lst'
         train_splits_filepath = test_splits_filepath.replace('test', 'train')
         valid_splits_filepath = test_splits_filepath.replace('test', 'val')
 
@@ -84,7 +85,7 @@ def main(argv):
         os.path.join(fake_img_folderpath, f) for f in os.listdir(fake_img_folderpath) if f.endswith(".png")
     ]
     print("Generating temporary a folder with test_fake images...")
-    path_to_test_fake = "/tmp/test_fake/"
+    path_to_test_fake = "/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_diningroom_fake"
     if not os.path.exists(path_to_test_fake):
         os.makedirs(path_to_test_fake)
     print("Number of fake images: {}".format(len(fake_images_path_lst)))

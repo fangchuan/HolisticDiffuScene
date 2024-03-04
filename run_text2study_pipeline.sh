@@ -1,6 +1,6 @@
-export CUDA_VISIBLE_DEVICES=1
-NUM_SAMPLES=1
-OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240227
+export CUDA_VISIBLE_DEVICES=0
+NUM_SAMPLES=10
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240304_study
 
 eval "$(conda shell.bash hook)"
 conda activate structured3d
@@ -14,7 +14,7 @@ RAW_DATASET_PATH=/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_t
 train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/study/train_dataset_stats.json"
 USE_GPT_TEXT_DESCRIPTION=False
 
-LAYOUT_MODEL_PATH=log/ST3D_kitchen/20240223_normalized/ema_0.9999_400000.pt
+LAYOUT_MODEL_PATH=log/ST3D_study/20240229_normalized/ema_0.9999_400000.pt
 python scripts/st3d_room_layout_sample.py \
  --data_dir $RAW_DATASET_PATH \
  --model_path $LAYOUT_MODEL_PATH \
@@ -30,8 +30,8 @@ python scripts/st3d_room_layout_sample.py \
 
 # # run panorama sampling
 conda activate control-v11
-PANO_INPUT_FOLDER=$OUTPUT_FOLDER/kitchen
-APP_MODEL_PATH="/mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/ckpts/control_v11p_sd15_seg_kitchen_fullres_40000.ckpt"
+PANO_INPUT_FOLDER=$OUTPUT_FOLDER/$ROOM_TYPE
+APP_MODEL_PATH="/mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/ckpts/control_v11p_sd15_seg_study_fullres_22000.ckpt"
 cd /mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/scripts
 python st3d_panorama_sample.py --input_folder $PANO_INPUT_FOLDER --ckpt_filepath $APP_MODEL_PATH
 
@@ -43,7 +43,7 @@ python st3d_panorama_sample.py --input_folder $PANO_INPUT_FOLDER --ckpt_filepath
 #                                                         --outdir output_img_1 \
 #                                                         --ddpm_steps 200 --dec_w 0.5 --colorfix_type adain
 # run panoramic reconstrcution
-python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER --use_egformer True
+python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER
 
 
 

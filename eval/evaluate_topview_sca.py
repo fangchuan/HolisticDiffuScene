@@ -176,7 +176,7 @@ def main(argv):
                         help="Set the batch size for training and evaluating (default: 256)")
     parser.add_argument("--num_workers", type=int, default=0, help="Set the PyTorch data loader workers (default: 0)")
     parser.add_argument("--epochs", type=int, default=10, help="Train for that many epochs (default: 10)")
-    parser.add_argument("--output_directory", default="/tmp/", help="Path to the output directory")
+    parser.add_argument("--output_directory", default="/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_sca/", help="Path to the output directory")
     args = parser.parse_args(argv)
 
     if torch.cuda.is_available():
@@ -195,26 +195,31 @@ def main(argv):
 
     real_train_renderings_folder = os.path.join(args.output_directory, 'real_train_renderings')
     mv_images_to_folder(train_splits_filepath, dataset_folderpath, real_train_renderings_folder)
+    real_train_img_num = len([f for f in os.listdir(real_train_renderings_folder) if f.endswith('.png')])
+    print(f'move {real_train_img_num} images to {real_train_renderings_folder}')
 
     real_test_renderings_folder = os.path.join(args.output_directory, 'real_test_renderings')
     mv_images_to_folder(test_splits_filepath, dataset_folderpath, real_test_renderings_folder)
+    real_test_img_num = len([f for f in os.listdir(real_test_renderings_folder) if f.endswith('.png')])
+    print(f'move {real_test_img_num} images to {real_test_renderings_folder}')
 
     # Create Real datasets
     train_real = ImageFolderDataset(real_train_renderings_folder, train=True)
     test_real = ImageFolderDataset(real_test_renderings_folder, train=False)
 
     # Create the synthetic datasets
-    fake_img_folderpath = args.path_to_synthesized_renderings
-    fake_images_path_lst = [
-        os.path.join(fake_img_folderpath, f, 'rendered.png')
-        for f in os.listdir(fake_img_folderpath)
-        if f.isdigit() and os.path.isdir(os.path.join(fake_img_folderpath, f))
-    ]
-    path_to_test_fake = "/tmp/test_fake/"
-    if not os.path.exists(path_to_test_fake):
-        os.makedirs(path_to_test_fake)
-    for i, sythesized_img_path in enumerate(fake_images_path_lst):
-        shutil.copyfile(sythesized_img_path, os.path.join(path_to_test_fake, f'{i:05d}.png'))
+    # fake_img_folderpath = args.path_to_synthesized_renderings
+    # fake_images_path_lst = [
+    #     os.path.join(fake_img_folderpath, f, 'rendered.png')
+    #     for f in os.listdir(fake_img_folderpath)
+    #     if f.isdigit() and os.path.isdir(os.path.join(fake_img_folderpath, f))
+    # ]
+    # path_to_test_fake = "/tmp/test_fake/"
+    # if not os.path.exists(path_to_test_fake):
+    #     os.makedirs(path_to_test_fake)
+    # for i, sythesized_img_path in enumerate(fake_images_path_lst):
+    #     shutil.copyfile(sythesized_img_path, os.path.join(path_to_test_fake, f'{i:05d}.png'))
+    path_to_test_fake = '/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_diningroom_fake'
     train_synthetic = ImageFolderDataset(directory=path_to_test_fake, train=True)
     test_synthetic = ImageFolderDataset(directory=path_to_test_fake, train=False)
 
