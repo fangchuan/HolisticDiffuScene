@@ -32,7 +32,7 @@ def main(argv):
         type=str,
         help="Path to the folder containing the real renderings",
         # default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/livingroom_topdown_renders/")
-        default="/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_diningroom_real")
+        default="/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_livingroom_real")
     parser.add_argument(
         "--path_to_synthesized_renderings",
         type=str,

@@ -146,7 +146,7 @@ def main(argv):
         "--path_to_dataset",
         type=str,
         help="Path to the folder of dataset",
-        default='/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/threed_front_diningroom/')
+        default='/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/threed_front_livingroom/')
     # parser.add_argument(
     #     "--path_to_synthesized_renderings",
     #     type=str,
@@ -164,19 +164,19 @@ def main(argv):
         "--path_to_test_annotations",
         type=str,
         help="Path to the folder containing the annotations",
-        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/splits/diningroom_test.lst")
+        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/splits/livingroom_test.lst")
     parser.add_argument(
         "--path_to_train_annotations",
         type=str,
         help="Path to the folder containing the annotations",
-        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/splits/diningroom_train.lst")
+        default="/mnt/nas_3dv/hdd1/datasets/3D_FRONT_FUTURE/holistic_layout_20231113/splits/livingroom_train.lst")
     parser.add_argument("--batch_size",
                         type=int,
                         default=256,
                         help="Set the batch size for training and evaluating (default: 256)")
     parser.add_argument("--num_workers", type=int, default=0, help="Set the PyTorch data loader workers (default: 0)")
     parser.add_argument("--epochs", type=int, default=10, help="Train for that many epochs (default: 10)")
-    parser.add_argument("--output_directory", default="/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_sca/", help="Path to the output directory")
+    parser.add_argument("--output_directory", default="/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_livingroom_sca/", help="Path to the output directory")
     args = parser.parse_args(argv)
 
     if torch.cuda.is_available():
@@ -219,7 +219,9 @@ def main(argv):
     #     os.makedirs(path_to_test_fake)
     # for i, sythesized_img_path in enumerate(fake_images_path_lst):
     #     shutil.copyfile(sythesized_img_path, os.path.join(path_to_test_fake, f'{i:05d}.png'))
-    path_to_test_fake = '/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_diningroom_fake'
+    
+    # path_to_test_fake = '/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_diningroom_fake'
+    path_to_test_fake = '/mnt/nas_3dv/hdd1/fangchuan/eccv2024_other_methods/diffuscene_exps/test_livingroom_fake/'
     train_synthetic = ImageFolderDataset(directory=path_to_test_fake, train=True)
     test_synthetic = ImageFolderDataset(directory=path_to_test_fake, train=False)
 
