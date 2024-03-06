@@ -30,7 +30,9 @@ from improved_diffusion.losses import (
 )
 from improved_diffusion import logger
 from dataset.st3d_dataset import ROOM_TYPE_DICT, get_room_type
-from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE
+from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, ST3D_STUDY_FURNITURE, \
+                            ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_STUDY_QUAD_WALL_MAX_LEN,\
+                            ST3D_BEDROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_STUDY_MAX_LEN
 
 
 def create_argparser():
@@ -40,9 +42,10 @@ def create_argparser():
         parser: _description_
     """
     defaults = dict(
-        data_dir="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/all_raw_light/bedroom",
+        data_dir="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/study/",
         log_dir='log',
-        samples_filepath='sample_results/openai-2023-07-09-16-55-49-751667/samples_10x23x32.npz',
+        room_type='study',
+        samples_filepath='log/ST3D_study/20240229_normalized/sample_results/openai-2024-03-06-19-42-41-404166/study/samples_1x34x27.npz',
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
@@ -51,23 +54,28 @@ def create_argparser():
     return parser
 
 
-def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.Tensor, iou_loss_weights: th.Tensor):
-    # quad_walls: x_pred[:, :10, :]
-    # object_bbox: x_pred[:, 10:, :]
-    B, C, feat_size = x_pred.shape
-    object_chann_idx = 10
-    assert th.all(room_type_lst == room_type_lst[0]), "The input room types should be equal"
-    assert iou_loss_weights.shape == (B, C, feat_size), "The loss weights tensor should be (B, 23, 32)"
+def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type: str, iou_loss_weights: th.Tensor):
+    """ Compute the iou loss between the layout and the predicted 3d bbox """
+    B, N, C = x_pred.shape
 
-    if get_room_type(room_type_lst[0]) == 'bedroom':
+    # assert th.all(room_type_lst == room_type_lst[0]), "The input room types should be equal"
+    assert iou_loss_weights.shape == (B, N, C), "The loss weights tensor should be (B, 23, 32)"
+
+    # if get_room_type(room_type_lst[0]) == 'bedroom':
+    if room_type == 'bedroom':
         class_labels_lst = ST3D_BEDROOM_FURNITURE
-        max_wall_num, max_obj_num, obj_feat_dim = 10, 13, 32
-    elif get_room_type(room_type_lst[0]) == 'living room':
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_MAX_LEN, 31
+    # elif get_room_type(room_type_lst[0]) == 'living room':
+    elif room_type == 'living room':
         class_labels_lst = ST3D_LIVINGROOM_FURNITURE
-        max_wall_num, max_obj_num, obj_feat_dim = 10, 23, 32
-    elif get_room_type(room_type_lst[0]) == 'dining room':
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, 33
+    # elif get_room_type(room_type_lst[0]) == 'dining room':
+    elif room_type == 'dining room':
         class_labels_lst = ST3D_DININGROOM_FURNITURE
-        max_wall_num, max_obj_num, obj_feat_dim = 10, 23, 32
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_DININGROOM_MAX_LEN, 33
+    elif room_type == 'study':
+        class_labels_lst = ST3D_STUDY_FURNITURE
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_STUDY_QUAD_WALL_MAX_LEN, ST3D_STUDY_MAX_LEN, 27
     else:
         raise NotImplementedError
 
@@ -77,15 +85,15 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     angle_idx = 3 + size_idx
 
     # get valid quad wall bbox
-    pred_quad_wall_bbox = x_pred[:, 0:object_chann_idx, :].reshape(B, max_wall_num, obj_feat_dim)
-    # pred_quad_wall_bbox = pred_quad_wall_bbox[invalid_masks[:, 0:object_chann_idx, :] == False]
+    pred_quad_wall_bbox = x_pred[:, 0:max_wall_num, :].reshape(B, max_wall_num, obj_feat_dim)
 
     # get valid object bbox
-    pred_object_bbox = x_pred[:, object_chann_idx:, :].reshape(B, max_obj_num, obj_feat_dim)
-    # pred_object_bbox = pred_object_bbox[invalid_masks[:, object_chann_idx:, :] == False]
+    pred_object_bbox = x_pred[:, max_wall_num:, :].reshape(B, max_obj_num, obj_feat_dim)
 
-    pred_quad_wall_class_prob = th.where(pred_quad_wall_bbox[:, :, 0:centroid_idx] > 0.5, 1, 0)
-    pred_object_class_prob = th.where(pred_object_bbox[:, :, 0:centroid_idx] > 0.5, 1, 0)
+    pred_quad_wall_class = pred_quad_wall_bbox[:, :, 0:centroid_idx]
+    pred_quad_wall_class_prob = th.where(pred_quad_wall_class > 0.5, pred_quad_wall_class, 0)
+    pred_object_class = pred_object_bbox[:, :, 0:centroid_idx]
+    pred_object_class_prob = th.where(pred_object_class > 0.5, pred_object_class, 0)
     logger.debug(f'pred_quad_wall_class_prob: {pred_quad_wall_class_prob.shape}')
     # skip probability of empty object
     no_wall_mask = th.all(pred_quad_wall_class_prob == 0, dim=2, keepdim=True)
@@ -110,6 +118,8 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
         no_object_mask, th.all(pred_object_class == class_labels_lst.index('television'), dim=2, keepdim=True))
     valid_wall_masks = ~no_wall_mask
     valid_object_masks = ~no_object_mask
+    print(f'valid_wall_masks: {valid_wall_masks.shape}')
+    print(f'valid_object_masks: {valid_object_masks.shape}')
 
     def not_door_or_window(obj_sem_cls, all_cls_labels):
         return obj_sem_cls != all_cls_labels.index('door') and \
@@ -118,35 +128,40 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
                 obj_sem_cls != all_cls_labels.index('picture') and \
                 obj_sem_cls != all_cls_labels.index('television')
 
-    pred_object_centroid = pred_object_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
+    # pred_object_centroid = pred_object_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
+    pred_object_centroid = pred_object_bbox[:, :, centroid_idx:size_idx]
     pred_object_centroid = th.where(pred_object_centroid.isnan(), 0.0, pred_object_centroid)
-    pred_quad_wall_centroid = pred_quad_wall_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
+    # pred_quad_wall_centroid = pred_quad_wall_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
+    pred_quad_wall_centroid = pred_quad_wall_bbox[:, :, centroid_idx:size_idx]
     pred_quad_wall_centroid = th.where(pred_quad_wall_centroid.isnan(), 0.0, pred_quad_wall_centroid)
     logger.debug(f'pred_object_centroid: {pred_object_centroid.shape}')
 
-    # pred_object_size = ((pred_object_bbox[:, :, size_idx:angle_idx] + 1) * 0.5).clamp(min=1e-4, max=1.0)
-    pred_object_size = (pred_object_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
+    # pred_object_size = (pred_object_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
+    pred_object_size = (pred_object_bbox[:, :, size_idx:angle_idx])
     pred_object_size = th.where(pred_object_size.isnan(), 0.0, pred_object_size)
-    pred_quad_wall_size = (pred_quad_wall_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
+    # pred_quad_wall_size = (pred_quad_wall_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
+    pred_quad_wall_size = (pred_quad_wall_bbox[:, :, size_idx:angle_idx])
     pred_quad_wall_size = th.where(pred_quad_wall_size.isnan(), 0.0, pred_quad_wall_size)
     logger.debug(f'pred_object_size: {pred_object_size.shape}')
 
-    pred_object_cos_angle = pred_object_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
-    pred_object_sin_angle = pred_object_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
-    # TODO: here we choose 5e-3 as threshold, but it is not a good choice, try to add it into hyper-parameters
-    # pred_object_angle = th.where(
-    #     th.abs(pred_object_cos_angle) < 5e-3, th.arcsin(pred_object_sin_angle), th.arccos(pred_object_cos_angle))
-    pred_object_angle = th.arccos(pred_object_cos_angle)
+    # pred_object_cos_angle = pred_object_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
+    # pred_object_sin_angle = pred_object_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
+    # # TODO: here we choose 5e-3 as threshold, but it is not a good choice, try to add it into hyper-parameters
+    # # pred_object_angle = th.where(
+    # #     th.abs(pred_object_cos_angle) < 5e-3, th.arcsin(pred_object_sin_angle), th.arccos(pred_object_cos_angle))
+    # pred_object_angle = th.arccos(pred_object_cos_angle)
+    pred_object_angle = pred_object_bbox[:, :, angle_idx:angle_idx + 1]
     pred_object_eulers = th.concat(
         (th.zeros_like(pred_object_angle), th.zeros_like(pred_object_angle), pred_object_angle), dim=2)
     logger.debug(f'pred_object_eulers: {pred_object_eulers.shape}')
 
     # recover wall normal
-    pred_quad_wall_cos_angle = pred_quad_wall_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
-    pred_quad_wall_sin_angle = pred_quad_wall_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
-    pred_quad_wall_angle = th.where(
-        th.abs(pred_quad_wall_cos_angle) < 5e-3, th.arcsin(pred_quad_wall_sin_angle),
-        th.arccos(pred_quad_wall_cos_angle))
+    # pred_quad_wall_cos_angle = pred_quad_wall_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
+    # pred_quad_wall_sin_angle = pred_quad_wall_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
+    # pred_quad_wall_angle = th.where(
+    #     th.abs(pred_quad_wall_cos_angle) < 5e-3, th.arcsin(pred_quad_wall_sin_angle),
+    #     th.arccos(pred_quad_wall_cos_angle))
+    pred_quad_wall_angle = pred_quad_wall_bbox[:, :, angle_idx:angle_idx + 1]
     # B x wall_num x 3
     pred_quad_wall_eulers = th.concat(
         (th.zeros_like(pred_quad_wall_angle), th.zeros_like(pred_quad_wall_angle), pred_quad_wall_angle), dim=2)
@@ -187,8 +202,10 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
         wall_num = valid_quad_wall_centroid.shape[0]
 
         obj_2d_corners = obj_2d_corner_points.reshape(1, obj_num * 4, 2).repeat(wall_num, 1, 1)
-        phy_cons_loss, _ = verify_object_box_on_wall(obj_2d_corners, valid_quad_wall_centroid, valid_quad_wall_normal,
-                                                     valid_quad_wall_size)
+        phy_cons_loss, _ = verify_object_box_on_wall(points=obj_2d_corners, 
+                                                     wall_center=valid_quad_wall_centroid, 
+                                                     wall_normal=valid_quad_wall_normal,
+                                                     wall_size=valid_quad_wall_size)
         # 2d box corners of predicted quad walls in x-y plane
         batch_pred_wall_corners_2d = []
         for wall_idx in range(wall_num):
@@ -263,8 +280,8 @@ def main():
     args = create_argparser().parse_args()
     print(args)
 
-    log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
-    logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
+    # log_dir = os.path.join(args.log_dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    # logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout', 'log', 'csv'])
     logger.set_level(logger.DEBUG)
 
     # load samples
@@ -273,11 +290,12 @@ def main():
     print(f"loaded samples  {samples['arr_0'].shape}")
     # setup device
     device = th.device('cuda' if th.cuda.is_available() else 'cpu')
-    predictions = th.from_numpy(samples['arr_0']).to(device)
-    room_types = th.from_numpy(samples['arr_1']).to(device)
+    predictions = th.from_numpy(samples['arr_0']).float().to(device)
+    # room_types = th.from_numpy(samples['arr_1']).to(device)
+    room_type_str = args.room_type
     iou_weights = th.ones_like(predictions).to(device)
     physical_losses = iou_among_layout_and_predicted_3d_bbox(x_pred=predictions,
-                                                             room_type_lst=room_types,
+                                                             room_type=room_type_str,
                                                              iou_loss_weights=iou_weights)
     print(f"physical_losses: {physical_losses}")
 

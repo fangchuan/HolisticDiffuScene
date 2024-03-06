@@ -9,9 +9,9 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch as th
 
 from dataset.st3d_dataset import get_room_type
-from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, \
-    ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_MAX_LEN, \
-     ST3D_LIVINGROOM_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN
+from dataset.metadata import ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE, ST3D_STUDY_FURNITURE, \
+                            ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_STUDY_QUAD_WALL_MAX_LEN,\
+                            ST3D_BEDROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_STUDY_MAX_LEN
 from . import logger
 from shapely.geometry.polygon import Polygon
 from misc.utils import euler_angle_to_matrix
@@ -199,15 +199,18 @@ def bbox_corners(bbox_centroids: th.Tensor, bbox_sizes: th.Tensor, bbox_angles: 
     return corners + bbox_centroids
 
 
-def verify_object_box_on_wall(points: th.Tensor, wall_center: th.Tensor, wall_normal: th.Tensor, wall_size: th.Tensor):
+def verify_object_box_on_wall(points: th.Tensor, 
+                              wall_center: th.Tensor, 
+                              wall_normal: th.Tensor, 
+                              wall_size: th.Tensor):
     """verify if object 2d box is on wall plane, and calculate points to plane distance in 3D space
     wall plane: nx * x + ny * y + nz * z + d = 0
 
     Args:
-        points (th.Tensor): 2d box corners of observed objects
-        wall_center (th.Tensor): wall centroid
-        wall_normal (th.Tensor): wall normal 
-        wall_size (th.Tensor): wall size
+        points (th.Tensor): 2d box corners of observed objects, (wall_num, obj_numx4, 2)
+        wall_center (th.Tensor): wall centroid, (wall_num, 3)
+        wall_normal (th.Tensor): wall normal, (wall_num, 3) 
+        wall_size (th.Tensor): wall size, (wall_num, 3)
 
     Returns:
         physical constriant loss: object box intersect with wall plane
@@ -283,7 +286,9 @@ def verify_object_box_on_wall(points: th.Tensor, wall_center: th.Tensor, wall_no
     # return physical_constraint_loss.sum(), collision.sum()
 
 
-def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.Tensor, invalid_masks: th.Tensor,
+def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, 
+                                           room_type_lst: th.Tensor, 
+                                        #    invalid_masks: th.Tensor,
                                            iou_loss_weights: th.Tensor):
     """_summary_
 
@@ -299,25 +304,29 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     Returns:
         physical_violation_loss: (B, 1, 1)
     """
-    # quad_walls: x_pred[:, :10, :]
-    # object_bbox: x_pred[:, 10:, :]
-    B, C, feat_size = x_pred.shape
+
+    B, N, C = x_pred.shape
     assert th.all(room_type_lst == room_type_lst[0]), "The input room types should be equal"
-    assert iou_loss_weights.shape == (B, C, feat_size), f"The loss weights tensor should be ({B}, {C}, {feat_size})"
+    assert iou_loss_weights.shape == (B, N, C), f"The loss weights tensor should be ({B}, {N}, {C})"
 
     if get_room_type(room_type_lst[0]) == 'bedroom':
+    # if room_type == 'bedroom':
         class_labels_lst = ST3D_BEDROOM_FURNITURE
-        max_wall_num, max_obj_num, obj_feat_dim = ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_MAX_LEN, 32
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_MAX_LEN, 31
     elif get_room_type(room_type_lst[0]) == 'living room':
+    # elif room_type == 'living room':
         class_labels_lst = ST3D_LIVINGROOM_FURNITURE
-        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, 34
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, 33
     elif get_room_type(room_type_lst[0]) == 'dining room':
+    # elif room_type == 'dining room':
         class_labels_lst = ST3D_DININGROOM_FURNITURE
-        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, 34
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_DININGROOM_MAX_LEN, 33
+    # elif room_type == 'study':
+    elif get_room_type(room_type_lst[0]) == 'study':
+        class_labels_lst = ST3D_STUDY_FURNITURE
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_STUDY_QUAD_WALL_MAX_LEN, ST3D_STUDY_MAX_LEN, 27
     else:
         raise NotImplementedError
-
-    object_chann_idx = max_wall_num
 
     class_idx = 0
     centroid_idx = class_idx + len(class_labels_lst)
@@ -325,19 +334,200 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     angle_idx = 3 + size_idx
 
     # get valid quad wall bbox
-    pred_quad_wall_bbox = x_pred[:, 0:object_chann_idx, :].reshape(B, max_wall_num, obj_feat_dim)
-    no_wall_mask = invalid_masks[:, 0:object_chann_idx, :]
+    pred_quad_wall_bbox = x_pred[:, 0:max_wall_num, :].reshape(B, max_wall_num, obj_feat_dim)
 
     # get valid object bbox
-    pred_object_bbox = x_pred[:, object_chann_idx:, :].reshape(B, max_obj_num, obj_feat_dim)
-    no_object_mask = invalid_masks[:, object_chann_idx:, :]
+    pred_object_bbox = x_pred[:, max_wall_num:, :].reshape(B, max_obj_num, obj_feat_dim)
 
-    pred_quad_wall_class_prob = th.where(pred_quad_wall_bbox[:, :, 0:centroid_idx] > 0.5, 1, 0)
-    pred_object_class_prob = th.where(pred_object_bbox[:, :, 0:centroid_idx] > 0.5, 1, 0)
+    pred_quad_wall_class = pred_quad_wall_bbox[:, :, 0:centroid_idx]
+    pred_quad_wall_class_prob = th.where(pred_quad_wall_class > 0.5, pred_quad_wall_class, 0)
+    pred_object_class = pred_object_bbox[:, :, 0:centroid_idx]
+    pred_object_class_prob = th.where(pred_object_class > 0.5, pred_object_class, 0)
+    logger.debug(f'pred_quad_wall_class_prob: {pred_quad_wall_class_prob.shape}')
+    # skip probability of empty object
+    no_wall_mask = th.all(pred_quad_wall_class_prob == 0, dim=2, keepdim=True)
+    no_object_mask = th.all(pred_object_class_prob == 0, dim=2, keepdim=True)
+    pred_quad_wall_class = th.argmax(pred_quad_wall_class_prob, dim=2, keepdim=True)
+    pred_object_class = th.argmax(pred_object_class_prob, dim=2, keepdim=True)
+    logger.debug(f'pred_quad_wall_class: {pred_quad_wall_class.shape}')
+    # skip empty object, door, window, curtain
+    no_wall_mask = th.logical_or(no_wall_mask,
+                                 th.all(pred_quad_wall_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(no_object_mask,
+                                   th.all(pred_object_class == class_labels_lst.index('empty'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(no_object_mask,
+                                   th.all(pred_object_class == class_labels_lst.index('door'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(no_object_mask,
+                                   th.all(pred_object_class == class_labels_lst.index('window'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(no_object_mask,
+                                   th.all(pred_object_class == class_labels_lst.index('curtain'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(no_object_mask,
+                                   th.all(pred_object_class == class_labels_lst.index('picture'), dim=2, keepdim=True))
+    no_object_mask = th.logical_or(
+        no_object_mask, th.all(pred_object_class == class_labels_lst.index('television'), dim=2, keepdim=True))
+    valid_wall_masks = ~no_wall_mask
+    valid_object_masks = ~no_object_mask
+
+    # pred_object_centroid = pred_object_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
+    pred_object_centroid = pred_object_bbox[:, :, centroid_idx:size_idx]
+    pred_object_centroid = th.where(pred_object_centroid.isnan(), 0.0, pred_object_centroid)
+    # pred_quad_wall_centroid = pred_quad_wall_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
+    pred_quad_wall_centroid = pred_quad_wall_bbox[:, :, centroid_idx:size_idx]
+    pred_quad_wall_centroid = th.where(pred_quad_wall_centroid.isnan(), 0.0, pred_quad_wall_centroid)
+    logger.debug(f'pred_object_centroid: {pred_object_centroid.shape}')
+
+    # pred_object_size = (pred_object_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
+    pred_object_size = (pred_object_bbox[:, :, size_idx:angle_idx])
+    pred_object_size = th.where(pred_object_size.isnan(), 0.0, pred_object_size)
+    # pred_quad_wall_size = (pred_quad_wall_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
+    pred_quad_wall_size = (pred_quad_wall_bbox[:, :, size_idx:angle_idx])
+    pred_quad_wall_size = th.where(pred_quad_wall_size.isnan(), 0.0, pred_quad_wall_size)
+    logger.debug(f'pred_object_size: {pred_object_size.shape}')
+
+    # pred_object_cos_angle = pred_object_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
+    # pred_object_sin_angle = pred_object_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
+    # # TODO: here we choose 5e-3 as threshold, but it is not a good choice, try to add it into hyper-parameters
+    # # pred_object_angle = th.where(
+    # #     th.abs(pred_object_cos_angle) < 5e-3, th.arcsin(pred_object_sin_angle), th.arccos(pred_object_cos_angle))
+    # pred_object_angle = th.arccos(pred_object_cos_angle)
+    pred_object_angle = pred_object_bbox[:, :, angle_idx:angle_idx + 1]
+    pred_object_eulers = th.concat(
+        (th.zeros_like(pred_object_angle), th.zeros_like(pred_object_angle), pred_object_angle), dim=2)
+    logger.debug(f'pred_object_eulers: {pred_object_eulers.shape}')
+
+    # recover wall normal
+    # pred_quad_wall_cos_angle = pred_quad_wall_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
+    # pred_quad_wall_sin_angle = pred_quad_wall_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
+    # pred_quad_wall_angle = th.where(
+    #     th.abs(pred_quad_wall_cos_angle) < 5e-3, th.arcsin(pred_quad_wall_sin_angle),
+    #     th.arccos(pred_quad_wall_cos_angle))
+    pred_quad_wall_angle = pred_quad_wall_bbox[:, :, angle_idx:angle_idx + 1]
+    # B x wall_num x 3
+    pred_quad_wall_eulers = th.concat(
+        (th.zeros_like(pred_quad_wall_angle), th.zeros_like(pred_quad_wall_angle), pred_quad_wall_angle), dim=2)
+    logger.debug(f'pred_quad_wall_eulers: {pred_quad_wall_eulers.shape}')
+    # B x wall_num x 1 x 3
+    camera_orientation = th.tensor([0.0, -1.0, 0.0], device=x_pred.device).reshape(1, 1, 1,
+                                                                                   3).repeat(B, max_wall_num, 1, 1)
+
+    pred_quad_wall_normal = (
+        euler_angle_to_matrix(pred_quad_wall_eulers) @ camera_orientation.transpose(2, 3)).transpose(2, 3)
+    pred_quad_wall_normal = pred_quad_wall_normal.squeeze(2)
+    logger.debug(f'pred_quad_wall_normal: {pred_quad_wall_normal.shape}')
+
+    # Bx13x8x3
+    pred_object_box_corners_3d = bbox_corners(pred_object_centroid.unsqueeze(2), pred_object_size.unsqueeze(2),
+                                              pred_object_eulers)
+    # get x-y plane box corners
+    pred_object_bbox_corners_2d = pred_object_box_corners_3d[:, :, 0:4, 0:2]
+
+    batch_physical_constraint_loss = []
+    for batch_idx in range(B):
+        phy_cons_loss = 0.0
+
+        valid_object = valid_object_masks[batch_idx, :, 0].reshape(-1)
+        valid_object_bbox_corners2d = pred_object_bbox_corners_2d[batch_idx, valid_object, :, :]
+        obj_num = valid_object_bbox_corners2d.shape[0]
+        if obj_num == 0:
+            continue
+        # (num_objx4)x2
+        obj_2d_corner_points = valid_object_bbox_corners2d.reshape(-1, 2)
+        logger.debug(f'valid object number: {obj_num}')
+
+        valid_wall = valid_wall_masks[batch_idx, :, 0].reshape(-1)
+        valid_quad_wall_centroid = pred_quad_wall_centroid[batch_idx, valid_wall, :]
+        valid_quad_wall_normal = pred_quad_wall_normal[batch_idx, valid_wall, :]
+        valid_quad_wall_size = pred_quad_wall_size[batch_idx, valid_wall, :]
+        wall_num = valid_quad_wall_centroid.shape[0]
+        if wall_num == 0:
+            continue
+        # logger.debug(f'valid wall number: {wall_num}')
+
+        obj_2d_corners = obj_2d_corner_points.reshape(1, obj_num * 4, 2).repeat(wall_num, 1, 1)
+        phy_cons_loss, _ = verify_object_box_on_wall(points=obj_2d_corners, 
+                                                     wall_center=valid_quad_wall_centroid, 
+                                                     wall_normal=valid_quad_wall_normal,
+                                                     wall_size=valid_quad_wall_size)
+        phy_cons_loss = phy_cons_loss.sum(dim=0) / obj_num
+        # 2d box corners of predicted quad walls in x-y plane
+        # for wall_idx in range(wall_num):
+            # phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corner_points,
+            #                                                      valid_quad_wall_centroid[wall_idx],
+            #                                                      valid_quad_wall_normal[wall_idx],
+            #                                                      valid_quad_wall_size[wall_idx])
+            # logger.debug(f'wall {wall_idx} centroid: {valid_quad_wall_centroid[wall_idx]}')
+            # logger.debug(f'wall {wall_idx} normal: {valid_quad_wall_normal[wall_idx]}')
+            # logger.debug(f'wall {wall_idx} physical violation loss: {phy_cons_loss[wall_idx]}')
+
+        batch_physical_constraint_loss.append(phy_cons_loss.reshape(1, 1))
+
+    # Bx1x1
+    batch_pred_physical_constraint_loss = th.stack(batch_physical_constraint_loss, dim=0)
+    # sometimes loss_batch_size is smaller than B, so we need to pad it to B
+    loss_batch_size = batch_pred_physical_constraint_loss.shape[0]
+    if loss_batch_size < B:
+        batch_pred_physical_constraint_loss = th.cat(
+            (batch_pred_physical_constraint_loss, th.zeros(B - loss_batch_size, 1, 1, device=x_pred.device)), dim=0)
+    _, _, iou_loss_size = batch_pred_physical_constraint_loss.shape
+
+    batch_iou_loss = batch_pred_physical_constraint_loss * iou_loss_weights.reshape(B, 1, -1)[..., :iou_loss_size]
+    return batch_iou_loss
+
+
+def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, 
+                                           room_type: str, 
+                                           iou_loss_weights: th.Tensor):
+    """_summary_
+
+    Args:
+        x_pred (th.Tensor): _description_
+        room_type_lst (th.Tensor): _description_
+        iou_loss_weights (th.Tensor): _description_
+
+    Raises:
+        NotImplementedError: _description_
+
+    Returns:
+        physical_violation_loss: (B, 1, 1)
+    """
+
+    B, N, C = x_pred.shape
+    assert iou_loss_weights.shape == (B, N, C), f"The loss weights tensor should be ({B}, {N}, {C})"
+
+    if room_type == 'bedroom':
+        class_labels_lst = ST3D_BEDROOM_FURNITURE
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_MAX_LEN, 31
+    elif room_type == 'living room':
+        class_labels_lst = ST3D_LIVINGROOM_FURNITURE
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, 33
+    elif room_type == 'dining room':
+        class_labels_lst = ST3D_DININGROOM_FURNITURE
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_DININGROOM_MAX_LEN, 33
+    elif room_type == 'study':
+        class_labels_lst = ST3D_STUDY_FURNITURE
+        max_wall_num, max_obj_num, obj_feat_dim = ST3D_STUDY_QUAD_WALL_MAX_LEN, ST3D_STUDY_MAX_LEN, 27
+    else:
+        raise NotImplementedError
+
+    class_idx = 0
+    centroid_idx = class_idx + len(class_labels_lst)
+    size_idx = 3 + centroid_idx
+    angle_idx = 3 + size_idx
+
+    # get valid quad wall bbox
+    pred_quad_wall_bbox = x_pred[:, 0:max_wall_num, :].reshape(B, max_wall_num, obj_feat_dim)
+
+    # get valid object bbox
+    pred_object_bbox = x_pred[:, max_wall_num:, :].reshape(B, max_obj_num, obj_feat_dim)
+
+    pred_quad_wall_class = pred_quad_wall_bbox[:, :, 0:centroid_idx]
+    pred_quad_wall_class_prob = th.where(pred_quad_wall_class > 0.5, pred_quad_wall_class, 0)
+    pred_object_class = pred_object_bbox[:, :, 0:centroid_idx]
+    pred_object_class_prob = th.where(pred_object_class > 0.5, pred_object_class, 0)
     # logger.debug(f'pred_quad_wall_class_prob: {pred_quad_wall_class_prob.shape}')
     # skip probability of empty object
-    no_wall_mask = th.logical_or(no_wall_mask, th.all(pred_quad_wall_class_prob == 0, dim=2, keepdim=True))
-    no_object_mask = th.logical_or(no_object_mask, th.all(pred_object_class_prob == 0, dim=2, keepdim=True))
+    no_wall_mask = th.all(pred_quad_wall_class_prob == 0, dim=2, keepdim=True)
+    no_object_mask = th.all(pred_object_class_prob == 0, dim=2, keepdim=True)
     pred_quad_wall_class = th.argmax(pred_quad_wall_class_prob, dim=2, keepdim=True)
     pred_object_class = th.argmax(pred_object_class_prob, dim=2, keepdim=True)
     # logger.debug(f'pred_quad_wall_class: {pred_quad_wall_class.shape}')
@@ -359,35 +549,24 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     valid_wall_masks = ~no_wall_mask
     valid_object_masks = ~no_object_mask
 
-    pred_object_centroid = pred_object_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
+    pred_object_centroid = pred_object_bbox[:, :, centroid_idx:size_idx]
     pred_object_centroid = th.where(pred_object_centroid.isnan(), 0.0, pred_object_centroid)
-    pred_quad_wall_centroid = pred_quad_wall_bbox[:, :, centroid_idx:size_idx].clamp(min=-1.0, max=1.0)
+    pred_quad_wall_centroid = pred_quad_wall_bbox[:, :, centroid_idx:size_idx]
     pred_quad_wall_centroid = th.where(pred_quad_wall_centroid.isnan(), 0.0, pred_quad_wall_centroid)
     # logger.debug(f'pred_object_centroid: {pred_object_centroid.shape}')
 
-    # pred_object_size = ((pred_object_bbox[:, :, size_idx:angle_idx] + 1) * 0.5).clamp(min=1e-4, max=1.0)
-    pred_object_size = (pred_object_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
+    pred_object_size = (pred_object_bbox[:, :, size_idx:angle_idx])
     pred_object_size = th.where(pred_object_size.isnan(), 0.0, pred_object_size)
-    pred_quad_wall_size = (pred_quad_wall_bbox[:, :, size_idx:angle_idx]).clamp(min=1e-4, max=1.0)
+    pred_quad_wall_size = (pred_quad_wall_bbox[:, :, size_idx:angle_idx])
     pred_quad_wall_size = th.where(pred_quad_wall_size.isnan(), 0.0, pred_quad_wall_size)
     # logger.debug(f'pred_object_size: {pred_object_size.shape}')
 
-    pred_object_cos_angle = pred_object_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
-    pred_object_sin_angle = pred_object_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
-    # TODO: here we choose 5e-3 as threshold, but it is not a good choice, try to add it into hyper-parameters
-    # pred_object_angle = th.where(
-    #     th.abs(pred_object_cos_angle) < 5e-3, th.arcsin(pred_object_sin_angle), th.arccos(pred_object_cos_angle))
-    pred_object_angle = th.arccos(pred_object_cos_angle)
+    pred_object_angle = pred_object_bbox[:, :, angle_idx:angle_idx + 1]
     pred_object_eulers = th.concat(
         (th.zeros_like(pred_object_angle), th.zeros_like(pred_object_angle), pred_object_angle), dim=2)
     # logger.debug(f'pred_object_eulers: {pred_object_eulers.shape}')
 
-    # recover wall normal
-    pred_quad_wall_cos_angle = pred_quad_wall_bbox[:, :, angle_idx:angle_idx + 1].clamp(min=-0.999999, max=0.999999)
-    pred_quad_wall_sin_angle = pred_quad_wall_bbox[:, :, angle_idx + 1:angle_idx + 2].clamp(min=-0.999999, max=0.999999)
-    pred_quad_wall_angle = th.where(
-        th.abs(pred_quad_wall_cos_angle) < 5e-3, th.arcsin(pred_quad_wall_sin_angle),
-        th.arccos(pred_quad_wall_cos_angle))
+    pred_quad_wall_angle = pred_quad_wall_bbox[:, :, angle_idx:angle_idx + 1]
     # B x wall_num x 3
     pred_quad_wall_eulers = th.concat(
         (th.zeros_like(pred_quad_wall_angle), th.zeros_like(pred_quad_wall_angle), pred_quad_wall_angle), dim=2)
@@ -395,7 +574,7 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     # B x wall_num x 1 x 3
     camera_orientation = th.tensor([0.0, -1.0, 0.0], device=x_pred.device).reshape(1, 1, 1,
                                                                                    3).repeat(B, max_wall_num, 1, 1)
-    # logger.debug(f'camera_orientation: {camera_orientation.shape}')
+
     pred_quad_wall_normal = (
         euler_angle_to_matrix(pred_quad_wall_eulers) @ camera_orientation.transpose(2, 3)).transpose(2, 3)
     pred_quad_wall_normal = pred_quad_wall_normal.squeeze(2)
@@ -404,8 +583,11 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
     # Bx13x8x3
     pred_object_box_corners_3d = bbox_corners(pred_object_centroid.unsqueeze(2), pred_object_size.unsqueeze(2),
                                               pred_object_eulers)
+    # pred_quad_wall_box_corners_3d = bbox_corners(pred_quad_wall_centroid.unsqueeze(2), pred_quad_wall_size.unsqueeze(2),
+    #                                             pred_quad_wall_eulers)
     # get x-y plane box corners
     pred_object_bbox_corners_2d = pred_object_box_corners_3d[:, :, 0:4, 0:2]
+    # pred_wall_bbox_corners_2d = pred_quad_wall_box_corners_3d[:, :, 0:4, 0:2]
 
     batch_physical_constraint_loss = []
     for batch_idx in range(B):
@@ -416,55 +598,88 @@ def iou_among_layout_and_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.
         obj_num = valid_object_bbox_corners2d.shape[0]
         if obj_num == 0:
             continue
-
         # (num_objx4)x2
         obj_2d_corner_points = valid_object_bbox_corners2d.reshape(-1, 2)
         # logger.debug(f'valid object number: {obj_num}')
 
         valid_wall = valid_wall_masks[batch_idx, :, 0].reshape(-1)
+        # valid_quad_wall_bbox_corners2d = pred_wall_bbox_corners_2d[batch_idx, valid_wall, :, :]
         valid_quad_wall_centroid = pred_quad_wall_centroid[batch_idx, valid_wall, :]
         valid_quad_wall_normal = pred_quad_wall_normal[batch_idx, valid_wall, :]
         valid_quad_wall_size = pred_quad_wall_size[batch_idx, valid_wall, :]
         wall_num = valid_quad_wall_centroid.shape[0]
         if wall_num == 0:
             continue
-        # logger.debug(f'valid wall number: {wall_num}')
 
         obj_2d_corners = obj_2d_corner_points.reshape(1, obj_num * 4, 2).repeat(wall_num, 1, 1)
-        phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corners, valid_quad_wall_centroid,
-                                                             valid_quad_wall_normal, valid_quad_wall_size)
-        phy_cons_loss = phy_cons_loss.sum(dim=0) / obj_num
+        phy_cons_loss, _ = verify_object_box_on_wall(points=obj_2d_corners, 
+                                                     wall_center=valid_quad_wall_centroid, 
+                                                     wall_normal=valid_quad_wall_normal,
+                                                     wall_size=valid_quad_wall_size)
+        
         # 2d box corners of predicted quad walls in x-y plane
+        # batch_pred_wall_corners_2d = []
         # for wall_idx in range(wall_num):
+        #     # phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corner_points,
+        #     #                                                      valid_quad_wall_centroid[wall_idx],
+        #     #                                                      valid_quad_wall_normal[wall_idx],
+        #     #                                                      valid_quad_wall_size[wall_idx])
+        #     logger.log(f'wall {wall_idx} centroid: {valid_quad_wall_centroid[wall_idx]}')
+        #     logger.log(f'wall {wall_idx} normal: {valid_quad_wall_normal[wall_idx]}')
+        #     logger.log(f'wall {wall_idx} physical violation loss: {phy_cons_loss[wall_idx]}')
+        #     batch_pred_wall_corners_2d.append(valid_quad_wall_bbox_corners2d[wall_idx, :, :])
+            
+        # # visualize collision
+        # # draw 2D projection on the horizontal plane (x-y plane)
+        # wall_2d_corner_points = th.cat(tuple(batch_pred_wall_corners_2d), 0)
+        # wall_polygen_x_lst, wall_polygen_y_lst = [], []
+        # obj_polygen_x_lst, obj_polygen_y_lst = [], []
+        # from matplotlib import pyplot
 
-        #     phy_cons_loss, collision = verify_object_box_on_wall(obj_2d_corner_points,
-        #                                                          valid_quad_wall_centroid[wall_idx],
-        #                                                          valid_quad_wall_normal[wall_idx],
-        #                                                          valid_quad_wall_size[wall_idx])
-        #     phy_cons_loss = phy_cons_loss + phy_cons_loss / obj_num
-        #     if phy_cons_loss.isnan():
-        #         logger.debug(f'phy_cons_loss is nan')
-        #         logger.debug(f'obj_2d_corner_points: {obj_2d_corner_points}')
-        #         logger.debug(f'valid_quad_wall_centroid: {valid_quad_wall_centroid[wall_idx]}')
-        #         logger.debug(f'valid_quad_wall_normal: {valid_quad_wall_normal[wall_idx]}')
-        #         logger.debug(f'valid_quad_wall_size: {valid_quad_wall_size[wall_idx]}')
-        #         logger.debug(f'collision: {collision}')
-        #         phy_cons_loss = 0.0
+        # for i in range(0, wall_2d_corner_points.shape[0], 4):
+        #     corner1 = wall_2d_corner_points[i].cpu().numpy()
+        #     corner2 = wall_2d_corner_points[i + 1].cpu().numpy()
+        #     corner3 = wall_2d_corner_points[i + 2].cpu().numpy()
+        #     corner4 = wall_2d_corner_points[i + 3].cpu().numpy()
+        #     polygon2D_1 = Polygon([(corner1[0], corner1[1]), (corner2[0], corner2[1]), (corner3[0], corner3[1]),
+        #                            (corner4[0], corner4[1])])
+        #     xx, yy = polygon2D_1.exterior.xy
+        #     wall_polygen_x_lst.extend(xx.tolist())
+        #     wall_polygen_y_lst.extend(yy.tolist())
+        #     pyplot.plot(xx, yy)
 
+        # for j in range(0, obj_2d_corner_points.shape[0], 4):
+        #     corner1 = obj_2d_corner_points[j].cpu().numpy()
+        #     corner2 = obj_2d_corner_points[j + 1].cpu().numpy()
+        #     corner3 = obj_2d_corner_points[j + 2].cpu().numpy()
+        #     corner4 = obj_2d_corner_points[j + 3].cpu().numpy()
+        #     polygon2D_2 = Polygon([(corner1[0], corner1[1]), (corner2[0], corner2[1]), (corner3[0], corner3[1]),
+        #                            (corner4[0], corner4[1])])
+        #     xx, yy = polygon2D_2.exterior.xy
+        #     obj_polygen_x_lst.extend(xx.tolist())
+        #     obj_polygen_y_lst.extend(yy.tolist())
+        #     pyplot.plot(xx, yy)
+
+        # pyplot.axis('equal')
+        # pyplot.show()
+        
+        phy_cons_loss = phy_cons_loss.sum(dim=0) / obj_num
         batch_physical_constraint_loss.append(phy_cons_loss.reshape(1, 1))
 
-    # Bx1x1
-    batch_pred_physical_constraint_loss = th.stack(batch_physical_constraint_loss, dim=0)
-    # sometimes loss_batch_size is smaller than B, so we need to pad it to B
-    loss_batch_size = batch_pred_physical_constraint_loss.shape[0]
-    if loss_batch_size < B:
-        batch_pred_physical_constraint_loss = th.cat(
-            (batch_pred_physical_constraint_loss, th.zeros(B - loss_batch_size, 1, 1, device=x_pred.device)), dim=0)
-    _, _, iou_loss_size = batch_pred_physical_constraint_loss.shape
-    # logger.debug(f'batch_pred_bbox_iou_loss berfore weighting: {batch_pred_bbox_iou_loss}')
-    batch_iou_loss = batch_pred_physical_constraint_loss * iou_loss_weights.reshape(B, 1, -1)[..., :iou_loss_size]
-    return batch_iou_loss
+    if len(batch_physical_constraint_loss) == 0:
+        return th.zeros(B, 1, 1, device=x_pred.device)
+    else:
+        # Bx1x1
+        batch_pred_physical_constraint_loss = th.stack(batch_physical_constraint_loss, dim=0)
+        # sometimes loss_batch_size is smaller than B, so we need to pad it to B
+        loss_batch_size = batch_pred_physical_constraint_loss.shape[0]
+        if loss_batch_size < B:
+            batch_pred_physical_constraint_loss = th.cat(
+                (batch_pred_physical_constraint_loss, th.zeros(B - loss_batch_size, 1, 1, device=x_pred.device)), dim=0)
+        _, _, iou_loss_size = batch_pred_physical_constraint_loss.shape
 
+        batch_iou_loss = batch_pred_physical_constraint_loss * iou_loss_weights.reshape(B, 1, -1)[..., :iou_loss_size]
+        return batch_iou_loss
 
 def iou_among_predicted_3d_bbox(x_pred: th.Tensor, room_type_lst: th.Tensor, invalid_masks: th.Tensor,
                                 iou_loss_weights: th.Tensor):
@@ -626,6 +841,27 @@ def pred_3d_iou_loss(x_gt, y, invalid_masks, means, weights):
 
     return batch_iou_loss
 
+def pred_3d_iou_loss(room_type:str, 
+                     pred_x0:th.Tensor, 
+                     loss_weights:th.Tensor):
+    """
+    Compute the 3D IoU of a Gaussian distribution of 3D objects.
+
+    :param room_type:  .
+    :param pred_x0: predicted x_start, (B, N, C)
+    :param loss_weights: IoU loss weights, (B, N, C)
+    :return: batch iou loss, (B, 1)
+    """
+
+    pyhsical_violation_weight = 0.03
+    # calculate object-layout iou
+    batch_layout_iou_loss = iou_among_layout_and_predicted_3d_bbox(x_pred=pred_x0, 
+                                                                   room_type=room_type,
+                                                                   iou_loss_weights=loss_weights)
+    # Bx1
+    batch_iou_loss = batch_layout_iou_loss.sum(dim=1) * pyhsical_violation_weight
+
+    return batch_iou_loss
 
 '''
  https://github.com/open-mmlab/mmdetection3d/blob/master/mmdet3d/core/bbox/iou_calculators/iou3d_calculator.py

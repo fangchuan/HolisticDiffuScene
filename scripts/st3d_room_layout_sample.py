@@ -37,7 +37,7 @@ from dataset.metadata import ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_FURNIT
 from misc.equirect_projection import vis_objs3d, vis_floor_ceiling_simple
 from misc.utils import reconstrcut_floor_ceiling_from_quad_walls,vis_scene_mesh, euler_angle_to_matrix
 
-TARGET_SCENE_NAMES = ['scene_03006_566']
+TARGET_SCENE_NAMES = ['scene_03028_862073']
 
 def recover_quad_wall_layout_mesh(dataset_type: str,
                                   room_type: str,
@@ -185,6 +185,9 @@ def main():
     model.load_state_dict(dist_util.load_state_dict(args.model_path, map_location="cpu"))
     model.to(dist_util.dev())
     model.eval()
+    
+    # uncomment to get deterministic generations
+    # th.manual_seed(12345) 
 
     layout_channel_size = args.layout_channels
     layout_size = args.layout_size
@@ -275,18 +278,19 @@ def main():
             for i in range(args.num_samples):
                 f.write(f'{cond_text_prompt_lst[i]}\n')
 
-    if dist.get_rank() == 0:
-        shape_str = "x".join([str(x) for x in samples_arr.shape])
-        out_path = os.path.join(sample_result_folder, f"samples_{shape_str}.npz")
-        logger.log(f"saving to {out_path}")
-        if args.b_class_cond:
-            np.savez(out_path, samples_arr, label_arr)
-        else:
-            np.savez(out_path, samples_arr)
+    # if dist.get_rank() == 0:
+    #     shape_str = "x".join([str(x) for x in samples_arr.shape])
+    #     out_path = os.path.join(sample_result_folder, f"samples_{shape_str}.npz")
+    #     logger.log(f"saving to {out_path}")
+    #     if args.b_class_cond:
+    #         np.savez(out_path, samples_arr, label_arr)
+    #     else:
+    #         np.savez(out_path, samples_arr)
 
-    dist.barrier()
+    # dist.barrier()
 
     # load sample results: BxNxChannel
+    post_sample_arr = []
     for idx, scene_name in enumerate(scene_names_lst):
         scene_sample_result = samples_arr[idx]
         print(f'scene_sample_result.shape: {scene_sample_result.shape}')
@@ -294,8 +298,9 @@ def main():
         scene_sample_result = dataset.post_process(scene_sample_result)
         # print(f'scene_sample_result.shape: {scene_sample_result.shape}')
         print(f'descaled scene_sample_result.shape: {scene_sample_result.shape}')
-        scene_sample_label = args.room_type
-        print(f'scene_sample_label: {scene_sample_label}')
+        # scene_sample_label = args.room_type
+        # print(f'scene_sample_label: {scene_sample_label}')
+        post_sample_arr.append(scene_sample_result)
 
         if args.room_type == 'bedroom':
             room_layout_size = np.array([3.64073229, 3.73553261, 2.81591231])  # bedroom
@@ -356,6 +361,15 @@ def main():
         with open(scene_layout_filepath, 'w') as f:
             json.dump({'walls': wall_dict_lst, 'objects': obj_bbox_dict_lst}, f, indent=4)
 
+    # save sample results
+    post_sample_arr = np.array(post_sample_arr)
+    print(f'post_sample_arr.shape: {post_sample_arr.shape}')
+    if dist.get_rank() == 0:
+        shape_str = "x".join([str(x) for x in post_sample_arr.shape])
+        out_path = os.path.join(sample_result_folder, f"samples_{shape_str}.npz")
+        logger.log(f"saving to {out_path}")
+        np.savez(out_path, post_sample_arr)
+    dist.barrier()
     logger.log("sampling complete")
 
 

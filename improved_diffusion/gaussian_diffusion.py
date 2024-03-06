@@ -12,7 +12,7 @@ import numpy as np
 import torch as th
 
 from .nn import mean_flat
-from .losses import normal_kl, discretized_gaussian_log_likelihood, pred_3d_iou_loss, aabb_3d_iou_loss
+from .losses import normal_kl, discretized_gaussian_log_likelihood, pred_3d_iou_loss, aabb_3d_iou_loss, iou_among_layout_and_predicted_3d_bbox
 from . import logger
 
 import json
@@ -164,6 +164,12 @@ class GaussianDiffusion:
         if dataset_stats_file is not None:
             with open(dataset_stats_file, "r") as f:
                 train_stats = json.load(f)
+            
+            self.room_type = dataset_stats_file.split('/')[-2]
+            self._class_labels = train_stats["class_labels"]
+            self.center_idx = len(self._class_labels)
+            self.size_idx = self.center_idx + 3
+            self.angle_idx = self.size_idx + 3
             self._centroids = train_stats["bounds_translations"]
             self._centroids = (np.array(self._centroids[:3]), np.array(self._centroids[3:]))
             self._centroids_min, self._centroids_max = th.from_numpy(self._centroids[0]).float(), th.from_numpy(
@@ -180,6 +186,15 @@ class GaussianDiffusion:
             self._angles = train_stats["bounds_angles"]
             self._angles = (np.array(self._angles[0]), np.array(self._angles[1]))
 
+    def descale_to_origin(self, x, minimum, maximum):
+        ''' descale the intermidiate x to the original scale
+            x shape : BxNx3
+            minimum, maximum shape: 3
+        '''
+        x = (x + 1) / 2
+        x = x * (maximum - minimum)[None, None, :] + minimum[None, None, :]
+        return x
+    
     def q_mean_variance(self, x_start, t):
         """
         Get the distribution q(x_t | x_0).
@@ -377,6 +392,14 @@ class GaussianDiffusion:
         # 这里仍然使用重参数化是因为我们假设reverse process也是一个高斯过程
         noise = th.randn_like(x)
         nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(x.shape) - 1))))  # no noise when t == 0
+        # x0_pred = out["pred_xstart"]
+        # post_x0_pred = self.post_process(x0_pred)
+        # loss_weights = _extract_into_tensor(self.alphas_cumprod, t, post_x0_pred.shape)
+        # physical_loss = iou_among_layout_and_predicted_3d_bbox(x_pred=post_x0_pred,
+        #                                        room_type=self.room_type,
+        #                                        iou_loss_weights=loss_weights)
+        # batch_physical_loss = physical_loss.sum(dim=1) * 0.03
+        # noise = noise + batch_physical_loss
         # 0.5是为了得到标准差
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
@@ -471,6 +494,41 @@ class GaussianDiffusion:
                 yield out
                 img = out["sample"]
 
+    def post_process(self, samples: th.Tensor) -> th.Tensor:
+        """ post process the samples in the room
+
+        Args:
+            samples (torch.Tensor): sampled furniture and walls in the room, shape: (B, C, N)
+        
+        Returns:
+            torch.Tensor: post processed samples, shape: (B, N, C)
+        """
+        samples_t = samples.permute(0, 2, 1)
+        B, N, C = samples_t.shape
+
+        center_dim = 3
+        size_dim = 3
+        angle_dim = 2
+        class_label_dim = len(self._class_labels)
+
+        # descale class labels
+        descaled_class_labels = (samples_t[:, :, :class_label_dim] + 1) / 2
+        # descale center
+        descaled_centers = self.descale_to_origin(samples_t[:, :, class_label_dim:class_label_dim + center_dim], 
+                                                  self._centroids_min.to(samples.device),
+                                                  self._centroids_max.to(samples.device))
+        # descale size
+        descaled_sizes = self.descale_to_origin(samples_t[:, :, class_label_dim + center_dim:class_label_dim + center_dim + size_dim],
+                                        self._sizes_min.to(samples.device),
+                                        self._sizes_max.to(samples.device))
+        # derivve angle from cos/sin
+        cos_sin_angle = samples_t[:, :, class_label_dim +center_dim + size_dim:class_label_dim + center_dim + size_dim + angle_dim]
+        angles = th.atan2(cos_sin_angle[:, :, 1:2], cos_sin_angle[:, :, 0:1])
+            
+        descaled_samples = th.cat([descaled_class_labels, descaled_centers, descaled_sizes, angles], dim=-1)
+        # logger.log(f'descaled_samples shape: {descaled_samples.shape}')
+        return descaled_samples
+                                     
     def ddim_sample(
         self,
         model,
@@ -505,6 +563,17 @@ class GaussianDiffusion:
         noise = th.randn_like(x)
         mean_pred = (out["pred_xstart"] * th.sqrt(alpha_bar_prev) + th.sqrt(1 - alpha_bar_prev - sigma**2) * eps)
         nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(x.shape) - 1))))  # no noise when t == 0
+        
+        # x0_pred = out["pred_xstart"]
+        # post_x0_pred = self.post_process(x0_pred)
+        # loss_weights = _extract_into_tensor(self.alphas_cumprod, t, post_x0_pred.shape)
+        # # logger.log(f'loss_weights shape: {loss_weights.shape}')
+        # physical_loss = iou_among_layout_and_predicted_3d_bbox(x_pred=post_x0_pred,
+        #                                        room_type=self.room_type,
+        #                                        iou_loss_weights=loss_weights)
+        # logger.log(f'physical_loss shape: {physical_loss.shape}')
+        # batch_physical_loss = physical_loss.sum(dim=1) * 0.03
+        # sigma += mean_flat(batch_physical_loss) 
         sample = mean_pred + nonzero_mask * sigma * noise
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
@@ -762,18 +831,18 @@ class GaussianDiffusion:
                     terms["vb"] *= self.num_timesteps / 1000.0
 
                     alpha_bar = _extract_into_tensor(self.alphas_cumprod, t, x_start.shape)
-                    # Bx169
-                    # iou_loss = pred_3d_iou_loss(x_start,
-                    #                             y=model_kwargs["y"],
-                    #                             invalid_masks=model_kwargs["invalid_masks"],
-                    #                             means=pred_x_start,
-                    #                             weights=alpha_bar)
-                    iou_loss = aabb_3d_iou_loss(means=pred_x_start,
-                                                weights=alpha_bar,
-                                                centroids_min=self._centroids_min,
-                                                centroids_max=self._centroids_max,
-                                                sizes_min=self._sizes_min,
-                                                sizes_max=self._sizes_max)
+                    
+                    post_x0_pred = self.post_process(pred_x_start)
+                    loss_weights = _extract_into_tensor(self.alphas_cumprod, t, post_x0_pred.shape)
+                    iou_loss = pred_3d_iou_loss(room_type=self.room_type,
+                                                pred_x0=post_x0_pred,
+                                                loss_weights=loss_weights)
+                    # iou_loss = aabb_3d_iou_loss(means=pred_x_start,
+                    #                             weights=alpha_bar,
+                    #                             centroids_min=self._centroids_min,
+                    #                             centroids_max=self._centroids_max,
+                    #                             sizes_min=self._sizes_min,
+                    #                             sizes_max=self._sizes_max)
                     terms["iou"] = mean_flat(iou_loss)
                     # logger.debug(f"loss type: RESCALED_MSE_IOU")
 

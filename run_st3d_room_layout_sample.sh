@@ -65,7 +65,7 @@
 
 MODEL_FLAGS="--layout_channels 28 --layout_size 34 --num_channels 128 --num_res_blocks 3 --b_learn_sigma True --b_class_cond False --b_text_cond True --use_input_encoding True"
 DIFFUSION_FLAGS="--diffusion_steps 4000 --noise_schedule cosine  --timestep_respacing ddim200 --use_ddim True"
-NUM_SAMPLES=10
+NUM_SAMPLES=1
 ROOM_TYPE="study"
 USE_GPT_TEXT_DESCRIPTION=False
 train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/study/train_dataset_stats.json"
