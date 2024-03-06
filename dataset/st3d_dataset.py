@@ -959,7 +959,7 @@ class ST3DDataset(data.Dataset):
         # return len(self.img_fnames)
         return len(self.local_img_fnames)
 
-    def __getitem__(self, idx: int) -> List:
+    def __getitem__(self, idx: int) -> Tuple:
         """retrieve scene data
 
         Args:
@@ -1189,6 +1189,10 @@ class ST3DDataset(data.Dataset):
         else:
             return out_lst, cond_dict
 
+    def get_scene(self, scene_name: str) -> Tuple:
+        idx = self.local_txt_fnames.index(scene_name+'.txt')
+        return self.__getitem__(idx)
+    
     def get_gt_layout_mesh(self,
                            idx: int,
                            b_ignore_floor: bool = False,

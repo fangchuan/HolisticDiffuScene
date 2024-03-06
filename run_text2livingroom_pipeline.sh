@@ -1,6 +1,6 @@
 export CUDA_VISIBLE_DEVICES=0
-NUM_SAMPLES=-1
-OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240303_wo_loopconsist_ablation
+NUM_SAMPLES=1
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240304_w_loopconsist_ablation
 
 eval "$(conda shell.bash hook)"
 conda activate structured3d
@@ -14,18 +14,18 @@ RAW_DATASET_PATH=/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_t
 train_stats_file="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train/livingroom/train_dataset_stats.json"
 
 LAYOUT_MODEL_PATH=log/ST3D_livingroom/20240223_normalized/ema_0.9999_400000.pt
-python scripts/st3d_room_layout_sample.py \
- --data_dir $RAW_DATASET_PATH \
- --model_path $LAYOUT_MODEL_PATH \
- $MODEL_FLAGS \
- $DIFFUSION_FLAGS \
- --room_type $ROOM_TYPE \
- --num_samples $NUM_SAMPLES \
- --log_dir $OUTPUT_FOLDER \
- --dataset_stats_file $train_stats_file 
+# python scripts/st3d_room_layout_sample.py \
+#  --data_dir $RAW_DATASET_PATH \
+#  --model_path $LAYOUT_MODEL_PATH \
+#  $MODEL_FLAGS \
+#  $DIFFUSION_FLAGS \
+#  --room_type $ROOM_TYPE \
+#  --num_samples $NUM_SAMPLES \
+#  --log_dir $OUTPUT_FOLDER \
+#  --dataset_stats_file $train_stats_file 
 
 # run panorama sampling
-PANO_INPUT_FOLDER=$OUTPUT_FOLDER/livingroom
+PANO_INPUT_FOLDER=$OUTPUT_FOLDER/debug_livingroom
 APP_MODEL_PATH="/mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/ckpts/control_v11p_sd15_seg_livingroom_fullres_40000.ckpt"
 conda activate control-v11
 cd /mnt/nas_3dv/hdd1/fangchuan/Layout_Controlnet/scripts

@@ -1,6 +1,6 @@
 export CUDA_VISIBLE_DEVICES=0
 NUM_SAMPLES=10
-OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240304_study
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/HolisticDiffuScene/sample_results/2024eccv_experiments/20240304_study_new
 
 eval "$(conda shell.bash hook)"
 conda activate structured3d
@@ -43,7 +43,7 @@ python st3d_panorama_sample.py --input_folder $PANO_INPUT_FOLDER --ckpt_filepath
 #                                                         --outdir output_img_1 \
 #                                                         --ddpm_steps 200 --dec_w 0.5 --colorfix_type adain
 # run panoramic reconstrcution
-python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER
+python st3d_panorama_recons.py --input_folder $PANO_INPUT_FOLDER --use_egformer True
 
 
 

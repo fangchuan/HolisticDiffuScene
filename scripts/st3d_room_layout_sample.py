@@ -37,6 +37,7 @@ from dataset.metadata import ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_FURNIT
 from misc.equirect_projection import vis_objs3d, vis_floor_ceiling_simple
 from misc.utils import reconstrcut_floor_ceiling_from_quad_walls,vis_scene_mesh, euler_angle_to_matrix
 
+TARGET_SCENE_NAMES = ['scene_03006_566']
 
 def recover_quad_wall_layout_mesh(dataset_type: str,
                                   room_type: str,
@@ -208,21 +209,32 @@ def main():
             model_kwargs["y"] = layout_type_lst
         if args.b_text_cond:
             cond_data_lst = []
-            for i in range(args.batch_size):
-                if args.num_samples < len(dataset):
-                    scene_idx = np.random.choice(len(dataset))
-                else:
-                    scene_idx = len(all_layout_lst) * args.batch_size + i
-                gt_scene, gt_cond_dict, scene_name = dataset[scene_idx]
-                # text prompt from eval dataset
-                cond_data_lst.append(gt_cond_dict['text_condition'])
-                text_prompt = gt_cond_dict['text']
-                cond_text_prompt_lst.append(text_prompt)
-                scene_names_lst.append(scene_name)
-                logger.log('text_prompt: {}'.format(text_prompt))
+            if args.b_scene_name:
+                for i, scene_name in enumerate(TARGET_SCENE_NAMES):
+                    gt_scene, gt_cond_dict, gt_scene_name = dataset.get_scene(scene_name)
+                    assert scene_name == gt_scene_name
+                    # text prompt from eval dataset
+                    cond_data_lst.append(gt_cond_dict['text_condition'])
+                    text_prompt = gt_cond_dict['text']
+                    cond_text_prompt_lst.append(text_prompt)
+                    scene_names_lst.append(scene_name)
+                    logger.log('text_prompt: {}'.format(text_prompt))
+            else:
+                for i in range(args.batch_size):
+                    if args.num_samples < len(dataset):
+                        scene_idx = np.random.choice(len(dataset))
+                    else:
+                        scene_idx = len(all_layout_lst) * args.batch_size + i
+                    gt_scene, gt_cond_dict, scene_name = dataset[scene_idx]
+                    # text prompt from eval dataset
+                    cond_data_lst.append(gt_cond_dict['text_condition'])
+                    text_prompt = gt_cond_dict['text']
+                    cond_text_prompt_lst.append(text_prompt)
+                    scene_names_lst.append(scene_name)
+                    logger.log('text_prompt: {}'.format(text_prompt))
 
             model_kwargs["text_condition"] = th.from_numpy(np.stack(cond_data_lst)).to(dist_util.dev(), dtype=th.float32)
-            # print(f'model_kwargs["text_condition"].shape: {model_kwargs["text_condition"].shape}')
+
         sample_fn = (diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop)
         sample = sample_fn(
             model=model,
@@ -359,6 +371,7 @@ def create_argparser():
         room_type='bedroom',
         dataset_stats_file=None,
         use_gpt_text_desc=False,
+        b_scene_name=False,
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
