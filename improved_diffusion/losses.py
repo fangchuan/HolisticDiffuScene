@@ -853,7 +853,7 @@ def pred_3d_iou_loss(room_type:str,
     :return: batch iou loss, (B, 1)
     """
 
-    pyhsical_violation_weight = 0.03
+    pyhsical_violation_weight = 0.05
     # calculate object-layout iou
     batch_layout_iou_loss = iou_among_layout_and_predicted_3d_bbox(x_pred=pred_x0, 
                                                                    room_type=room_type,

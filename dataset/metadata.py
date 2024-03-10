@@ -86,6 +86,7 @@ COLOR_TO_ADEK_LABEL = {
     (100, 85, 144): "prop",
     (0, 153, 255): "hood",
     (51, 255, 0): "stove",
+    (255, 51, 7): "shower",
 }
 
 OBJECT_LABEL_IDS = {
@@ -1212,6 +1213,7 @@ ST3D_BEDROOM_QUAD_WALL_MAX_LEN = 10
 ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN = 20
 ST3D_KITCHEN_QUAD_WALL_MAX_LEN = 10
 ST3D_STUDY_QUAD_WALL_MAX_LEN = 10
+ST3D_BATHROOM_QUAD_WALL_MAX_LEN = 10
 
 ST3D_BEDROOM_MIN_LEN = 3
 ST3D_BEDROOM_MAX_LEN = 13
@@ -1429,3 +1431,32 @@ ST3D_STUDY_FURNITURE_CNTS = {
         "dresser": 2,
         "sink": 1
 }
+
+ST3D_BATHROOM_MIN_LEN = 3
+ST3D_BATHROOM_MAX_LEN = 24
+# 20
+ST3D_BATHROOM_FURNITURE =["bathtub", "cabinet", "chair", "curtain", "desk",
+        "door", "dresser", "lamp", "mirror", "picture", "pillow", "shelves", "shower",
+        "sink", "sofa", "table", "toilet", "window", "wall", "empty" ]
+
+ST3D_BATHROOM_FURNITURE_CNTS = {
+        "wall": 2535,
+        "door": 548,
+        "toilet": 492,
+        "sink": 442,
+        "mirror": 390,
+        "window": 319,
+        "lamp": 201,
+        "shower": 144,
+        "picture": 135,
+        "curtain": 76,
+        "cabinet": 49,
+        "bathtub": 47,
+        "shelves": 21,
+        "desk": 9,
+        "sofa": 9,
+        "chair": 8,
+        "dresser": 3,
+        "pillow": 2,
+        "table": 1
+    }

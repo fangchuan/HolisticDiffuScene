@@ -22,7 +22,7 @@ import open3d as o3d
 from panda3d.core import Triangulator
 from typing import List, Tuple, Dict, Any, Union
 
-from misc.utils import (matrix_to_euler_angles, reconstrcut_floor_ceiling_from_quad_walls, my_compute_box_3d,
+from misc.utils import (matrix_to_euler_angles, create_spatial_quad_polygen, my_compute_box_3d,
                         check_mesh_attachment, check_mesh_distance)
 from misc.equirect_projection import vis_objs3d, vis_floor_ceiling
 from dataset.metadata import (INVALID_SCENES_LST, INVALID_ROOMS_LST, OBJECT_LABEL_IDS, ROOM_WALLS_LARGER_THAN_10,
@@ -33,8 +33,6 @@ from dataset.st3d_dataset import get_mesh_from_corners, np_coorx2u, np_coory2v, 
 from dataset.st3d.st3d_scene import St3dRoom, ST3DDataset
 from dataset.gen_scene_text import get_scene_description
 
-from visualize_mesh import verify_normal, create_spatial_quad_polygen
-from visualize_3d import convert_lines_to_vertices
 '''
 Assume datas is extracted by `misc/structured3d_extract_zip.py`.
 That is to said, assuming following structure:
@@ -72,6 +70,7 @@ ST3D_LIVINGROOM_FURNITURES_SET = set()
 ST3D_DININGROOM_FURNITURES_SET = set()
 ST3D_KITCHEN_FURNITURES_SET = set()
 ST3D_STUDY_FURNITURES_SET = set()
+ST3D_BATHROOM_FURNITURES_SET = set()
 
 
 def heading2rotmat(heading_angle_rad):
@@ -200,6 +199,44 @@ def vis_color_pointcloud(rgb_img_filepath, depth_img_filepath, saved_color_pcl_f
     o3d.io.write_point_cloud(saved_color_pcl_filepath, o3d_pointcloud)
     return o3d_pointcloud
 
+def verify_normal(corner_i, corner_j, delta_height, plane_normal):
+    edge_a = corner_j + delta_height - corner_i
+    edge_b = delta_height
+
+    normal = np.cross(edge_a, edge_b)
+    normal /= np.linalg.norm(normal, ord=2)
+
+    inner_product = normal.dot(plane_normal)
+
+    if inner_product > 1e-8:
+        return False
+    else:
+        return True
+
+
+def convert_lines_to_vertices(lines):
+    """convert line representation to polygon vertices
+    """
+    polygons = []
+    lines = np.array(lines)
+
+    polygon = None
+    while len(lines) != 0:
+        if polygon is None:
+            polygon = lines[0].tolist()
+            lines = np.delete(lines, 0, 0)
+
+        lineID, juncID = np.where(lines == polygon[-1])
+        vertex = lines[lineID[0], 1 - juncID[0]]
+        lines = np.delete(lines, lineID, 0)
+
+        if vertex in polygon:
+            polygons.append(polygon)
+            polygon = None
+        else:
+            polygon.append(vertex)
+
+    return polygons
 
 def parse_bbox_in_room(room_folderpath: str, room_layout_mesh: trimesh.Trimesh, new_labeld_room_filepath: str = None):
     """ parse object bounding box in room
@@ -819,7 +856,7 @@ def prepare_dataset(raw_dataset_dir: str,
                 INVALID_ROOMS_LST.append(room_str)
                 continue
             quad_wall_num_lst.append(len(quad_walls_normalized_dict['walls']))
-            if target_room_type == 'bedroom' or target_room_type == 'kitchen' or target_room_type == 'study':
+            if target_room_type in ['bedroom', 'kitchen', 'study', 'bathroom']:
                 if len(quad_walls_normalized_dict['walls']) > ST3D_BEDROOM_QUAD_WALL_MAX_LEN:
                     print(f'bad scene {room_str} walls number > {ST3D_BEDROOM_QUAD_WALL_MAX_LEN}')
                     ROOM_WALLS_LARGER_THAN_10.append(room_str)
@@ -833,11 +870,12 @@ def prepare_dataset(raw_dataset_dir: str,
             # parse 3d bbox of objects in the room
             new_labeld_room_filepath = os.path.join(annotated_labels_dir, room_str + '.json')
             if not os.path.exists(new_labeld_room_filepath):
-                new_labeld_room_filepath = None
+                # new_labeld_room_filepath = None
+                continue
             obj_bbox_3d_dict, obj_bbox_3d_normalized_dict = parse_bbox_in_room(room_path, room_layout_mesh,
                                                                                new_labeld_room_filepath)
             if obj_bbox_3d_dict is None:
-                print(f'bad scene {room_str}')
+                print(f'bad scene {room_str} objects number < {ST3D_LIVINGROOM_MIN_LEN}')
                 INVALID_ROOMS_LST.append(room_str)
                 continue
 
@@ -996,6 +1034,9 @@ def prepare_dataset(raw_dataset_dir: str,
             elif target_room_type == 'study':
                 room_furniture_types = set([box['class'] for box in obj_bbox_3d_dict['objects']])
                 ST3D_STUDY_FURNITURES_SET.update(room_furniture_types)
+            elif target_room_type == 'bathroom':
+                room_furniture_types = set([box['class'] for box in obj_bbox_3d_dict['objects']])
+                ST3D_BATHROOM_FURNITURES_SET.update(room_furniture_types)
 
             room_layout_size = room_layout_mesh.bounding_box_oriented.extents
             room_layout_size_lst.append(room_layout_size)
@@ -1042,12 +1083,12 @@ def parse_args():
                         help="raw dataset path",
                         metavar="DIR")
     parser.add_argument("--room_type",
-                        default="st3d_livingroom",
-                        choices=["st3d_bedroom", "st3d_livingroom", "st3d_diningroom", "st3d_study", "st3d_kitchen"],
+                        default="st3d_bathroom",
+                        choices=["st3d_bedroom", "st3d_livingroom", "st3d_diningroom", "st3d_study", "st3d_kitchen", "st3d_bathroom"],
                         help="structured3d room type")
     parser.add_argument('--annotated_labels_path',
                         type=str,
-                        default='/data/dataset/Structured3D/preprocessed/annotations/livingroom/latest_labels/',
+                        default='/data/dataset/Structured3D/preprocessed/annotations/bathroom/latest_labels/',
                         help='path to annotated labels')
     parser.add_argument('--out_train_path',
                         default='/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/train')
@@ -1069,6 +1110,8 @@ def main():
         room_type_str = 'study'
     elif args.room_type == 'st3d_kitchen':
         room_type_str = 'kitchen'
+    elif args.room_type == 'st3d_bathroom':
+        room_type_str = 'bathroom'
     else:
         raise ValueError(f'unsupported room type {args.room_type}')
 
@@ -1107,6 +1150,9 @@ def main():
     elif args.room_type == 'st3d_study':
         print('*' * 20 + ' st3d_study furniture types: ' + '*' * 20)
         print(ST3D_STUDY_FURNITURES_SET)
+    elif args.room_type == 'st3d_bathroom':
+        print('*' * 20 + ' st3d_bathroom furniture types: ' + '*' * 20)
+        print(ST3D_BATHROOM_FURNITURES_SET)
 
     # merge train and test furniture statistics
     for k, v in train_furniture_stats.items():
@@ -1122,6 +1168,7 @@ def main():
         'diningroom_furniture_types': list(ST3D_DININGROOM_FURNITURES_SET),
         'kitchen_furniture_types': list(ST3D_KITCHEN_FURNITURES_SET),
         'study_furniture_types': list(ST3D_STUDY_FURNITURES_SET),
+        'bathroom_furniture_types': list(ST3D_BATHROOM_FURNITURES_SET),
         'furniture_counter': train_furniture_stats,
         'room_mean_size': room_mean_size.tolist(),
         'quad_wall_num_max': wall_num_max,

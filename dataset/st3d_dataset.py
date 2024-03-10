@@ -17,10 +17,10 @@ import trimesh
 
 import torch.utils.data as data
 from misc import panostretch
-from .metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE,  ST3D_KITCHEN_FURNITURE, ST3D_STUDY_FURNITURE, \
-ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, ST3D_KITCHEN_MAX_LEN, ST3D_STUDY_MAX_LEN,\
-ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_KITCHEN_FURNITURE_CNTS, ST3D_STUDY_FURNITURE_CNTS, \
-    ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_KITCHEN_QUAD_WALL_MAX_LEN, ST3D_STUDY_QUAD_WALL_MAX_LEN)
+from .metadata import (ST3D_BEDROOM_FURNITURE, ST3D_LIVINGROOM_FURNITURE, ST3D_DININGROOM_FURNITURE,  ST3D_KITCHEN_FURNITURE, ST3D_STUDY_FURNITURE, ST3D_BATHROOM_FURNITURE,\
+ST3D_BEDROOM_MAX_LEN, ST3D_DININGROOM_MAX_LEN, ST3D_LIVINGROOM_MAX_LEN, ST3D_KITCHEN_MAX_LEN, ST3D_STUDY_MAX_LEN, ST3D_BATHROOM_MAX_LEN,\
+ST3D_BEDROOM_FURNITURE_CNTS, ST3D_DININGROOM_FURNITURE_CNTS, ST3D_LIVINGROOM_FURNITURE_CNTS, ST3D_KITCHEN_FURNITURE_CNTS, ST3D_STUDY_FURNITURE_CNTS, ST3D_BATHROOM_FURNITURE_CNTS,\
+    ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_KITCHEN_QUAD_WALL_MAX_LEN, ST3D_STUDY_QUAD_WALL_MAX_LEN, ST3D_BATHROOM_QUAD_WALL_MAX_LEN)
 
 # room types
 ROOM_TYPE_DICT = {
@@ -641,6 +641,8 @@ def ClassLabelsEncode(room_type: int, obj_bbox_label: str) -> np.array:
         classes = ST3D_KITCHEN_FURNITURE
     elif room_type == ROOM_TYPE_DICT['study']:
         classes = ST3D_STUDY_FURNITURE
+    elif room_type == ROOM_TYPE_DICT['bathroom']:
+        classes = ST3D_BATHROOM_FURNITURE
     else:
         raise ValueError('The room type is not supported.')
 
@@ -724,6 +726,9 @@ def padding_and_reshape_object_bbox(room_type: int, object_bbox_lst: np.array, b
     elif room_type == ROOM_TYPE_DICT['study']:
         max_len = ST3D_STUDY_MAX_LEN
         class_num = len(ST3D_STUDY_FURNITURE)
+    elif room_type == ROOM_TYPE_DICT['bathroom']:
+        max_len = ST3D_BATHROOM_MAX_LEN
+        class_num = len(ST3D_BATHROOM_FURNITURE)
     else:
         raise ValueError('The room type is not supported.')
 
@@ -764,6 +769,9 @@ def padding_and_reshape_wall_bbox(room_type: int, wall_bbox_lst: np.array, bbox_
     elif room_type == ROOM_TYPE_DICT['study']:
         class_num = len(ST3D_STUDY_FURNITURE)
         max_len = ST3D_STUDY_QUAD_WALL_MAX_LEN
+    elif room_type == ROOM_TYPE_DICT['bathroom']:
+        class_num = len(ST3D_BATHROOM_FURNITURE)
+        max_len = ST3D_BATHROOM_QUAD_WALL_MAX_LEN
     else:
         raise ValueError('The room type is not supported.')
 
