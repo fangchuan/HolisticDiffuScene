@@ -1,202 +1,46 @@
-# Structured3D
+# CtrlRoom
 
-![Structured3D](https://structured3d-dataset.org/static/img/teaser.png)
+## Environment Setup and Batch Generation
 
-Structured3D is a large-scale photo-realistic dataset containing 3.5K house designs **(a)** created by professional designers with a variety of ground truth 3D structure annotations **(b)** and generate photo-realistic 2D images **(c)**.
+### download dataset:
+url: oss://lightillusions-text2room/CtrlRoom/20240219_text2pano.zip
+unzip 20240219_text2pano.zip to /your/dataset/path
 
-## Paper
+### download our codes:
+* LayoutGenerationNetwork: https://github.com/fangchuan/HolisticDiffuScene/tree/develop
+* PanoramaGenerationNetwork: https://github.com/fangchuan/Layout_ControlNet/tree/develop
 
-**Structured3D: A Large Photo-realistic Dataset for Structured 3D Modeling**
+### download pretrained weight/checkpoint: 
+* layout generation ckpts: [gdrive](https://drive.google.com/drive/folders/1GzCFsp6aeowe-4iGp882D7pP3HZt3XXx)
+* panorama generation ckpts: [gdrive](https://drive.google.com/drive/folders/1qr2T8UCU6SskajTJz9n1m9c4B6z8l9wR)
 
-[Jia Zheng](https://bertjiazheng.github.io/)\*,
-[Junfei Zhang](https://www.linkedin.com/in/骏飞-张-1bb82691/?locale=en_US)\*,
-[Jing Li](https://cn.linkedin.com/in/jing-li-253b26139),
-[Rui Tang](https://cn.linkedin.com/in/rui-tang-50973488),
-[Shenghua Gao](http://sist.shanghaitech.edu.cn/sist_en/2018/0820/c3846a31775/page.htm),
-[Zihan Zhou](https://faculty.ist.psu.edu/zzhou)
+please find your favorite layoutdiffusion model(ST3D_xxxx) and panoramadiffusion model(control_v11p_sd15_seg_xxxx) and download to where you store your codes. 'ckpts.zip' stands for checkpoints for panformer(panorama depth estimator), please download and put them in to 'LayoutControlNet/panoformer/ckpts/mp3d_weights/'
 
-European Conference on Computer Vision (ECCV), 2020
+### pull docker image: 
 
-[[Preprint](https://arxiv.org/abs/1908.00222)] 
-[[Paper](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123540494.pdf)] 
-[[Supplementary Material](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123540494-supp.pdf)] 
-[[Benchmark](https://competitions.codalab.org/competitions/24183)]
+```docker run -it -d  --gpus all --name ctrlroom -v /your/codes/path/:/codes/ -v /your/dataset/path/:/dataset registry.cn-beijing.aliyuncs.com/ctrlroom/ctrl-room:v2``` 
+* please replace '/your/codes/path/' and '/your/dataset/path/' with your own path;
+### run docker image 
 
-(\* Equal contribution)
+```docker run -it -d  --gpus all --name ctrlroom -v /your/codes/path/:/codes/ -v /your/dataset/path/:/dataset registry.cn-beijing.aliyuncs.com/ctrlroom/ctrl-room:v2``` 
 
-## Data
+### run batch generation script
 
-The dataset consists of rendering images and corresponding ground truth annotations (_e.g._, semantic, albedo, depth, surface normal, layout) under different lighting and furniture configurations. Please refer to [data organization](data_organization.md) for more details.
+#### text-to-bedroom generation:
+please revise the 'RAW_DATASET_PATH', 'LAYOUT_MODEL_PATH', 'APP_MODEL_PATH' and 'train_stats_file' according to aforementioned downloaded data also revise carefully other paths consistent to your machine you can generate NUM_SAMPLES samples by run the bash script
+```bash run_text2bedroom_pipeline.sh```
 
-To download the dataset, please fill the [agreement form](https://forms.gle/LXg4bcjC2aEjrL9o8) that indicates you agree to the [Structured3D Terms of Use](https://drive.google.com/open?id=13ZwWpU_557ZQccwOUJ8H5lvXD7MeZFMa). After we receive your agreement form, we will provide download access to the dataset.
+#### text-to-kitchen generation:
+please revise the 'RAW_DATASET_PATH', 'LAYOUT_MODEL_PATH', 'APP_MODEL_PATH' and 'train_stats_file' according to aforementioned downloaded data also revise carefully other paths consistent to your machine you can generate NUM_SAMPLES samples by run the bash script
+```bash run_text2kitchen_pipeline.sh```
 
-For fair comparison, we define standard training, validation, and testing splits as follows: _scene_00000_ to _scene_02999_ for training, _scene_03000_ to _scene_03249_ for validation, and _scene_03250_ to _scene_03499_ for testing.
+#### text-to-bathroom generation:
+please revise the 'RAW_DATASET_PATH', 'LAYOUT_MODEL_PATH', 'APP_MODEL_PATH' and 'train_stats_file' according to aforementioned downloaded data  also revise carefully other paths consistent to your machine you can generate NUM_SAMPLES samples by run the bash script
+```bash run_text2livingroom_pipeline.sh```
 
-## Errata
-
-- 2020-04-06: We provide a list of invalid cases [here](metadata/errata.txt). You can ignore these cases when using our data.
-- 2020-03-26: Fix issue [#10](https://github.com/bertjiazheng/Structured3D/issues/10) about the basis of the bounding box annotations. Please re-download the annotations if you use them.
-
-## Tools
-
-We provide the basic code for viewing the structure annotations of our dataset.
-
-### Installation
-
-Clone repository:
-
-```bash
-git clone git@github.com:bertjiazheng/Structured3D.git
+## FAQ: possible problems:
+* AttributeError: module 'PIL.Image' has no attribute 'LINEAR'
+``` 
+conda activate control-v11
+pip install Pillow==9.5 
 ```
-
-Please use Python 3, then follow [installation](https://pymesh.readthedocs.io/en/latest/installation.html) to install [PyMesh](https://github.com/PyMesh/PyMesh) (only for plane visualization) and the other dependencies:
-
-```bash
-sudo apt install libgl1-mesa-glx -y
-sudo apt install libopenmpi-dev -y
-conda env create -f environment.yaml
-```
-
-### Visualize 3D Annotation
-
-We use [open3D](https://github.com/intel-isl/Open3D) for wireframe and plane visualization, please refer to interaction control [here](http://www.open3d.org/docs/tutorial/Basic/visualization.html#function-draw-geometries).
-
-```bash
-python visualize_3d.py --path /path/to/dataset --scene scene_id --type wireframe/plane/floorplan
-```
-
-| Wireframe                             | Plane                         | Floorplan                             |
-| ------------------------------------- | ----------------------------- | ------------------------------------- |
-| ![Wireframe](assets/3d/wireframe.png) | ![plane](assets/3d/plane.png) | ![floorplan](assets/3d/floorplan.png) |
-
-### Visualize 3D Textured Mesh
-
-```bash
-python visualize_mesh.py --path /path/to/dataset --scene scene_id --room room_id
-```
-
-<p align="center">
-<img src="assets/mesh/scene_00000.png" width="500">
-</p>
-
-### Visualize 2D Layout
-
-```bash
-python visualize_layout.py --path /path/to/dataset --scene scene_id --type perspective/panorama
-```
-
-#### Panorama Layout
-
-<p align="center">
-<img src="assets/pano_layout/scene_00000_485142.png" width="250">
-<img src="assets/pano_layout/scene_00000_490854.png" width="250">
-<img src="assets/pano_layout/scene_00000_492165.png" width="250">
-</p>
-
-Please refer to the [Supplementary Material](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123540494-supp.pdf) for more example ground truth room layouts.
-
-#### Perspective Layout
-
-<p align="center">
-<img src="assets/pers_layout/scene_00000_485142_0.png" width="250">
-<img src="assets/pers_layout/scene_00000_485142_1.png" width="250">
-<img src="assets/pers_layout/scene_00000_490854_2.png" width="250">
-</p>
-
-### Visualize 3D Bounding Box
-
-```bash
-python visualize_bbox.py --path /path/to/dataset --scene scene_id
-```
-
-<p align="center">
-<img src="assets/bbox/scene_00000_485142_0.png" width="250">
-<img src="assets/bbox/scene_00000_485142_1.png" width="250">
-<img src="assets/bbox/scene_00000_490854_2.png" width="250">
-</p>
-
-### Visualize Floorplan
-
-```bash
-python visualize_floorplan.py --path /path/to/dataset --scene scene_id
-```
-
-<p align="center">
-<img src="assets/bbox/floorplan.png" width="500">
-</p>
-
-## Citation
-
-Please cite `Structured3D` in your publications if it helps your research:
-
-```bibtex
-@inproceedings{Structured3D,
-  title     = {Structured3D: A Large Photo-realistic Dataset for Structured 3D Modeling},
-  author    = {Jia Zheng and Junfei Zhang and Jing Li and Rui Tang and Shenghua Gao and Zihan Zhou},
-  booktitle = {Proceedings of The European Conference on Computer Vision (ECCV)},
-  year      = {2020}
-}
-```
-
-## License
-
-The data is released under the [Structured3D Terms of Use](https://drive.google.com/open?id=13ZwWpU_557ZQccwOUJ8H5lvXD7MeZFMa), and the code is released under the [MIT license](LICENSE).
-
-## Contact
-
-Please contact us at [Structured3D Group](mailto:structured3d@googlegroups.com) if you have any questions.
-
-## Acknowledgement
-
-We would like to thank Kujiale.com for providing the database of house designs and the rendering engine. We especially thank Qing Ye and Qi Wu from Kujiale.com for the help on the data rendering.
-
-## 开发日志:
-1. openai-2023-06-12-19-05-30-009115: 把房间数据编码为4x1024向量, 走通training/sampling过程;
-2. openai-2023-06-15-09-25-18-855079: 对房间数据进行排序, 以frequency/box_size进行排序, 生成结果中没有door的问题基本解决, 但是仍然有1/10没有bed;
-3. openai-2023-06-19-14-44-06-950438: 更换doffusion loss为 mse+klloss, 对碰撞问题没有帮助;
-4. hkust-gpu02: openai-2023-06-19-19-17-58-043907: 添加iou loss, t=0....(T-1)都有iou loss, 以normalized_bbox_center计算iou;
-   hkust-gpu03: openai-2023-06-19-20-55-21-510761: 添加iou loss, 只t=0，以normalized_bbox_center计算iou;  ---- 训练9W步的生成结果: 碰撞没有减少, 物体orientation出现问题, 比如bed/cabinet不贴墙面； 
-5. openai-2023-06-20-*: 现有的iou loss计算太慢, 训练时间变为原来3倍;
-6. openai-2023-06-21-*: 使用pytorch3d-box_overlap, 未提供backward函数, 无法把iou loss反向传播;
-7. openai-2023-06-22-11-42-17-175271: 加速iou_3d计算, 训练3.5W步, totoal_loss有下降, 但是iou_loss没有下降; ---- 训练20W步的生成结果: 碰撞没有减少, 物体orientation出现问题, 比如bed/cabinet不贴墙面； 
-8. openai-2023-06-26-18-25-34-618025: total_loss=kl_loss + mse_loss + iou_loss, 使用pred_xstart计算 iou_loss, iou_loss不使用1024平均, 采用1024 vec_sum操作, 8W步训练过程iou_loss有下降, 但是下降过程非常noisy; 结果太noisy, iou_loss权重太大;
-9. openai-2023-06-26-22-02-01-510271: total_loss=kl_loss + iou_loss, 使用pred_xstart计算iou_loss, iou_loss不使用1024平均, 采用1024 vec_sum操作, 7W步训练过程iou_loss有下降, 但是下降过程非常noisy; 结果太noisy, iou_loss权重太大;
-10. openai-2023-06-28-12-29-42-231944: 仍然存在碰撞, iou_loss下降到0.5优化不动了. 
-11. openai-2023-06-30-12-16-47-752194,openai-2023-07-03-16-59-45-622914： iou_loss计算方式由sum换成mean; 效果任然不明显;
-12. openai-2023-06-29-16-54-10-476220: test_pos_emb分支, 每层resblock后面都添加attnblock, 添加pe, 训练16W步模型不收敛, 生成结果不可用(roomlayout数据分布都没有学好);
-13. openai-2023-07-01-16-10-50-176856: test_pos_emb分支, 不使用pe, 训练19W步, 生成结果不可用(roomlayout数据分布都没有学好);
-14. openai-2023-07-07-19-13-25-077423: test_quad_walls分支, 确定quad_wall编码形式: class+centroid+size+angle, 使用input_encoding, mse+kl loss, 生成结果表明已经可以学习一些相对关系: 如nightstand-lamp, cabinet-tv, bed-nightstand;
-15. openai-2023-07-07-19-15-49-470102: test_quad_walls分支, 使用input_encoding, kl loss, 生成结果不可用, kl loss对其没有帮助;
-16. layout_iou_loss实验: openai-2023-07-11-09-06-48-605853: test_quad_walls分支, 不使用input_encoding, mse+kl+layoutiou_loss,
-18. 修改self_attn实验: openai-2023-07-11-14-04-30-909981: test_quad_walls分支, 不使用input_encoding, mse+kl loss;
-19. 修改unet网络结构, 去掉downsample/upsample层, 房间数据格式调整为BxCxN: 
-      * openai-2023-07-13-12-09-20-131075: test_attn_mask分支, 使用input_encoding, attn_mask; 14W步训练结果良好, 需处理碰撞; 28W步结果无明显差异;
-      * openai-2023-07-13-13-58-44-732475: test_attn_mask分支, 使用attn_mask, 不使用input_encoding; 废弃;
-      * openai-2023-07-13-19-27-25-938973: test_attn_mask分支, 使用input_encoding, attn_mask, 加速layout-iou loss计算; 废弃;
-20. 添加layout-iou loss: openai-2023-07-14-16-10-17-785586: test_attn_mask分支, 加速layout-iou计算, 24h 8W步;
-21. 去掉attn_mask: openai-2023-07-14-22-58-18-238119: test_attn_mask分支, 20W步训练结果良好, 与有attn_mask的openai-2023-07-13-12-09-20-131075无显著区别;
-22. 评估无attn_mask, 有input_encoding的网络生成效果: openai-2023-07-16-11-47-16-866264, CKL: 0.0066;
-    评估有attn_mask, 有input_encoding的网络生成效果: openai-2023-07-16-14-38-49-759043, CKL: 0.016; 
-23. 无input_encoding,无attn_mask训练: openai-2023-07-16-17-10-51-562054: 训练26h 20W步, 生成效果与无input_encoding没有显著区别; CKL: 0.0044
-24. 加入text_prompt, 无input_encoding,无attn_mask训练: openai-2023-07-16-21-06-58-942027: 只在与训练数据text prompt相似的文本上有一定控制能力, 但是在随机输入的文本对生成结果几乎看不出来影响, 缺乏CLIP-Score;
-25. 无input_encoding, 有attn_mask训练: openai-2023-07-18-00-57-10-419951: 训练36h, 25W步, 生成效果不如openai-2023-07-16-17-10-51-562054,废弃;
-26. text-condition, 无input_encoding, 无attn_mask训练: openai-2023-07-19-18-09-09-644965: 训练40h, 13W步, 在ST3D测试集上效果明显;
-27. 3D_FRONT数据集: unconditional训练, 无input_encoding, 无attn_mask, openai-2023-07-30-20-12-28-373197训练效果明显;
-28. 3D_FRONT数据集: text condition训练, 无input_encoding, 无attn_mask, openai-2023-07-30-21-29-55-294343训练, 还未在测试集上测试，只在随机文本上测试, 生成效果还凑活; 
-
-可用模型:
-29. ST3D数据集:  livingroom, text condition训练: log/ST3D_livingroom_textcondition_openai-2023-08-14-18-13-22-588311/ema_0.9999_200000.pt
-                bedroom, text condition训练: log/openai-2023-09-08-15-04-50-375770
-    3D_FRONT数据集: bedroom, uncondition训练: log/TDFRONT_bedroom_uncondition_openai-2023-07-26-16-17-12-692249/ema_0.9999_200000.pt 可用
-                            text condition训练: log/TDFRONT_bedroom_openai-2023-08-05-18-47-48-302753/ema_0.9999_200000.pt 出现label错误问题???
-
-30. 重新整理3D_FRONT数据集: bedroom/livingroom/diningroom, 重新处理quad_wall, 暂未分train/test, 暂未重新训练3d_front模型;
-31. 2023-10-11: ST3D_livingroom_textcondition_openai-2023-10-11-10-10-00-00在ST3D训练text condition模型, 打开input_encoding; 定性效果良好, 缺定量测评;
-32. 2023-10-13: ST3D_livingroom_textcondition_openai-2023-10-13-22-20-00-00在ST3D训练text condition模型, 打开input_encoding, layout_IOU_3D, 定性结果好像变差了,缺乏定量评估;
-33. 2023-10-13: ST3D_liveingroom_textcondition_openai-2023-10-13-22-50-00-00在ST3D训练text condition模型, 打开input_encoding, object_IOU_3D：定性效果不明显,缺乏定量评估;
-34. 2023-10-14: ST3D数据集的object bbox angle没有归一化!!!
-35. 2023-11-15: GPU util打不满问题与env无关, 似乎与数据集大小有关, worker设为0可以缓解. 切换到A6000可以缓解.
-36. 2024-01-22: 更新unet网络, 包含instance_embedding, 训练text-condition的layout generation, 在3D_FRONT数据集上稍劣于ATISS!!!
-37. 2024-02-08: log/ST3D_bedroom/textcondition测试gpt4的room_text_prompt, 训练集过拟合, 无法在测试集上生成合理的结果;
-38. 2024-02-09: log/ST3D_livingroom/textcondition测试our_randomrized_text_prompt, 训练集拟合效果不好, 无法在测试集上生成合理的结果;
-39: 2024-02-20: log/ST3D_livingroom/20240217_normalized, log/ST3D_kitchen/2024021_normalized/ 训练重新归一化后的数据, 生成成功率显著提升;
