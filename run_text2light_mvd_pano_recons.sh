@@ -12,7 +12,7 @@ eval "$(conda shell.bash hook)"
 # bash test_text.sh
 
 # run MVDiffusion 
-OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/mesh_generation_experiments/mvdiffusion_results/
+OUTPUT_FOLDER=/mnt/nas_3dv/hdd1/fangchuan/mesh_generation_experiments/2024eccv_experiments/text2light_study/
 # conda activate mvdiffusion
 # python test_text2room.py --out_dir $OUTPUT_FOLDER
 

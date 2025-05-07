@@ -45,7 +45,7 @@ def create_argparser():
         data_dir="/mnt/nas_3dv/hdd1/datasets/Structured3d/preprocessed/20240219_text2pano/test/study/",
         log_dir='log',
         room_type='study',
-        samples_filepath='log/ST3D_study/20240306_physical_loss_alabtion/sample_results/openai-2024-03-10-11-36-56-900300/study/samples_10x34x27.npz',
+        samples_filepath='log/ST3D_study/20240306_physical_loss_alabtion/w_sample_results/study/samples_20x34x27.npz',
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()

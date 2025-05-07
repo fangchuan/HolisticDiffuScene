@@ -32,12 +32,13 @@ from dataset.metadata import ST3D_BEDROOM_QUAD_WALL_MAX_LEN, ST3D_BEDROOM_FURNIT
                             ST3D_LIVINGROOM_QUAD_WALL_MAX_LEN, ST3D_LIVINGROOM_FURNITURE,\
                             ST3D_DININGROOM_FURNITURE, ST3D_KITCHEN_FURNITURE, \
                             ST3D_STUDY_FURNITURE, ST3D_STUDY_QUAD_WALL_MAX_LEN, \
+                            ST3D_BATHROOM_FURNITURE, ST3D_BATHROOM_QUAD_WALL_MAX_LEN, \
                             COLOR_TO_ADEK_LABEL
 
 from misc.equirect_projection import vis_objs3d, vis_floor_ceiling_simple
 from misc.utils import reconstrcut_floor_ceiling_from_quad_walls,vis_scene_mesh, euler_angle_to_matrix
 
-TARGET_SCENE_NAMES = ['scene_03028_862073']
+TARGET_SCENE_NAMES = ['scene_03279_413']
 
 def recover_quad_wall_layout_mesh(dataset_type: str,
                                   room_type: str,
@@ -56,6 +57,8 @@ def recover_quad_wall_layout_mesh(dataset_type: str,
         class_labels_lst = ST3D_KITCHEN_FURNITURE
     elif room_type == 'study':
         class_labels_lst = ST3D_STUDY_FURNITURE
+    elif room_type == 'bathroom':
+        class_labels_lst = ST3D_BATHROOM_FURNITURE
     else:
         raise NotImplementedError
 
@@ -187,7 +190,7 @@ def main():
     model.eval()
     
     # uncomment to get deterministic generations
-    # th.manual_seed(12345) 
+    th.manual_seed(12345) 
 
     layout_channel_size = args.layout_channels
     layout_size = args.layout_size
@@ -312,6 +315,8 @@ def main():
             wall_max_num = ST3D_BEDROOM_QUAD_WALL_MAX_LEN
         elif args.room_type == 'study':
             wall_max_num = ST3D_STUDY_QUAD_WALL_MAX_LEN
+        elif args.room_type == 'bathroom':
+            wall_max_num = ST3D_BATHROOM_QUAD_WALL_MAX_LEN
         else:
             raise NotImplementedError
         # quad walls

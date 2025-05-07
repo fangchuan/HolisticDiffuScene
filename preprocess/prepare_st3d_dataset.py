@@ -631,7 +631,7 @@ def parse_wall_corners(scene_annos: dict, room_id: str, camera_position_filepath
         # 3D coordinate for each wall
         quad_corners = np.array([corner_i, corner_i + delta_height, corner_j + delta_height, corner_j])
         # print(f'plane normal: {plane_normal}')
-        wall_mesh, _ = create_spatial_quad_polygen(quad_corners * 0.001,
+        wall_mesh = create_spatial_quad_polygen(quad_corners * 0.001,
                                                    plane_normal,
                                                    camera_center=cam_position * 0.001)
         quad_wall_mesh_lst.append(wall_mesh)
@@ -964,7 +964,7 @@ def prepare_dataset(raw_dataset_dir: str,
                                 walls_lst=quad_walls_dict['walls'],
                                 bboxes_lst=obj_bbox_3d_dict['objects'],)
                 st3d_rooms_lst.append(st3d_room)
-                
+                print(f'scene_id: {room_str}, room_centroid: {st3d_room.centroid}')
                 # re-center the walls and objects
                 def recenter_fn(x:Dict)->Dict:
                     x['center'] = (np.array(x['center']) - st3d_room.centroid).tolist()
