@@ -927,7 +927,6 @@ def prepare_dataset(raw_dataset_dir: str,
             target_room_type_path = os.path.join(out_room_type_dir, '%s_%s.txt' % (scene_id, room_id))
             target_bbox_3d_path = os.path.join(out_bbox_3d_dir, '%s_%s.json' % (scene_id, room_id))
             target_bbox_3d_normal_path = os.path.join(out_bbox_3d_dir, '%s_%s_normalized.json' % (scene_id, room_id))
-            # target_bbox_3d_vis_path = os.path.join(out_bbox_3d_dir, '%s_%s.png' % (scene_id, room_id))
             target_sem_bbox_img_path = os.path.join(out_sem_bbox_img_dir, '%s_%s.png' % (scene_id, room_id))
             target_sem_layout_img_path = os.path.join(out_sem_layout_img_dir, '%s_%s.png' % (scene_id, room_id))
             target_bbox_3d_mesh_path = os.path.join(out_bbox_3d_dir, '%s_%s.ply' % (scene_id, room_id))
@@ -970,17 +969,8 @@ def prepare_dataset(raw_dataset_dir: str,
                     x['center'] = (np.array(x['center']) - st3d_room.centroid).tolist()
                     x['corners'] = [(np.array(cor) - st3d_room.centroid).tolist() for cor in x['corners']]
                     return x
-                # recenter_fn = lambda x: x['center'] = (np.array(x['center']) - st3d_room.centroid).tolist()
                 quad_walls_dict['walls'] = list(map(recenter_fn, quad_walls_dict['walls']))
                 obj_bbox_3d_dict['objects'] = list(map(recenter_fn, obj_bbox_3d_dict['objects']))
-                # visialization and debug
-                # if b_save_debug_files:
-                #     debug_bbox_img, debug_bbox_trimesh = save_visualization_and_mesh(
-                #         objects_lst=obj_bbox_3d_dict['objects'],
-                #         quad_walls_lst=quad_walls_dict['walls'],
-                #         source_cor_path=source_cor_path,
-                #         source_img_path=source_img_path,
-                #     )
                     
                 shutil.copyfile(source_img_path, target_img_path)
                 shutil.copyfile(source_depth_path, target_depth_path)
@@ -992,15 +982,9 @@ def prepare_dataset(raw_dataset_dir: str,
                 # write 3d bbox
                 with open(target_bbox_3d_path, 'w') as f:
                     json.dump(obj_bbox_3d_dict, f, indent=4)
-                # # write normalized 3d bbox
-                # with open(target_bbox_3d_normal_path, 'w') as f:
-                #     json.dump(obj_bbox_3d_normalized_dict, f, indent=4)
                 # write quad walls
                 with open(target_quad_wall_path, 'w') as f:
                     json.dump(quad_walls_dict, f, indent=4)
-                # # write normalized quad walls
-                # with open(target_quad_wall_normalized_path, 'w') as f:
-                #     json.dump(quad_walls_normalized_dict, f, indent=4)
 
                 # write text description
                 with open(target_text_desc_path, 'w') as f:
@@ -1009,13 +993,9 @@ def prepare_dataset(raw_dataset_dir: str,
                 np.save(target_text_emb_path, scene_desc_emb)
 
                 if b_save_debug_files:
-                    # visualize debug bbox img
-                    # Image.fromarray(debug_bbox_img).save(target_sem_bbox_img_path)
-
                     # visualize semantic layout img
                     Image.fromarray(debug_bbox_img).save(target_sem_layout_img_path)
 
-                    # print(f'save visualization for object bbox annotation of {room_id_str}')
                     debug_bbox_trimesh.export(target_bbox_3d_mesh_path)
 
             # furniture statistics
@@ -1129,11 +1109,6 @@ def main():
                                                     args.annotated_labels_path,
                                                     split='test',
                                                     b_save_debug_files=True)
-    # print('*' * 20 + ' invalid rooms ids: ' + '*' * 20)
-    # print(INVALID_ROOMS_LST)
-
-    # print('*' * 20 + ' room walls  size > 10: ' + '*' * 20)
-    # print(ROOM_WALLS_LARGER_THAN_10)
 
     if args.room_type == 'st3d_bedroom':
         print('*' * 20 + ' bedroom furniture types: ' + '*' * 20)
@@ -1162,7 +1137,6 @@ def main():
 
     dataset_stats = {
         'invalid_rooms': INVALID_ROOMS_LST,
-        # 'room_walls_larger_than_10': ROOM_WALLS_LARGER_THAN_10,
         'bedroom_furniture_types': list(ST3D_BEDROOM_FURNITURES_SET),
         'livingroom_furniture_types': list(ST3D_LIVINGROOM_FURNITURES_SET),
         'diningroom_furniture_types': list(ST3D_DININGROOM_FURNITURES_SET),
